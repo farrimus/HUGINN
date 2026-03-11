@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app):
-    await world_api.build_system_index()
+    await world_api.load_or_build_index()
     yield
 
 app = FastAPI(title="Ship AI Companion", lifespan=lifespan)
@@ -27,7 +27,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "systems_indexed": len(world_api._system_index)}
+
+@app.post("/admin/rebuild-index", dependencies=[Depends(require_token)])
+async def rebuild_index():
+    count = await world_api.rebuild_index()
+    return {"systems_indexed": count}
 
 class LogEvent(BaseModel):
     type: str

@@ -1,9 +1,12 @@
 # src/world_api.py
 import os
 import time
+import json
 import logging
 import httpx
 from typing import Optional
+
+INDEX_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "system_index.json")
 
 log = logging.getLogger(__name__)
 
@@ -55,17 +58,58 @@ class WorldAPIClient:
             return None
 
     # ------------------------------------------------------------------
-    # System index — built once at startup
+    # System index — persisted to disk, built from API when missing
     # ------------------------------------------------------------------
 
-    async def build_system_index(self) -> int:
-        """Fetch all solar systems and build a name→id lookup index.
-        Returns the number of systems indexed."""
+    def _index_file(self) -> str:
+        return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "system_index.json"))
+
+    def load_index_from_disk(self) -> bool:
+        """Load index from disk cache. Returns True if loaded successfully."""
+        path = self._index_file()
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            self._system_index = data.get("index", {})
+            built_at = data.get("built_at", "unknown")
+            log.info("System index loaded from disk: %d systems (built %s)", len(self._system_index), built_at)
+            return True
+        except Exception as e:
+            log.warning("Failed to load system index from disk: %s", e)
+            return False
+
+    def save_index_to_disk(self):
+        """Persist the current index to disk."""
+        path = self._index_file()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, "w") as f:
+                json.dump({
+                    "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "count": len(self._system_index),
+                    "index": self._system_index,
+                }, f)
+            log.info("System index saved to disk: %s", path)
+        except Exception as e:
+            log.warning("Failed to save system index to disk: %s", e)
+
+    async def load_or_build_index(self) -> int:
+        """Load index from disk if available, otherwise fetch from API and save.
+        Returns number of systems indexed."""
+        if self.load_index_from_disk():
+            return len(self._system_index)
+        return await self.rebuild_index()
+
+    async def rebuild_index(self) -> int:
+        """Force a full rebuild from the API and save to disk.
+        Use this when the game adds new systems."""
         index: dict = {}
         limit = 1000
         offset = 0
 
-        log.info("Building solar system index...")
+        log.info("Building solar system index from API...")
         while True:
             try:
                 result = await self._fetch("/v2/solarsystems", {"limit": limit, "offset": offset})
@@ -87,7 +131,12 @@ class WorldAPIClient:
 
         self._system_index = index
         log.info("System index built: %d systems", len(index))
+        self.save_index_to_disk()
         return len(index)
+
+    # Keep build_system_index as an alias for backward compat with tests
+    async def build_system_index(self) -> int:
+        return await self.rebuild_index()
 
     def resolve_system_id(self, name: str) -> Optional[int]:
         """Look up a system ID by name (case-insensitive)."""
