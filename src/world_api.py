@@ -10,6 +10,7 @@ class WorldAPIClient:
         self.api_key = api_key if api_key is not None else os.getenv("WORLD_API_KEY", "")
         self.cache_ttl = cache_ttl
         self._cache: dict = {}  # key -> (data, timestamp)
+        self._http_client = httpx.AsyncClient(timeout=10.0)
 
     def _cache_key(self, endpoint: str, params: dict) -> str:
         return f"{endpoint}:{sorted(params.items())}"
@@ -25,15 +26,13 @@ class WorldAPIClient:
 
     async def _fetch(self, endpoint: str, params: dict = None) -> dict:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}{endpoint}",
-                params=params or {},
-                headers=headers,
-                timeout=10.0
-            )
-            response.raise_for_status()
-            return response.json()
+        response = await self._http_client.get(
+            f"{self.base_url}{endpoint}",
+            params=params or {},
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def _cached_fetch(self, endpoint: str, params: dict = None) -> Optional[dict]:
         key = self._cache_key(endpoint, params or {})
@@ -44,7 +43,9 @@ class WorldAPIClient:
             data = await self._fetch(endpoint, params)
             self._cache[key] = (data, time.time())
             return data
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("World API fetch failed: %s", e)
             return None
 
     async def get_system(self, system_name: str) -> Optional[dict]:

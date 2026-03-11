@@ -1,4 +1,5 @@
 # tests/test_world_api.py
+import asyncio
 import pytest
 import time
 from unittest.mock import AsyncMock, patch
@@ -27,7 +28,7 @@ async def test_cache_expires_after_ttl():
     mock_response = {"name": "Jita"}
     with patch.object(client, "_fetch", new=AsyncMock(return_value=mock_response)) as mock_fetch:
         await client.get_system("Jita")
-        time.sleep(0.2)
+        await asyncio.sleep(0.2)
         await client.get_system("Jita")
     assert mock_fetch.call_count == 2  # cache expired
 
