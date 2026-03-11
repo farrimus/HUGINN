@@ -19,7 +19,9 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app):
-    await world_api.load_or_build_index()
+    # Run index build in background — don't block startup
+    # The index loads from disk instantly if cached; API fetch retries on DNS failure
+    asyncio.create_task(world_api.load_or_build_index())
     yield
 
 app = FastAPI(title="Ship AI Companion", lifespan=lifespan)

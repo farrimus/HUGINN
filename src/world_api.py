@@ -107,37 +107,50 @@ class WorldAPIClient:
             return len(self._system_index)
         return await self.rebuild_index()
 
-    async def rebuild_index(self) -> int:
+    async def rebuild_index(self, retries: int = 5, retry_delay: float = 3.0) -> int:
         """Force a full rebuild from the API and save to disk.
+        Retries on transient failures (e.g. DNS not ready at startup).
         Use this when the game adds new systems."""
-        index: dict = {}
-        limit = 1000
-        offset = 0
+        for attempt in range(1, retries + 1):
+            index: dict = {}
+            limit = 1000
+            offset = 0
+            failed = False
 
-        log.info("Building solar system index from API...")
-        while True:
-            try:
-                result = await self._fetch("/v2/solarsystems", {"limit": limit, "offset": offset})
-            except Exception as e:
-                log.warning("Failed to fetch solarsystems page (offset=%d): %s", offset, e)
-                break
+            log.info("Building solar system index from API (attempt %d/%d)...", attempt, retries)
+            while True:
+                try:
+                    result = await self._fetch("/v2/solarsystems", {"limit": limit, "offset": offset})
+                except Exception as e:
+                    log.warning("Failed to fetch solarsystems page (offset=%d): %s", offset, e)
+                    failed = True
+                    break
 
-            systems = result.get("data", [])
-            for s in systems:
-                name = s.get("name", "")
-                sid = s.get("id")
-                if name and sid:
-                    index[name.lower()] = sid
+                systems = result.get("data", [])
+                for s in systems:
+                    name = s.get("name", "")
+                    sid = s.get("id")
+                    if name and sid:
+                        index[name.lower()] = sid
 
-            total = result.get("metadata", {}).get("total", 0)
-            offset += len(systems)
-            if offset >= total or not systems:
-                break
+                total = result.get("metadata", {}).get("total", 0)
+                offset += len(systems)
+                if offset >= total or not systems:
+                    break
 
-        self._system_index = index
-        log.info("System index built: %d systems", len(index))
-        self.save_index_to_disk()
-        return len(index)
+            if not failed and index:
+                self._system_index = index
+                log.info("System index built: %d systems", len(index))
+                self.save_index_to_disk()
+                return len(index)
+
+            if attempt < retries:
+                log.info("Retrying in %.0fs...", retry_delay)
+                import asyncio
+                await asyncio.sleep(retry_delay)
+
+        log.warning("System index build failed after %d attempts. Starting without index.", retries)
+        return 0
 
     # Keep build_system_index as an alias for backward compat with tests
     async def build_system_index(self) -> int:
