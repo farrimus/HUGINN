@@ -15,7 +15,14 @@ from src.world_api import world_api
 
 load_dotenv()
 
-app = FastAPI(title="Ship AI Companion")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    await world_api.build_system_index()
+    yield
+
+app = FastAPI(title="Ship AI Companion", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/health")
