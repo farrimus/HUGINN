@@ -1,11 +1,16 @@
 from fastapi import FastAPI, Depends
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import os
+import json
 
 from src.log_buffer import log_buffer
 from src.auth import require_token
+from src.claude_client import claude
+from src.context_builder import build_context_block
+from src.world_api import world_api
 
 load_dotenv()
 
@@ -25,3 +30,23 @@ class LogEvent(BaseModel):
 async def ingest_log(event: LogEvent):
     log_buffer.add(event.model_dump())
     return {"accepted": True}
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list = []
+
+@app.post("/chat", dependencies=[Depends(require_token)])
+async def chat(req: ChatRequest):
+    system_data = await world_api.get_system(log_buffer.current_system) if log_buffer.current_system else None
+    context = build_context_block(
+        system_data=system_data,
+        log_events=log_buffer.get_recent(10),
+        current_system=log_buffer.current_system,
+    )
+
+    def event_stream():
+        for chunk in claude.stream(req.message, req.history, context):
+            yield f"data: {json.dumps({'text': chunk})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
