@@ -140,7 +140,7 @@ Four subfolders:
 **Gamelogs:** Agent watches for relevant event types — combat hits, mining yields, deaths, docking, undocking. Irrelevant lines discarded on the PC before sending.
 
 **Chatlogs:** Agent watches two channel types:
-- `Local` channel file — system entry announcements appear here when the player jumps to a new system. This is the primary source of current location, supplementing or replacing World API polling for location.
+- `Local` channel file — system entry announcements appear here when the player jumps to a new system. This acts as a **trigger**: on detecting a system change, the server immediately fires a World API fetch for the new system. The API is the source of truth for location data; the chat log is the event that tells the server when to refresh it. This avoids constant polling while keeping context accurate.
 - Tribe/corp channel files — optional context for tribe chat summarisation. Injected on demand ("what's happening in tribe chat?") not automatically.
 
 **Path configurable** via `LOG_FILE_PATH` in log-agent `.env`. Agent validates both subfolders exist at startup and logs a clear error if not found.
