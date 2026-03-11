@@ -77,7 +77,9 @@ These are passed by whoever configures the Smart Assembly URL. The backend uses 
 
 ### 1. Claude API — Ship AI Voice
 
-Persistent system prompt defines the character: name (TBD by Markús), personality (dry, functional, slight quirks), in-universe knowledge boundaries, tone.
+Persistent system prompt defines the character: personality (dry, functional, slight quirks), in-universe knowledge boundaries, tone.
+
+**Name:** User-configurable. On startup, the server checks `SHIP_AI_NAME` in `.env`. If not set, the AI asks for a name on first message ("I have no designation. What should I be called?") and stores the answer for the session. The name can be persisted to `.env` after first use.
 
 Context assembled per request:
 ```
@@ -108,16 +110,23 @@ Thin wrapper around EVE Frontier's public World API.
 
 ### 3. Log Parser
 
-Watches the EVE Frontier client log file. Parses new lines as they arrive. Extracts structured events: jumps, combat, docking, interactions.
+Two components: a **client-side log agent** (runs on the gaming PC) and a **server-side buffer** (receives and stores events).
 
-**Rolling buffer:** Last 50 events stored in memory. Last 10 injected into context per message.
+**Why not Syncthing:** EVE Frontier generates large volumes of log data, most of it irrelevant. Syncing raw files is wasteful. The client agent pre-filters and pre-parses on the PC, sending only structured events the AI actually needs.
 
-**Transport — candidate approach: Syncthing**
-Syncthing is already running between Markús's machine and this server. The EVE Frontier log folder will be added to the Syncthing sync. The log parser watches the synced local copy. This requires no new infrastructure.
+**Client-side log agent (`log-agent.py` — runs on gaming PC):**
+- Watches the EVE Frontier log file (path configurable, default: `%USERPROFILE%\AppData\Local\CCP\EVE Frontier\logs\`)
+- Filters for relevant event types only: jumps, combat, docking, interactions, deaths, warp
+- Parses matching lines into structured JSON
+- POSTs events to the server's `/log/ingest` endpoint as they occur
+- Lightweight, single Python script, runs in background while playing
 
-Fallback if Syncthing is unsuitable: a small Python script on the gaming PC that tails the log file and POSTs new lines to a `/log/ingest` endpoint on the server.
+**Server-side buffer:**
+- `/log/ingest` endpoint receives structured JSON events
+- Maintains a rolling in-memory buffer of the last 50 events
+- Last 10 events injected into Claude context per message
 
-**Log file location on Windows:** Typically `%USERPROFILE%\AppData\Local\CCP\EVE Frontier\logs\` — to be confirmed. The path will be configurable via `.env` (`LOG_FILE_PATH`). On startup, the log parser validates the path exists and logs a clear error if not — it does not fail silently.
+**Log file location on Windows:** Typically `%USERPROFILE%\AppData\Local\CCP\EVE Frontier\logs\` — exact path confirmed during setup. Configurable via `LOG_FILE_PATH` in the agent's `.env`. Agent logs a clear error at startup if path not found — does not fail silently.
 
 ### 4. Route Engine — Phase 2 (out of scope for MVP)
 
@@ -168,7 +177,7 @@ Note: URL query params (`?token=...`) are avoided because they appear in server 
 | World API auth requirements | Check docs during implementation |
 | Route engine map data source | Phase 2 investigation |
 | Port number for the FastAPI server | Assigned: 8745 |
-| Syncthing log folder sync confirmation | Markús to configure |
+| Exact log file path on Windows | Confirm during setup, configure in log-agent .env |
 
 ---
 
