@@ -183,7 +183,8 @@ async function sendMessage() {
     let fullText = '';
     let buffer = '';
 
-    while (true) {
+    let streamDone = false;
+    while (!streamDone) {
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -194,11 +195,14 @@ async function sendMessage() {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         const payload = line.slice(6).trim();
-        if (payload === '[DONE]') { reader.cancel(); break; }
+        if (payload === '[DONE]') { streamDone = true; break; }
         try {
           const parsed = JSON.parse(payload);
           if (parsed.error) {
             addMessage(parsed.error, 'error');
+            setStatus('ERROR');
+            streamDone = true;
+            break;
           } else if (parsed.text) {
             fullText += parsed.text;
             aiDiv.textContent = fullText;
