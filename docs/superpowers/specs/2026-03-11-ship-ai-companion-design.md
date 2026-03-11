@@ -79,7 +79,7 @@ These are passed by whoever configures the Smart Assembly URL. The backend uses 
 
 Persistent system prompt defines the character: personality (dry, functional, slight quirks), in-universe knowledge boundaries, tone.
 
-**Name:** User-configurable. On startup, the server checks `SHIP_AI_NAME` in `.env`. If not set, the AI asks for a name on first message ("I have no designation. What should I be called?") and stores the answer for the session. The name can be persisted to `.env` after first use.
+**Identity:** No name. The AI presents as the ship's onboard computer — anonymous, functional. Refers to itself in third person as "this unit" or "ship systems." It does not adopt a persona if the player tries to give it a name — it acknowledges the input and continues as a computer. This is enforced in the system prompt.
 
 Context assembled per request:
 ```
@@ -126,7 +126,24 @@ Two components: a **client-side log agent** (runs on the gaming PC) and a **serv
 - Maintains a rolling in-memory buffer of the last 50 events
 - Last 10 events injected into Claude context per message
 
-**Log file location on Windows:** Typically `%USERPROFILE%\AppData\Local\CCP\EVE Frontier\logs\` — exact path confirmed during setup. Configurable via `LOG_FILE_PATH` in the agent's `.env`. Agent logs a clear error at startup if path not found — does not fail silently.
+**Log file location:** `C:\Users\Markus\Documents\Frontier\logs\` — confirmed.
+
+Four subfolders:
+
+| Folder | Contents | Used by agent |
+|---|---|---|
+| `Gamelogs\` | Combat, mining, damage, game events | Yes — MVP |
+| `Chatlogs\` | All in-game chat channels | Yes — MVP |
+| `Marketlogs\` | Market exports (empty unless manually exported) | Phase 2 |
+| `Fleetlogs\` | Fleet activity (currently empty) | No |
+
+**Gamelogs:** Agent watches for relevant event types — combat hits, mining yields, deaths, docking, undocking. Irrelevant lines discarded on the PC before sending.
+
+**Chatlogs:** Agent watches two channel types:
+- `Local` channel file — system entry announcements appear here when the player jumps to a new system. This is the primary source of current location, supplementing or replacing World API polling for location.
+- Tribe/corp channel files — optional context for tribe chat summarisation. Injected on demand ("what's happening in tribe chat?") not automatically.
+
+**Path configurable** via `LOG_FILE_PATH` in log-agent `.env`. Agent validates both subfolders exist at startup and logs a clear error if not found.
 
 ### 4. Route Engine — Phase 2 (out of scope for MVP)
 
@@ -172,12 +189,12 @@ Note: URL query params (`?token=...`) are avoided because they appear in server 
 
 | Item | Status |
 |---|---|
-| Ship AI name and personality details | Markús to decide |
+| Ship AI personality details (system prompt) | Draft during implementation |
 | Exact log file path on Windows | Confirm during setup |
 | World API auth requirements | Check docs during implementation |
 | Route engine map data source | Phase 2 investigation |
 | Port number for the FastAPI server | Assigned: 8745 |
-| Exact log file path on Windows | Confirm during setup, configure in log-agent .env |
+| Exact log file path on Windows | Confirmed: `C:\Users\Markus\Documents\Frontier\logs\` |
 
 ---
 
