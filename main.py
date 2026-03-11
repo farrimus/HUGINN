@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 import os
 import json
+import asyncio
 
 from src.log_buffer import log_buffer
 from src.auth import require_token
@@ -29,6 +30,8 @@ class LogEvent(BaseModel):
 @app.post("/log/ingest", dependencies=[Depends(require_token)])
 async def ingest_log(event: LogEvent):
     log_buffer.add(event.model_dump())
+    if event.type == "system_change" and event.system:
+        asyncio.create_task(world_api.get_system(event.system))
     return {"accepted": True}
 
 class ChatRequest(BaseModel):
