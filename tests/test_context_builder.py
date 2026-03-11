@@ -31,5 +31,18 @@ def test_context_block_under_2000_chars():
 def test_killmails_summarised_not_dumped():
     system_data = {"name": "Jita", "kills": [{"victim": f"Player{i}"} for i in range(50)]}
     block = build_context_block(system_data=system_data, log_events=[], current_system="Jita")
-    assert "Player49" not in block  # not dumping all 50
+    assert "Player49" not in block  # not dumping raw list
     assert "kill" in block.lower()
+    assert "50" in block  # actual count shown
+
+
+def test_system_change_event_formatted():
+    events = [{"type": "system_change", "system": "Amarr"}]
+    block = build_context_block(system_data=None, log_events=events, current_system=None)
+    assert "Amarr" in block
+
+
+def test_docking_event_formatted():
+    events = [{"type": "docking", "location": "Jita IV - Moon 4"}]
+    block = build_context_block(system_data=None, log_events=events, current_system=None)
+    assert "Jita IV" in block

@@ -18,7 +18,7 @@ def build_context_block(
             lines.append(f"SECURITY: {security:.1f}")
         kills = system_data.get("kills", [])
         if kills:
-            lines.append(f"RECENT KILLS IN SYSTEM: {min(len(kills), 5)} recorded")
+            lines.append(f"RECENT KILLS IN SYSTEM: {len(kills)} recorded")
 
     # Recent log events (last 10)
     if log_events:
