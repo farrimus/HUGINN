@@ -45,8 +45,13 @@ async def chat(req: ChatRequest):
     )
 
     def event_stream():
-        for chunk in claude.stream(req.message, req.history, context):
-            yield f"data: {json.dumps({'text': chunk})}\n\n"
+        try:
+            for chunk in claude.stream(req.message, req.history, context):
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Stream error: %s", e)
+            yield f"data: {json.dumps({'error': 'Stream interrupted. Ship systems error.'})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
