@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8745")
 SHIP_TOKEN = os.getenv("SHIP_TOKEN", "")
-LOG_BASE = os.getenv("LOG_BASE_PATH", r"C:\Users\Markus\Documents\Frontier\logs")
+LOG_BASE = os.getenv("LOG_BASE_PATH", "")
 GAMELOG_DIR = os.path.join(LOG_BASE, "Gamelogs")
 CHATLOG_DIR = os.path.join(LOG_BASE, "Chatlogs")
 
@@ -42,7 +42,12 @@ class LogFileHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         path = event.src_path
-        pos = self._file_positions.get(path, 0)
+        if path not in self._file_positions:
+            # First time seeing this file: start from end, don't replay history
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                f.seek(0, 2)  # seek to end
+                self._file_positions[path] = f.tell()
+        pos = self._file_positions[path]
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 f.seek(pos)

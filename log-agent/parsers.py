@@ -5,7 +5,7 @@ from typing import Optional
 # NOTE: These regex patterns are based on the expected log format.
 # Verify against real EVE Frontier log files and adjust before deploying.
 
-COMBAT_RE = re.compile(r'\(combat\)\s+(\d+)\s+to\s+(.+?)\s+-')
+COMBAT_RE = re.compile(r'\(combat\)\s+(\d+)\s+to\s+(.+)\s+-\s+\w')
 MINING_RE = re.compile(r'\(mining\)')
 SYSTEM_CHANGE_RE = re.compile(r'Channel changed to (.+)')
 

@@ -6,12 +6,12 @@ import pytest
 from parsers import parse_gamelog_line, parse_chatlog_line
 
 def test_parse_combat_line():
-    line = "[ 2026.03.11 14:23:01 ] (combat) 450 to Rogue Drone - Railgun II - Hits"
+    line = "[ 2026.03.11 14:23:01 ] (combat) 450 to Rogue Drone - Railgun II"
     event = parse_gamelog_line(line)
     assert event is not None
     assert event["type"] == "combat"
     assert event["damage"] == 450
-    assert "Rogue Drone" in event["target"]
+    assert event["target"] == "Rogue Drone"
 
 def test_parse_mining_line():
     line = "[ 2026.03.11 14:25:00 ] (mining) 150 units of Veldspar mined"
