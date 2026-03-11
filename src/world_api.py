@@ -18,7 +18,7 @@ class WorldAPIClient:
         self.cache_ttl = cache_ttl
         self._cache: dict = {}          # cache_key -> (data, timestamp)
         self._system_index: dict = {}   # name (lowercase) -> system_id
-        self._http_client = httpx.AsyncClient(timeout=10.0)
+        self._http_client: Optional[httpx.AsyncClient] = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -36,8 +36,13 @@ class WorldAPIClient:
             return None
         return data
 
+    def _get_http_client(self) -> httpx.AsyncClient:
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(timeout=10.0)
+        return self._http_client
+
     async def _fetch(self, endpoint: str, params: dict = None) -> dict:
-        response = await self._http_client.get(
+        response = await self._get_http_client().get(
             f"{self.base_url}{endpoint}",
             params=params or {},
         )
