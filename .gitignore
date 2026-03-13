@@ -1,0 +1,21 @@
+# Runtime / generated data
+data/
+build_gate_graph.py
+build_universe.py
+
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Superpowers toolkit
+.superpowers/
+
+# Misc
+docs/archive/
+docs/message.txt
+intent.md
