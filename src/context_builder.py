@@ -1,0 +1,138 @@
+# src/context_builder.py
+from typing import Optional
+
+
+def build_context_block(
+    system_data: Optional[dict],
+    log_events: list,
+    current_system: Optional[str],
+    live_sessions: Optional[list] = None,
+    current_route: Optional[dict] = None,
+    structure_alerts: Optional[list] = None,
+) -> str:
+    lines = []
+
+    # --- Structure alerts (urgent, from Structure AI — prepended for visibility) ---
+    for alert in (structure_alerts or []):
+        name = alert.get("structure_name", alert.get("structure_id", "Structure"))
+        lines.append(f"STRUCTURE ALERT [{name}]: {alert.get('message', '')}")
+
+    # --- Location ---
+    system_name = current_system or (system_data or {}).get("name", "unknown")
+    location_line = f"LOCATION: {system_name}"
+    if system_data:
+        security = system_data.get("security")
+        if security is not None:
+            location_line += f" | security: {security:.1f}"
+        kills = system_data.get("kills", [])
+        if kills:
+            location_line += f" | {len(kills)} recent kill(s) in system"
+    lines.append(location_line)
+
+    # --- Partition events by type ---
+    combat_summary  = None
+    mining_summary  = None
+    transitions     = []   # system_change, undock, docking, autopilot, ship_stopping
+    chat_events     = []
+
+    for e in log_events:
+        t = e.get("type")
+        if t == "combat_summary":
+            combat_summary = e
+        elif t == "mining_summary":
+            mining_summary = e
+        elif t in ("system_change", "undock", "docking", "autopilot", "ship_stopping", "cargo_full"):
+            transitions.append(e)
+        elif t == "chat":
+            chat_events.append(e)
+        # gamelog_raw and others are silently skipped — low signal
+
+    # Live snapshots override buffered summaries
+    for e in (live_sessions or []):
+        if e.get("type") == "combat_summary":
+            combat_summary = e
+        elif e.get("type") == "mining_summary":
+            mining_summary = e
+
+    # --- Most recent mining session ---
+    if mining_summary:
+        mat_parts = [f"{mat} \u00d7{qty}" for mat, qty in mining_summary["materials"].items()]
+        mat_str   = ", ".join(mat_parts) if mat_parts else "unknown material"
+        dur_min   = mining_summary["duration_s"] // 60
+        dur_str   = f"{dur_min} min" if dur_min > 0 else "<1 min"
+        fulls     = mining_summary.get("cargo_fulls", 0)
+        cargo_str = f" | cargo full \u00d7{fulls}" if fulls else ""
+        ongoing_str = " (ongoing)" if mining_summary.get("in_progress") else ""
+        lines.append(f"MINING{ongoing_str}: {mat_str} over {dur_str}{cargo_str}")
+
+    # --- Most recent combat session ---
+    if combat_summary:
+        enemy_parts = [
+            f"{count} \u00d7 {name}" if count > 0 else name
+            for name, count in combat_summary["enemies"].items()
+        ]
+        enemy_str = ", ".join(enemy_parts) if enemy_parts else "unknown"
+
+        dmg_out = combat_summary.get("damage_out", 0)
+        dmg_in  = combat_summary.get("damage_in", 0)
+
+        hits_in  = combat_summary.get("hits_in", {})
+        worst_in = max(hits_in, key=hits_in.get) if hits_in else None
+
+        weapons = combat_summary.get("weapons_used", [])
+        wpn_str = f" | {', '.join(weapons)}" if weapons else ""
+
+        dmg_str = f"{dmg_out} out / {dmg_in} in"
+        if worst_in:
+            dmg_str += f" ({worst_in})"
+
+        ongoing_str = " (ongoing)" if combat_summary.get("in_progress") else ""
+        lines.append(f"COMBAT{ongoing_str}: {enemy_str} | dmg {dmg_str}{wpn_str}")
+
+    # --- Transition events (state changes, formatted concisely) ---
+    if transitions:
+        for e in transitions[-5:]:   # cap at last 5
+            t = e.get("type")
+            if t == "system_change":
+                lines.append(f"JUMPED TO: {e.get('system', '?')}")
+            elif t == "undock":
+                lines.append(f"UNDOCKED: {e.get('station', '?')} \u2192 {e.get('system', '?')}")
+            elif t == "docking":
+                state = e.get("state")
+                if state == "accepted":
+                    lines.append("DOCKED")
+                elif state == "requested":
+                    lines.append(f"DOCKING: {e.get('location', '?')}")
+            elif t == "autopilot":
+                lines.append(f"AUTOPILOT: {e.get('state', '?')}")
+            elif t == "ship_stopping":
+                lines.append("SHIP STOPPED")
+            elif t == "cargo_full":
+                lines.append(f"CARGO FULL: {e.get('module', 'module complete')}")
+
+    # --- Recent chat (other pilots in local, NPC messages) ---
+    if chat_events:
+        # Deduplicate senders, show count
+        senders = list(dict.fromkeys(e.get("sender", "?") for e in chat_events))
+        if len(senders) == 1:
+            lines.append(f"LOCAL CHAT: {senders[0]} active")
+        else:
+            lines.append(f"LOCAL CHAT: {len(senders)} pilots active ({', '.join(senders[:3])}{'...' if len(senders) > 3 else ''})")
+
+    # --- Planned route (set by client RouteCalculator via route_planned event) ---
+    if current_route:
+        path = current_route.get("path", [])
+        jumps = current_route.get("jumps", len(path) - 1 if len(path) > 1 else 0)
+        est = current_route.get("est_time_min")
+        warnings = current_route.get("warnings", [])
+        if path:
+            route_str = f"ROUTE PLANNED: {' → '.join(path)} ({jumps} jump{'s' if jumps != 1 else ''}"
+            if est:
+                route_str += f", est {est} min"
+            route_str += ")"
+            if warnings:
+                route_str += f" | WARNINGS: {'; '.join(warnings)}"
+            lines.append(route_str)
+
+    block = "\n".join(lines)
+    return block[:2000]

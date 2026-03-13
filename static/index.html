@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ship AI Companion</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: #000;
+    }
+    .terminal {
+      container-type: inline-size;
+    }
+    .chat-line {
+      font-size: clamp(13px, 2.2cqw, 16px);
+      line-height: 1.35;
+      white-space: pre-wrap;
+    }
+    #messages {
+      scrollbar-width: thin;
+      scrollbar-color: #22c55e #111;
+    }
+    #header {
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col text-lime-400">
+
+  <div class="flex-1 p-4 overflow-hidden flex flex-col terminal">
+    <!-- Header -->
+    <div id="header" class="border-b border-lime-900 pb-2 mb-3 flex justify-between text-xs">
+      <span>SHIP SYSTEMS v1.2.6 • LIVE</span>
+      <span id="status" class="text-lime-500">CONNECTED</span>
+    </div>
+
+    <!-- Messages -->
+    <div id="messages" class="flex-1 overflow-y-auto space-y-1 pr-2 chat-line">
+      <!-- JS appends here -->
+    </div>
+
+    <!-- Input -->
+    <div class="mt-4 flex gap-2 border-t border-lime-900 pt-3">
+      <input
+        id="input"
+        class="flex-1 bg-zinc-950 border border-lime-900 px-4 py-2.5 text-lime-400 focus:outline-none focus:border-lime-400 text-sm font-mono"
+        placeholder="Transmit message to ship AI..."
+        autocomplete="off">
+      <button onclick="sendMessage()"
+              class="bg-lime-600 hover:bg-lime-500 px-6 py-2.5 text-black font-bold text-sm">SEND</button>
+    </div>
+  </div>
+
+<script>
+// Tailwind
+tailwind.config = { content: ["*"] };
+
+// Globals
+let eventSource = null;
+let reconnectTimer = null;
+const SERVER_TOKEN = "5740edb0fb25a051db4a932c3622bd69ce47d487bc501f2bde4cb7e19907c454";
+
+// Append message
+function appendMessage(text) {
+  const div = document.createElement('div');
+  div.className = 'chat-line';
+  div.textContent = '> ' + text;
+  document.getElementById('messages').appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Send user message
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  appendMessage(msg); // echo user input
+  input.value = '';
+
+  // POST to /chat (same as overlay.dll does)
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Server-Token': SERVER_TOKEN
+      },
+      body: JSON.stringify({ message: msg, history: [] })
+    });
+  } catch (e) {
+    console.error('Send failed', e);
+  }
+}
+
+// SSE with reconnect
+function startSSE() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/chat?token=' + encodeURIComponent(SERVER_TOKEN));
+
+  eventSource.onmessage = e => {
+    const data = JSON.parse(e.data);
+    if (data.text) appendMessage(data.text);
+    document.getElementById('status').textContent = 'CONNECTED';
+  };
+
+  eventSource.onerror = () => {
+    document.getElementById('status').textContent = 'RECONNECTING...';
+    eventSource.close();
+    reconnectTimer = setTimeout(startSSE, 5000);
+  };
+
+  eventSource.onopen = () => {
+    document.getElementById('status').textContent = 'CONNECTED';
+  };
+}
+
+// Live resize handling (when pilot drags in-game browser)
+new ResizeObserver(() => {
+  // Flex + container queries already handle everything
+}).observe(document.body);
+
+// Kick off
+startSSE();
+</script>
+</body>
+</html>

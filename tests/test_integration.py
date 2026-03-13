@@ -1,0 +1,40 @@
+# tests/test_integration.py
+import pytest
+import asyncio
+from unittest.mock import AsyncMock, patch
+from httpx import AsyncClient, ASGITransport
+from main import app
+
+@pytest.mark.asyncio
+async def test_system_change_triggers_world_api_refresh(monkeypatch):
+    monkeypatch.setenv("SERVER_TOKEN", "")  # disable auth
+    from src import world_api as wa_module
+    mock_get = AsyncMock(return_value={"name": "Jita", "security": 0.9})
+    wa_module.world_api.get_system = mock_get
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/log/ingest",
+            json={"type": "system_change", "system": "Jita"}
+        )
+
+    assert response.status_code == 200
+    # Give the background task a moment to run
+    await asyncio.sleep(0.1)
+    mock_get.assert_called_once_with("Jita")
+
+@pytest.mark.asyncio
+async def test_non_system_change_does_not_trigger_refresh(monkeypatch):
+    monkeypatch.setenv("SERVER_TOKEN", "")
+    from src import world_api as wa_module
+    mock_get = AsyncMock(return_value=None)
+    wa_module.world_api.get_system = mock_get
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post(
+            "/log/ingest",
+            json={"type": "combat", "data": {"damage": 100}}
+        )
+
+    await asyncio.sleep(0.1)
+    mock_get.assert_not_called()

@@ -3,7 +3,7 @@
 **Project:** EVE Frontier Hackathon 2026 — "A Toolkit for Civilization"
 **Track:** B — External Application
 **Date:** 2026-03-11
-**Status:** Draft — Pending User Review
+**Status:** Approved / Implemented (2026-03-11)
 
 ---
 
@@ -65,11 +65,9 @@ Single `index.html` served by FastAPI.
 ```
 ?mode=ingame&system=<system_name>&object_id=<assembly_id>
 ```
-These are passed by whoever configures the Smart Assembly URL. The backend uses them to pre-load system context on session start.
+These are passed by whoever configures the Smart Assembly URL. Not currently used by the backend — system context comes from the log agent instead. Reserved for Phase 2 (pre-loading context on session start without log agent).
 
-**SSE compatibility risk:** EVE Frontier's in-game browser is an embedded web view of unknown origin. SSE requires persistent HTTP connections which some embedded browsers break. This must be tested early in implementation. Fallback: polling (`/chat/poll`) if SSE fails.
-
-**Responses:** Stream token by token via SSE. If SSE is unavailable, fall back to polling every 500ms.
+**SSE compatibility risk:** EVE Frontier's in-game browser is an embedded web view. SSE requires persistent HTTP connections which some embedded browsers break. This must be tested once the log agent is deployed and the in-game URL is accessible. Polling fallback (`/chat/poll`) is not implemented — if SSE fails in-game, this becomes a Phase 2 item.
 
 ---
 
@@ -89,24 +87,27 @@ Context assembled per request:
 [user message]
 ```
 
-**History management:** Sliding window — oldest exchanges dropped first when cap is reached. No summarisation. The 20-exchange cap applies to what is sent to Claude per request, not to the stored session history (which is kept in full for the session).
+**History management:** Sliding window — oldest exchanges dropped first when cap is reached. No summarisation. The cap is 40 messages (20 exchange pairs) applied both client-side (JS) and server-side (`build_messages()`).
 
-**World API fetch timing:** World API data is fetched on session start and refreshed on demand (when the player asks something location-related). Fetches run in parallel with context assembly to minimise latency, not serially.
+**World API fetch timing:** World API data is fetched serially before context assembly (simple `await` call). Parallel fetching is a possible future optimisation but not implemented.
 
 **Summarisation:** World API responses are formatted by a deterministic Python formatter (not a Claude pre-pass) before injection. This keeps latency and cost low.
 
 **Cost controls:** Claude API calls are per user message only. No background polling. History cap limits token growth. No additional rate limiting needed for personal use.
 
-**Token budget risk:** If the World API context block or a user message is unusually large, 20 exchanges may still approach Claude's context window limit. Mitigation: the context block is capped to 500 tokens by the deterministic formatter. If total prompt tokens exceed 80% of the model's context window, the oldest exchanges are trimmed further until it fits.
+**Context block cap:** The context block is hard-capped at 2000 characters by the deterministic formatter (`context_builder.py`). Dynamic token-budget trimming is not implemented.
 
 ### 2. World API Client
 
-Thin wrapper around EVE Frontier's public World API.
+Thin wrapper around EVE Frontier's public World API (`https://world-api-stillness.live.tech.evefrontier.com`).
 
-- Fetches: current system data, nearby systems, recent killmails, Smart Assembly data
-- Cache: per-endpoint, per-parameter, 30 seconds TTL (e.g. system "Jita" cached independently from system "Uedama")
-- Fetched on session start (using `?system=` param if present) and refreshed on demand
-- World API auth requirements: TBD (check docs during implementation). Risk: if auth requires OAuth or a non-trivial token flow, the World API client will need an auth layer. Fallback for MVP: if auth is required and non-trivial, the MVP will operate without live World API data and the AI will note sensors are offline.
+- Fetches: current system data (gates, coordinates, constellation, security status)
+- No auth required — public API
+- No killmails endpoint exists in the API. No Smart Assembly data endpoint exists.
+- Cache: per-endpoint, per-parameter, 30 seconds TTL
+- System lookup requires an ID — a name→ID index is built from the `/v2/solarsystems` paginated list (24,500+ systems) and persisted to `data/system_index.json`. Loaded from disk on startup; rebuilt via `POST /admin/rebuild-index` when needed.
+- Startup: index build runs as a background `asyncio.create_task()` so the server starts immediately. Retries 5 times with 3s delay to handle DNS readiness at boot.
+- World API refresh is triggered event-driven: when the log agent sends a `system_change` event, the server fires a background fetch for the new system so data is warm by the time the player asks a question.
 
 ### 3. Log Parser
 
@@ -114,12 +115,14 @@ Two components: a **client-side log agent** (runs on the gaming PC) and a **serv
 
 **Why not Syncthing:** EVE Frontier generates large volumes of log data, most of it irrelevant. Syncing raw files is wasteful. The client agent pre-filters and pre-parses on the PC, sending only structured events the AI actually needs.
 
-**Client-side log agent (`log-agent.py` — runs on gaming PC):**
-- Watches the EVE Frontier log file (path configurable, default: `%USERPROFILE%\AppData\Local\CCP\EVE Frontier\logs\`)
-- Filters for relevant event types only: jumps, combat, docking, interactions, deaths, warp
-- Parses matching lines into structured JSON
-- POSTs events to the server's `/log/ingest` endpoint as they occur
-- Lightweight, single Python script, runs in background while playing
+**Client-side log agent (`log-agent/log_agent.py` — runs on gaming PC):**
+- Watches `Gamelogs\` and `Chatlogs\` (path configurable via `LOG_BASE_PATH` in `.env`)
+- Parses lines into structured events: combat (in/out/miss), mining, docking, undock, autopilot, system_change, chat. Unrecognised lines preserved as `gamelog_raw` for visibility
+- **New-file behaviour (mtime fix):** on first encounter of a file, if `mtime > agent_start` the file is new — read from position 0. If `mtime ≤ agent_start` — old file, seek to end. Handles Windows watchdog race where `on_modified` fires before `on_created`
+- **Session tracker:** combat and mining events are absorbed into sessions locally. Summaries are sent to the server when sessions close (on jump, dock, 60s/120s inactivity timeout, or shutdown). Pass-through events (system_change, docking, chat, etc.) are sent immediately
+- **Bootstrap:** on startup, scans the tail of the most recent `Local_*` chatlog for the last known system. A daemon thread retries every 30s if agent starts before the game client
+- POSTs structured events to `/log/ingest` as they occur (or on session close)
+- Lightweight, runs in background while playing
 
 **Server-side buffer:**
 - `/log/ingest` endpoint receives structured JSON events
@@ -143,7 +146,7 @@ Four subfolders:
 - `Local` channel file — system entry announcements appear here when the player jumps to a new system. This acts as a **trigger**: on detecting a system change, the server immediately fires a World API fetch for the new system. The API is the source of truth for location data; the chat log is the event that tells the server when to refresh it. This avoids constant polling while keeping context accurate.
 - Tribe/corp channel files — optional context for tribe chat summarisation. Injected on demand ("what's happening in tribe chat?") not automatically.
 
-**Path configurable** via `LOG_FILE_PATH` in log-agent `.env`. Agent validates both subfolders exist at startup and logs a clear error if not found.
+**Path configurable** via `LOG_BASE_PATH` in log-agent `.env`. Agent validates both subfolders exist at startup and logs a clear error if not found.
 
 ### 4. Route Engine — Phase 2 (out of scope for MVP)
 
@@ -163,7 +166,7 @@ Each module fails independently. All error responses are delivered in the ship A
 | Log file not found / not synced | No indicator, silent | Operates without log context |
 | Route engine unavailable (Phase 2) | No indicator | "Navigation charts not yet loaded." |
 | Claude API error | Inline error message in chat | N/A |
-| SSE broken | Auto-fallback to polling | No change in UX |
+| SSE broken | Chat stops — no fallback implemented | N/A — Phase 2 item |
 
 ---
 
@@ -176,7 +179,7 @@ Personal use. The app runs on port 8745.
 **If accessed from the in-game browser (which connects from the game client's machine to the VPS):** port must be open. In that case, auth via a shared secret in a request header:
 
 ```
-X-Ship-Token: <secret>
+X-Server-Token: <secret>
 ```
 
 Token checked server-side on every request. Stored in a `.env` file, not hardcoded. The Smart Assembly URL does NOT include the token — the frontend JS sends it as a header on API calls.
@@ -185,16 +188,15 @@ Note: URL query params (`?token=...`) are avoided because they appear in server 
 
 ---
 
-## Deferred / Open Items
+## Open Items / Phase 2
 
 | Item | Status |
 |---|---|
-| Ship AI personality details (system prompt) | Draft during implementation |
-| Exact log file path on Windows | Confirm during setup |
-| World API auth requirements | Check docs during implementation |
-| Route engine map data source | Phase 2 investigation |
-| Port number for the FastAPI server | Assigned: 8745 |
-| Exact log file path on Windows | Confirmed: `C:\Users\Markus\Documents\Frontier\logs\` |
+| Log regex verification | In progress — parsers fully unit-tested (56 tests); real-game validation underway |
+| SERVER_TOKEN | Pending — `.env` still has placeholder value; set before exposing port 8745 publicly |
+| Log agent deployment to Windows | In progress — agent ready; Markús deploying to gaming PC |
+| Route engine (Phase 2) | Deferred — players get "navigation charts loading" response until implemented |
+| SSE in-game browser compatibility | Untested — needs verification once in-game URL is accessible |
 
 ---
 

@@ -1,6 +1,6 @@
 # Ship AI Companion — Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build a Python/FastAPI ship AI companion for EVE Frontier with a streaming chat UI, live game data via World API, and event-driven log ingestion from a Windows client agent.
 
@@ -22,7 +22,7 @@
 - Create: `src/__init__.py`
 - Create: `tests/__init__.py`
 
-- [ ] **Step 1: Create requirements.txt**
+- [x] **Step 1: Create requirements.txt**
 
 ```
 fastapi==0.115.0
@@ -35,17 +35,17 @@ pytest-asyncio==0.23.0
 httpx[test]
 ```
 
-- [ ] **Step 2: Create .env.example**
+- [x] **Step 2: Create .env.example**
 
 ```
 ANTHROPIC_API_KEY=your-key-here
 WORLD_API_BASE_URL=https://api.evefrontier.com
 WORLD_API_KEY=
-SHIP_TOKEN=change-this-to-a-random-secret
+SERVER_TOKEN=change-this-to-a-random-secret
 PORT=8745
 ```
 
-- [ ] **Step 3: Create directory structure**
+- [x] **Step 3: Create directory structure**
 
 ```bash
 mkdir -p /opt/eve-frontier/src
@@ -56,7 +56,7 @@ touch /opt/eve-frontier/src/__init__.py
 touch /opt/eve-frontier/tests/__init__.py
 ```
 
-- [ ] **Step 4: Install dependencies**
+- [x] **Step 4: Install dependencies**
 
 ```bash
 cd /opt/eve-frontier
@@ -67,7 +67,7 @@ pip install -r requirements.txt
 
 Expected: all packages install without error.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add requirements.txt .env.example src/__init__.py tests/__init__.py
@@ -82,7 +82,7 @@ git commit -m "feat: project structure and dependencies"
 - Create: `main.py`
 - Create: `tests/test_main.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_main.py
@@ -98,7 +98,7 @@ async def test_health_check():
     assert response.json() == {"status": "ok"}
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd /opt/eve-frontier && source .venv/bin/activate
@@ -107,7 +107,7 @@ pytest tests/test_main.py -v
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'main'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # main.py
@@ -126,7 +126,7 @@ async def health():
     return {"status": "ok"}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 ```bash
 pytest tests/test_main.py -v
@@ -134,7 +134,7 @@ pytest tests/test_main.py -v
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add main.py tests/test_main.py
@@ -143,13 +143,13 @@ git commit -m "feat: FastAPI skeleton with health check"
 
 ---
 
-### Task 3: Auth middleware (X-Ship-Token)
+### Task 3: Auth middleware (X-Server-Token)
 
 **Files:**
 - Create: `src/auth.py`
 - Create: `tests/test_auth.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_auth.py
@@ -166,34 +166,34 @@ async def protected(token_valid=require_token):
 
 @pytest.mark.asyncio
 async def test_valid_token_passes(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "test-secret")
+    monkeypatch.setenv("SERVER_TOKEN", "test-secret")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/protected", headers={"X-Ship-Token": "test-secret"})
+        response = await client.get("/protected", headers={"X-Server-Token": "test-secret"})
     assert response.status_code == 200
 
 @pytest.mark.asyncio
 async def test_missing_token_rejected(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "test-secret")
+    monkeypatch.setenv("SERVER_TOKEN", "test-secret")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/protected")
     assert response.status_code == 403
 
 @pytest.mark.asyncio
 async def test_wrong_token_rejected(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "test-secret")
+    monkeypatch.setenv("SERVER_TOKEN", "test-secret")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/protected", headers={"X-Ship-Token": "wrong"})
+        response = await client.get("/protected", headers={"X-Server-Token": "wrong"})
     assert response.status_code == 403
 
 @pytest.mark.asyncio
 async def test_no_token_configured_allows_all(monkeypatch):
-    monkeypatch.delenv("SHIP_TOKEN", raising=False)
+    monkeypatch.delenv("SERVER_TOKEN", raising=False)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/protected")
     assert response.status_code == 200
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 pytest tests/test_auth.py -v
@@ -201,7 +201,7 @@ pytest tests/test_auth.py -v
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.auth'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/auth.py
@@ -209,14 +209,14 @@ import os
 from fastapi import Header, HTTPException, Depends
 
 def require_token(x_ship_token: str = Header(default="")):
-    expected = os.getenv("SHIP_TOKEN", "")
+    expected = os.getenv("SERVER_TOKEN", "")
     if not expected:
         return  # No token configured — open access (local-only mode)
     if x_ship_token != expected:
         raise HTTPException(status_code=403, detail="Invalid token")
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 pytest tests/test_auth.py -v
@@ -224,11 +224,11 @@ pytest tests/test_auth.py -v
 
 Expected: all 3 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/auth.py tests/test_auth.py
-git commit -m "feat: X-Ship-Token auth middleware"
+git commit -m "feat: X-Server-Token auth middleware"
 ```
 
 ---
@@ -242,7 +242,7 @@ git commit -m "feat: X-Ship-Token auth middleware"
 - Create: `tests/test_log_buffer.py`
 - Modify: `main.py` — add `/log/ingest` route
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_log_buffer.py
@@ -296,7 +296,7 @@ def reset_global_buffer():
     yield
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 pytest tests/test_log_buffer.py -v
@@ -304,7 +304,7 @@ pytest tests/test_log_buffer.py -v
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.log_buffer'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/log_buffer.py
@@ -329,7 +329,7 @@ class LogBuffer:
 log_buffer = LogBuffer(max_size=50)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 pytest tests/test_log_buffer.py -v
@@ -337,7 +337,7 @@ pytest tests/test_log_buffer.py -v
 
 Expected: all 7 PASS
 
-- [ ] **Step 5: Add /log/ingest route to main.py**
+- [x] **Step 5: Add /log/ingest route to main.py**
 
 ```python
 # Add to main.py
@@ -357,7 +357,7 @@ async def ingest_log(event: LogEvent):
     return {"accepted": True}
 ```
 
-- [ ] **Step 6: Run full test suite**
+- [x] **Step 6: Run full test suite**
 
 ```bash
 pytest tests/ -v
@@ -365,7 +365,7 @@ pytest tests/ -v
 
 Expected: all PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/log_buffer.py tests/test_log_buffer.py main.py
@@ -382,7 +382,7 @@ git commit -m "feat: log buffer and /log/ingest endpoint"
 - Create: `src/world_api.py`
 - Create: `tests/test_world_api.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_world_api.py
@@ -434,7 +434,7 @@ async def test_returns_none_on_api_error():
     assert result is None
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 pytest tests/test_world_api.py -v
@@ -442,7 +442,7 @@ pytest tests/test_world_api.py -v
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.world_api'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/world_api.py
@@ -503,7 +503,7 @@ class WorldAPIClient:
 world_api = WorldAPIClient()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 pytest tests/test_world_api.py -v
@@ -511,7 +511,7 @@ pytest tests/test_world_api.py -v
 
 Expected: all 5 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/world_api.py tests/test_world_api.py
@@ -528,7 +528,7 @@ git commit -m "feat: World API client with per-endpoint TTL cache"
 - Create: `src/context_builder.py`
 - Create: `tests/test_context_builder.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_context_builder.py
@@ -568,7 +568,7 @@ def test_killmails_summarised_not_dumped():
     assert "kill" in block.lower()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 pytest tests/test_context_builder.py -v
@@ -576,7 +576,7 @@ pytest tests/test_context_builder.py -v
 
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/context_builder.py
@@ -623,7 +623,7 @@ def build_context_block(
     return block[:2000]
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 pytest tests/test_context_builder.py -v
@@ -631,7 +631,7 @@ pytest tests/test_context_builder.py -v
 
 Expected: all 5 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/context_builder.py tests/test_context_builder.py
@@ -647,7 +647,7 @@ git commit -m "feat: context builder with 2000-char cap"
 - Create: `tests/test_claude_client.py`
 - Modify: `main.py` — add `/chat` SSE endpoint
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_claude_client.py
@@ -687,7 +687,7 @@ def test_build_messages_context_prepended_to_first_user():
     assert "hello" in messages[0]["content"]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 pytest tests/test_claude_client.py -v
@@ -695,7 +695,7 @@ pytest tests/test_claude_client.py -v
 
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/claude_client.py
@@ -741,7 +741,7 @@ class ClaudeClient:
 claude = ClaudeClient()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 pytest tests/test_claude_client.py -v
@@ -749,7 +749,7 @@ pytest tests/test_claude_client.py -v
 
 Expected: all 5 PASS
 
-- [ ] **Step 5: Add /chat SSE endpoint to main.py**
+- [x] **Step 5: Add /chat SSE endpoint to main.py**
 
 ```python
 # Add to main.py
@@ -783,7 +783,7 @@ async def chat(req: ChatRequest):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 ```
 
-- [ ] **Step 6: Run full test suite**
+- [x] **Step 6: Run full test suite**
 
 ```bash
 pytest tests/ -v
@@ -791,7 +791,7 @@ pytest tests/ -v
 
 Expected: all PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/claude_client.py tests/test_claude_client.py main.py
@@ -809,7 +809,7 @@ git commit -m "feat: Claude client with streaming and /chat SSE endpoint"
 
 No unit tests for the frontend — manual test by opening in browser.
 
-- [ ] **Step 1: Create static/index.html**
+- [x] **Step 1: Create static/index.html**
 
 ```html
 <!DOCTYPE html>
@@ -956,7 +956,7 @@ async function sendMessage() {
   setStatus('PROCESSING...');
 
   const headers = { 'Content-Type': 'application/json' };
-  if (token) headers['X-Ship-Token'] = token;
+  if (token) headers['X-Server-Token'] = token;
 
   try {
     const response = await fetch('/chat', {
@@ -1004,7 +1004,7 @@ async function sendMessage() {
 </html>
 ```
 
-- [ ] **Step 2: Manual smoke test**
+- [x] **Step 2: Manual smoke test**
 
 ```bash
 cd /opt/eve-frontier && source .venv/bin/activate
@@ -1017,7 +1017,7 @@ Open `http://localhost:8745/static/index.html` in a browser. Verify:
 - Input and send button present
 - No JS console errors
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add static/index.html
@@ -1037,7 +1037,7 @@ git commit -m "feat: ship terminal chat UI"
 - Create: `log-agent/parsers.py`
 - Create: `log-agent/tests/test_parsers.py`
 
-- [ ] **Step 1: Create log-agent/requirements.txt**
+- [x] **Step 1: Create log-agent/requirements.txt**
 
 ```
 watchdog==4.0.0
@@ -1046,15 +1046,15 @@ python-dotenv==1.0.0
 pytest==8.3.0
 ```
 
-- [ ] **Step 2: Create log-agent/.env.example**
+- [x] **Step 2: Create log-agent/.env.example**
 
 ```
 SERVER_URL=http://your-vps-ip:8745
-SHIP_TOKEN=change-this-to-match-server
+SERVER_TOKEN=change-this-to-match-server
 LOG_BASE_PATH=C:\Users\Markus\Documents\Frontier\logs
 ```
 
-- [ ] **Step 3: Write failing parser tests**
+- [x] **Step 3: Write failing parser tests**
 
 ```python
 # log-agent/tests/test_parsers.py
@@ -1093,7 +1093,7 @@ def test_parse_regular_chat_returns_none():
     assert event is None
 ```
 
-- [ ] **Step 4: Run tests to verify they fail**
+- [x] **Step 4: Run tests to verify they fail**
 
 ```bash
 cd /opt/eve-frontier/log-agent
@@ -1103,7 +1103,7 @@ pytest tests/test_parsers.py -v
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'parsers'`
 
-- [ ] **Step 5: Write minimal parsers.py**
+- [x] **Step 5: Write minimal parsers.py**
 
 ```python
 # log-agent/parsers.py
@@ -1130,7 +1130,7 @@ def parse_chatlog_line(line: str) -> Optional[dict]:
     return None
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 ```bash
 pytest tests/test_parsers.py -v
@@ -1138,7 +1138,7 @@ pytest tests/test_parsers.py -v
 
 Expected: all 5 PASS
 
-- [ ] **Step 7: Write log_agent.py**
+- [x] **Step 7: Write log_agent.py**
 
 ```python
 # log-agent/log_agent.py
@@ -1153,7 +1153,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8745")
-SHIP_TOKEN = os.getenv("SHIP_TOKEN", "")
+SERVER_TOKEN = os.getenv("SERVER_TOKEN", "")
 LOG_BASE = os.getenv("LOG_BASE_PATH", r"C:\Users\Markus\Documents\Frontier\logs")
 GAMELOG_DIR = os.path.join(LOG_BASE, "Gamelogs")
 CHATLOG_DIR = os.path.join(LOG_BASE, "Chatlogs")
@@ -1164,7 +1164,7 @@ def validate_paths():
             raise FileNotFoundError(f"Log directory not found: {path}")
 
 def send_event(event: dict):
-    headers = {"X-Ship-Token": SHIP_TOKEN} if SHIP_TOKEN else {}
+    headers = {"X-Server-Token": SERVER_TOKEN} if SERVER_TOKEN else {}
     try:
         requests.post(f"{SERVER_URL}/log/ingest", json=event, headers=headers, timeout=5)
     except Exception as e:
@@ -1210,7 +1210,7 @@ if __name__ == "__main__":
     observer.join()
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add log-agent/
@@ -1227,7 +1227,7 @@ git commit -m "feat: Windows log agent with gamelog and chatlog parsers"
 - Modify: `main.py` — trigger World API fetch on system_change event
 - Create: `tests/test_integration.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_integration.py
@@ -1239,7 +1239,7 @@ import os
 
 @pytest.mark.asyncio
 async def test_system_change_triggers_world_api_refresh(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "")  # disable auth for test
+    monkeypatch.setenv("SERVER_TOKEN", "")  # disable auth for test
     from src import world_api as wa_module
     mock_fetch = AsyncMock(return_value={"name": "Jita", "security": 0.9})
     wa_module.world_api.get_system = mock_fetch
@@ -1252,7 +1252,7 @@ async def test_system_change_triggers_world_api_refresh(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_non_system_change_does_not_call_world_api(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "")
+    monkeypatch.setenv("SERVER_TOKEN", "")
     from src import world_api as wa_module
     mock_fetch = AsyncMock(return_value=None)
     wa_module.world_api.get_system = mock_fetch
@@ -1263,7 +1263,7 @@ async def test_non_system_change_does_not_call_world_api(monkeypatch):
     mock_fetch.assert_not_called()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 pytest tests/test_integration.py -v
@@ -1271,7 +1271,7 @@ pytest tests/test_integration.py -v
 
 Expected: FAIL — system change does not yet trigger World API fetch
 
-- [ ] **Step 3: Update /log/ingest in main.py to trigger refresh**
+- [x] **Step 3: Update /log/ingest in main.py to trigger refresh**
 
 ```python
 # Update the ingest endpoint in main.py
@@ -1285,7 +1285,7 @@ async def ingest_log(event: LogEvent):
     return {"accepted": True}
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 pytest tests/test_integration.py -v
@@ -1293,7 +1293,7 @@ pytest tests/test_integration.py -v
 
 Expected: all PASS
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 ```bash
 pytest tests/ -v
@@ -1301,7 +1301,7 @@ pytest tests/ -v
 
 Expected: all PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add main.py tests/test_integration.py
@@ -1316,7 +1316,7 @@ git commit -m "feat: system_change event triggers World API prefetch"
 - Create: `/etc/systemd/system/ship-ai.service`
 - Create: `start.sh`
 
-- [ ] **Step 1: Create start.sh**
+- [x] **Step 1: Create start.sh**
 
 ```bash
 #!/bin/bash
@@ -1329,11 +1329,11 @@ uvicorn main:app --host 0.0.0.0 --port 8745
 chmod +x start.sh
 ```
 
-- [ ] **Step 2: Manual end-to-end smoke test**
+- [x] **Step 2: Manual end-to-end smoke test**
 
 ```bash
 cp .env.example .env
-# Edit .env: add real ANTHROPIC_API_KEY, set SHIP_TOKEN
+# Edit .env: add real ANTHROPIC_API_KEY, set SERVER_TOKEN
 ./start.sh
 ```
 
@@ -1341,7 +1341,7 @@ In a browser, open `http://localhost:8745/static/index.html`.
 Send a message. Verify streamed response appears token by token in the UI.
 Check `GET /health` returns `{"status": "ok"}`.
 
-- [ ] **Step 3: Create systemd service (requires root)**
+- [x] **Step 3: Create systemd service (requires root)**
 
 ```ini
 # /etc/systemd/system/ship-ai.service
@@ -1370,7 +1370,7 @@ systemctl status ship-ai
 
 Expected: service shows `active (running)`.
 
-- [ ] **Step 4: Final commit**
+- [x] **Step 4: Final commit**
 
 ```bash
 git add start.sh
@@ -1379,9 +1379,23 @@ git commit -m "feat: start script and systemd service for ship AI"
 
 ---
 
-## Notes for Implementer
+## Implementation Complete — 2026-03-11
 
-- **Log regex patterns** in `log-agent/parsers.py` are based on a guessed format. Before running the agent, open a real EVE Frontier gamelog file and adjust the regex patterns to match actual log line format.
-- **World API endpoints** (`/v1/system`, `/v1/killmails`) are placeholders — check https://docs.evefrontier.com for real endpoint paths and response shapes, then update `src/world_api.py` accordingly.
-- **SHIP_TOKEN** in `.env` must match on both server and log agent. If running locally only (no public port), leave it blank.
-- **Log agent runs on Windows.** Install Python on the gaming PC, `pip install -r log-agent/requirements.txt`, copy `.env.example` to `.env`, fill in server URL and token, then `python log_agent.py`.
+All 11 tasks implemented and passing. Notes on what diverged from the plan during implementation:
+
+- **World API rewritten from scratch.** The placeholder endpoints (`/v1/system`, `/v1/killmails`) do not exist. Real API uses `/v2/solarsystems/{id}`. No killmails endpoint exists. `world_api.py` was replaced with: name→ID index (fetched from `/v2/solarsystems` paginated list, persisted to `data/system_index.json`), lookup by ID, per-endpoint TTL cache, lazy httpx client, retry logic (5 attempts, 3s delay) for startup DNS race condition.
+- **`/admin/rebuild-index` endpoint added** (not in plan) — POST, auth-protected, forces a full index rebuild from the API. Use when the game adds new systems.
+- **systemd service updated** — `After=network.target` → `After=network-online.target` + `Wants=network-online.target` to handle DNS availability at boot.
+- **Log agent EOF seek** — `_file_positions` now initialises to EOF on first file encounter (not 0) to prevent replaying existing log history on startup.
+- **COMBAT_RE pattern** — fixed from lazy `(.+?)` to greedy `(.+)\s+-\s+\w` to correctly capture target names containing ` -`.
+- **SSE stream loop** — frontend uses a `streamDone` flag to exit both the inner `for` and outer `while` loops on `[DONE]`, fixing a bug where only the inner loop exited.
+- **pytest-asyncio** — upgraded from 0.23.0 → 0.23.8 and added `pytest.ini` with `asyncio_mode = auto` to fix `AttributeError: 'Package' object has no attribute 'obj'`.
+- **Test isolation** — `test_world_api.py` index-building tests now patch `save_index_to_disk` to prevent writing fake data to `data/system_index.json`.
+- **`WORLD_API_BASE_URL` in `.env`** — was incorrectly set to `https://api.evefrontier.com` (unresolvable). Correct value: `https://world-api-stillness.live.tech.evefrontier.com`.
+
+## Pending
+
+- **Log agent deployment** — install Python on gaming PC, copy `log-agent/`, create `.env` from `.env.example`, set `SERVER_URL` and `SERVER_TOKEN`, run `python log_agent.py`.
+- **Log regex verification** — patterns in `log-agent/parsers.py` are educated guesses. Verify against real EVE Frontier log files before trusting parsed events.
+- **SERVER_TOKEN** — `.env` still has `change-this-to-a-random-secret`. Set a real secret before exposing port 8745.
+- **Phase 2: Route engine** — deferred.
