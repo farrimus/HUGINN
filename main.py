@@ -292,7 +292,8 @@ async def auth_verify(req: VerifyRequest):
     try:
         verify_sui_personal_message(req.nonce.encode(), req.signature, req.address)
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Signature verification failed: {e}")
+        log.warning("Signature verification failed for address %s: %s", req.address, e)
+        raise HTTPException(status_code=401, detail="Signature verification failed")
 
     # 3. Lookup character via World API (non-fatal — auth proceeds even if lookup fails)
     character_id = 0
@@ -318,7 +319,10 @@ async def auth_verify(req: VerifyRequest):
                     owner_character_id=character_id,
                     nova_registry_object_id=req.nova_registry_object_id,
                 )
-                save_structure_profile(profile)
+                try:
+                    save_structure_profile(profile)
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=f"Invalid structure_id: {e}")
                 tier = "OWNER"
         if tier == "NONE":
             raise HTTPException(status_code=403, detail="No structure profile exists. Owner must authenticate first.")

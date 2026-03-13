@@ -48,6 +48,8 @@ class NonceStore:
 nonce_store = NonceStore()
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "change-me-in-production")
+if JWT_SECRET == "change-me-in-production":
+    log.warning("JWT_SECRET is not set — using insecure default. Set JWT_SECRET env var before production use.")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 

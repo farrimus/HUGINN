@@ -58,3 +58,11 @@ def test_as_dict_vetted_tier_hides_sensitive_fields():
     assert "services_online" not in d
     assert "docked_count" not in d
     assert d["structure_id"] == "keep-7a"
+
+def test_invalid_structure_id_raises():
+    from src.structure_profile import profile_path
+    import pytest
+    with pytest.raises(ValueError):
+        profile_path("../../../etc/passwd")
+    with pytest.raises(ValueError):
+        profile_path("valid; rm -rf /")

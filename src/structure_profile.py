@@ -1,6 +1,7 @@
 # src/structure_profile.py
 import json
 import os
+import re
 import logging
 from dataclasses import dataclass, field, asdict
 from typing import Optional
@@ -52,12 +53,21 @@ class StructureProfile:
                 "structure_type": d["structure_type"], "system_name": d["system_name"]}
 
 
+_SAFE_ID_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,64}$')
+
+
 def profile_path(structure_id: str, base_dir: str = _DEFAULT_BASE_DIR) -> str:
+    if not _SAFE_ID_RE.match(structure_id):
+        raise ValueError(f"Invalid structure_id: {structure_id!r}")
     return os.path.join(base_dir, f"{structure_id}.json")
 
 
 def load_profile(structure_id: str, base_dir: str = _DEFAULT_BASE_DIR) -> Optional[StructureProfile]:
-    path = profile_path(structure_id, base_dir)
+    try:
+        path = profile_path(structure_id, base_dir)
+    except ValueError as e:
+        log.warning("Invalid structure_id in load_profile: %s", e)
+        return None
     if not os.path.exists(path):
         return None
     try:
@@ -70,12 +80,14 @@ def load_profile(structure_id: str, base_dir: str = _DEFAULT_BASE_DIR) -> Option
 
 def save_profile(profile: StructureProfile, base_dir: str = _DEFAULT_BASE_DIR):
     import datetime
-    path = profile_path(profile.structure_id, base_dir)
+    path = profile_path(profile.structure_id, base_dir)  # raises ValueError for invalid id
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         if not profile.created_at:
             profile.created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         with open(path, "w") as f:
             json.dump(asdict(profile), f, indent=2)
+    except ValueError:
+        raise  # re-raise — caller must handle invalid structure_id
     except Exception as e:
         log.warning("Failed to save structure profile %s: %s", profile.structure_id, e)
