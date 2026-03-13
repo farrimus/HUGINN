@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, JSONResponse, Response
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
@@ -8,6 +9,8 @@ import os
 import re
 import json
 import asyncio
+import logging
+import jwt as pyjwt
 
 from src.log_buffer import log_buffer
 from src.auth import require_token
@@ -18,6 +21,12 @@ from src.route_engine import route_engine
 from src.ship_profile import (
     ShipProfile, FUEL_QUALITY, load_profile, save_profile
 )
+from src.structure_auth import nonce_store, verify_sui_personal_message, issue_jwt, decode_jwt, lookup_character
+from src.structure_profile import StructureProfile, load_profile as load_structure_profile, save_profile as save_structure_profile
+from src.structure_client import structure_client, build_structure_context, detect_alerts
+from src.nova_client import nova_client
+
+log = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -182,6 +191,42 @@ class ChatRequest(BaseModel):
     message: str
     history: list = []
 
+class ChallengeRequest(BaseModel):
+    structure_id: str
+
+class VerifyRequest(BaseModel):
+    address: str
+    signature: str
+    nonce: str
+    structure_id: str
+    nova_registry_object_id: Optional[str] = None  # required on first owner auth
+
+class StructureChatRequest(BaseModel):
+    message: str
+    history: list = []
+    structure_id: str
+
+class StructureProfileUpdate(BaseModel):
+    structure_name: Optional[str] = None
+    fuel_pct: Optional[float] = None
+    shield_pct: Optional[float] = None
+    services_online: Optional[int] = None
+    services_total: Optional[int] = None
+    docked_count: Optional[int] = None
+
+_bearer = HTTPBearer(auto_error=False)
+
+async def require_structure_jwt(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """FastAPI dependency: validate structure JWT, return decoded payload."""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    try:
+        return decode_jwt(credentials.credentials)
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Session expired — reconnect wallet")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+
 _ROUTE_RE = re.compile(
     r"(?:plot|plan|calculate|find|set|fly|navigate|go|travel|head|get)\s+"
     r"(?:a\s+)?(?:route|course|path)?\s*(?:to|toward(?:s)?)\s+([\w][\w\-]*[\w])",
@@ -221,6 +266,160 @@ async def chat(req: ChatRequest):
             import logging
             logging.getLogger(__name__).error("Stream error: %s", e)
             yield f"data: {json.dumps({'error': 'Stream interrupted. Ship systems error.'})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/auth/challenge")
+async def auth_challenge(req: ChallengeRequest):
+    """Issue a nonce for wallet signing. No auth required."""
+    nonce = nonce_store.issue()
+    return {"nonce": nonce, "structure_id": req.structure_id, "expires_in_seconds": 300}
+
+
+@app.post("/auth/verify")
+async def auth_verify(req: VerifyRequest):
+    """
+    Verify signed nonce, resolve access tier from Nova AccessRegistry, return JWT.
+    On first-ever owner auth: auto-creates structure profile.
+    """
+    # 1. Consume nonce (single-use, TTL-checked)
+    if not nonce_store.consume(req.nonce):
+        raise HTTPException(status_code=400, detail="Invalid or expired nonce")
+
+    # 2. Verify Sui signature
+    try:
+        verify_sui_personal_message(req.nonce.encode(), req.signature, req.address)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Signature verification failed: {e}")
+
+    # 3. Lookup character via World API (non-fatal — auth proceeds even if lookup fails)
+    character_id = 0
+    character_name = req.address[:12] + "..."
+    char_data = await lookup_character(req.address)
+    if char_data:
+        character_id = char_data.get("id", 0)
+        character_name = char_data.get("name", character_name) or character_name
+
+    # 4. Resolve access tier
+    tier = "NONE"
+    profile = load_structure_profile(req.structure_id)
+
+    if profile is None:
+        # First-ever auth — check if this address is the on-chain owner
+        if req.nova_registry_object_id:
+            registry = await nova_client.get_access_registry(req.nova_registry_object_id)
+            if registry and nova_client.resolve_tier(req.address, registry) == "OWNER":
+                # Auto-create profile
+                profile = StructureProfile(
+                    structure_id=req.structure_id,
+                    owner_address=req.address,
+                    owner_character_id=character_id,
+                    nova_registry_object_id=req.nova_registry_object_id,
+                )
+                save_structure_profile(profile)
+                tier = "OWNER"
+        if tier == "NONE":
+            raise HTTPException(status_code=403, detail="No structure profile exists. Owner must authenticate first.")
+    else:
+        if req.address.lower() == profile.owner_address.lower():
+            tier = "OWNER"
+        elif profile.nova_registry_object_id:
+            registry = await nova_client.get_access_registry(profile.nova_registry_object_id)
+            if registry:
+                tier = nova_client.resolve_tier(req.address, registry)
+
+    # 5. Issue JWT
+    token = issue_jwt({
+        "address": req.address,
+        "character_id": character_id,
+        "character_name": character_name,
+        "tier": tier,
+        "structure_id": req.structure_id,
+    })
+    return {"token": token, "tier": tier, "character_name": character_name, "character_id": character_id}
+
+
+@app.get("/structure/{structure_id}")
+async def get_structure_profile(structure_id: str, session: dict = Depends(require_structure_jwt)):
+    if session["structure_id"] != structure_id:
+        raise HTTPException(status_code=403, detail="Token not valid for this structure")
+    profile = load_structure_profile(structure_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Structure not found")
+    tier = session["tier"]
+    if tier == "NONE":
+        raise HTTPException(status_code=403, detail="Access denied")
+    return profile.as_dict_for_tier(tier)
+
+
+@app.post("/structure/{structure_id}")
+async def update_structure_profile(structure_id: str, req: StructureProfileUpdate,
+                                    session: dict = Depends(require_structure_jwt)):
+    if session["structure_id"] != structure_id:
+        raise HTTPException(status_code=403, detail="Token not valid for this structure")
+    if session["tier"] != "OWNER":
+        raise HTTPException(status_code=403, detail="Only the owner can update the profile")
+    profile = load_structure_profile(structure_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Structure not found")
+    updates = req.model_dump(exclude_none=True)
+    for k, v in updates.items():
+        if hasattr(profile, k):
+            setattr(profile, k, v)
+    save_structure_profile(profile)
+    return profile.as_dict_for_tier("OWNER")
+
+
+@app.post("/structure-chat")
+async def structure_chat(req: StructureChatRequest, session: dict = Depends(require_structure_jwt)):
+    if session["structure_id"] != req.structure_id:
+        raise HTTPException(status_code=403, detail="Token not valid for this structure")
+    tier = session["tier"]
+    if tier == "NONE":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    profile = load_structure_profile(req.structure_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Structure not found")
+
+    # Detect alerts and route them
+    alerts = detect_alerts(profile)
+    urgent = [a for a in alerts if a["severity"] == "urgent"]
+    routine = [a for a in alerts if a["severity"] == "routine"]
+
+    for alert in urgent:
+        log_buffer.add_structure_alert(alert)
+
+    if routine:
+        profile.routine_alerts = (profile.routine_alerts + routine)[-10:]
+        save_structure_profile(profile)
+
+    # Fetch local system data for context
+    system_data = None
+    if profile.system_name:
+        system_data = await world_api.get_system(profile.system_name)
+    local_kills = len((system_data or {}).get("kills", []))
+    local_pilots = 0  # world API doesn't expose pilot count directly
+
+    context = build_structure_context(profile, tier, local_kills=local_kills, local_pilots=local_pilots)
+
+    def event_stream():
+        try:
+            for chunk in structure_client.stream(
+                message=req.message,
+                history=req.history,
+                context_block=context,
+                profile=profile,
+                tier=tier,
+                character_name=session["character_name"],
+                character_id=session["character_id"],
+            ):
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+        except Exception as e:
+            log.error("Structure chat stream error: %s", e)
+            yield f"data: {json.dumps({'error': 'Stream interrupted.'})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
