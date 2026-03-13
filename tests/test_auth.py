@@ -12,28 +12,28 @@ async def protected(_=Depends(require_token)):
 
 @pytest.mark.asyncio
 async def test_valid_token_passes(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "test-secret")
+    monkeypatch.setenv("SERVER_TOKEN", "test-secret")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/protected", headers={"X-Ship-Token": "test-secret"})
+        response = await client.get("/protected", headers={"X-Server-Token": "test-secret"})
     assert response.status_code == 200
 
 @pytest.mark.asyncio
 async def test_missing_token_rejected(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "test-secret")
+    monkeypatch.setenv("SERVER_TOKEN", "test-secret")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/protected")
     assert response.status_code == 403
 
 @pytest.mark.asyncio
 async def test_wrong_token_rejected(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "test-secret")
+    monkeypatch.setenv("SERVER_TOKEN", "test-secret")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/protected", headers={"X-Ship-Token": "wrong"})
+        response = await client.get("/protected", headers={"X-Server-Token": "wrong"})
     assert response.status_code == 403
 
 @pytest.mark.asyncio
 async def test_no_token_configured_allows_all(monkeypatch):
-    monkeypatch.delenv("SHIP_TOKEN", raising=False)
+    monkeypatch.delenv("SERVER_TOKEN", raising=False)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/protected")
     assert response.status_code == 200

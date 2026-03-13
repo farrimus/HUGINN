@@ -19,7 +19,8 @@ async def test_build_system_index_populates_name_to_id():
         ],
         "metadata": {"total": 2, "limit": 1000, "offset": 0}
     }
-    with patch.object(client, "_fetch", new=AsyncMock(return_value=mock_page)):
+    with patch.object(client, "_fetch", new=AsyncMock(return_value=mock_page)), \
+         patch.object(client, "save_index_to_disk"):
         count = await client.build_system_index()
     assert count == 2
     assert client.resolve_system_id("Jita") == 1001
@@ -32,7 +33,8 @@ async def test_build_system_index_case_insensitive():
         "data": [{"id": 1001, "name": "Jita"}],
         "metadata": {"total": 1, "limit": 1000, "offset": 0}
     }
-    with patch.object(client, "_fetch", new=AsyncMock(return_value=mock_page)):
+    with patch.object(client, "_fetch", new=AsyncMock(return_value=mock_page)), \
+         patch.object(client, "save_index_to_disk"):
         await client.build_system_index()
     assert client.resolve_system_id("JITA") == 1001
     assert client.resolve_system_id("jita") == 1001
@@ -48,7 +50,8 @@ async def test_build_system_index_paginates():
         "data": [{"id": 1002, "name": "Amarr"}],
         "metadata": {"total": 2, "limit": 1, "offset": 1}
     }
-    with patch.object(client, "_fetch", new=AsyncMock(side_effect=[page1, page2])):
+    with patch.object(client, "_fetch", new=AsyncMock(side_effect=[page1, page2])), \
+         patch.object(client, "save_index_to_disk"):
         count = await client.build_system_index()
     assert count == 2
 

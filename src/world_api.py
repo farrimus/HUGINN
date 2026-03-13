@@ -69,6 +69,23 @@ class WorldAPIClient:
     def _index_file(self) -> str:
         return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "system_index.json"))
 
+    def _gate_graph_file(self) -> str:
+        return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "gate_graph.json"))
+
+    def _save_gate_graph(self, adj: dict, meta: dict):
+        path = self._gate_graph_file()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, "w") as f:
+                json.dump({
+                    "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "adj": adj,
+                    "meta": meta,
+                }, f)
+            log.info("Gate graph saved: %d systems with adjacency data", len(adj))
+        except Exception as e:
+            log.warning("Failed to save gate graph: %s", e)
+
     def load_index_from_disk(self) -> bool:
         """Load index from disk cache. Returns True if loaded successfully."""
         path = self._index_file()
@@ -109,10 +126,13 @@ class WorldAPIClient:
 
     async def rebuild_index(self, retries: int = 5, retry_delay: float = 3.0) -> int:
         """Force a full rebuild from the API and save to disk.
+        Also builds gate_graph.json (adj + meta) in the same pass.
         Retries on transient failures (e.g. DNS not ready at startup).
         Use this when the game adds new systems."""
         for attempt in range(1, retries + 1):
             index: dict = {}
+            raw_adj: dict = {}   # sid -> [linked_sid, ...]
+            raw_meta: dict = {}  # sid -> {name, security, location}
             limit = 1000
             offset = 0
             failed = False
@@ -130,8 +150,26 @@ class WorldAPIClient:
                 for s in systems:
                     name = s.get("name", "")
                     sid = s.get("id")
-                    if name and sid:
-                        index[name.lower()] = sid
+                    if not (name and sid):
+                        continue
+                    index[name.lower()] = sid
+                    raw_meta[sid] = {
+                        "name": name,
+                        "security": s.get("security"),
+                        "location": s.get("location") or s.get("position"),
+                    }
+                    gate_links = s.get("gateLinks") or []
+                    if gate_links:
+                        resolved = []
+                        for g in gate_links:
+                            if isinstance(g, int):
+                                resolved.append(g)
+                            elif isinstance(g, dict):
+                                gid = g.get("solarSystemId") or g.get("id")
+                                if gid:
+                                    resolved.append(int(gid))
+                        if resolved:
+                            raw_adj[sid] = resolved
 
                 total = result.get("metadata", {}).get("total", 0)
                 offset += len(systems)
@@ -142,6 +180,27 @@ class WorldAPIClient:
                 self._system_index = index
                 log.info("System index built: %d systems", len(index))
                 self.save_index_to_disk()
+
+                # Build gate graph (adj + meta keyed by lowercase name)
+                id_to_name = {v: k for k, v in index.items()}
+                adj: dict = {}
+                meta: dict = {}
+                for sid, linked_ids in raw_adj.items():
+                    name = id_to_name.get(sid)
+                    if not name:
+                        continue
+                    neighbors = [id_to_name[lid] for lid in linked_ids if lid in id_to_name]
+                    if neighbors:
+                        adj[name] = neighbors
+                for sid, m in raw_meta.items():
+                    name = id_to_name.get(sid)
+                    if name:
+                        meta[name] = {
+                            "id": sid,
+                            "security": m["security"],
+                            "location": m["location"],
+                        }
+                self._save_gate_graph(adj, meta)
                 return len(index)
 
             if attempt < retries:

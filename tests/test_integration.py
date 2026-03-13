@@ -7,7 +7,7 @@ from main import app
 
 @pytest.mark.asyncio
 async def test_system_change_triggers_world_api_refresh(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "")  # disable auth
+    monkeypatch.setenv("SERVER_TOKEN", "")  # disable auth
     from src import world_api as wa_module
     mock_get = AsyncMock(return_value={"name": "Jita", "security": 0.9})
     wa_module.world_api.get_system = mock_get
@@ -25,7 +25,7 @@ async def test_system_change_triggers_world_api_refresh(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_non_system_change_does_not_trigger_refresh(monkeypatch):
-    monkeypatch.setenv("SHIP_TOKEN", "")
+    monkeypatch.setenv("SERVER_TOKEN", "")
     from src import world_api as wa_module
     mock_get = AsyncMock(return_value=None)
     wa_module.world_api.get_system = mock_get
