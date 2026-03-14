@@ -175,9 +175,9 @@ def verify_sui_personal_message(message_bytes, signature_b64, expected_address):
 
 - [x] **3.1** Open `http://<VPS_IP>:8745/static/structure.html?id=keep-7a&registry=0x89e9...` in Chrome desktop with EVEVault extension
 - [x] **3.2** Click Connect Wallet → complete FusionAuth OAuth → confirm OWNER tier appears
-- [ ] **3.3** Send a message — confirm Structure AI responds
+- [x] **3.3** Send a message — confirm Structure AI responds
 - [x] **3.4** Test in-game SSU browser — same flow
-- [ ] **3.5** Commit
+- [x] **3.5** Commit
 
 ---
 

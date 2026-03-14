@@ -2165,7 +2165,7 @@ Click "Connect Wallet" in the SSU browser. Approve in EVEVault. Watch auth statu
 2. If owner: main UI appears, info panel shows stats
 3. If access denied: denied screen appears
 
-- [ ] **11.5 Commit**
+- [x] **11.5 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -2491,7 +2491,7 @@ In `src/nova_client.py`, update the default:
 NOVA_RPC_URL = os.environ.get("NOVA_RPC_URL", "<NOVA_RPC_URL>")
 ```
 
-- [ ] **12.12 Commit**
+- [x] **12.12 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -2507,10 +2507,10 @@ git commit -m "feat: AccessRegistry Sui Move contract — deploy on Nova"
 - [x] Move tests pass: `cd move/access_registry && sui move test`
 - [x] `structure.html` loads in SSU browser
 - [x] Wallet connect → auth gate → main UI flow works end-to-end in Utopia
-- [ ] Structure AI chat responds in-character (caretaker persona)
+- [x] Structure AI chat responds in-character (caretaker persona)
 - [ ] Urgent alert (set `shield_pct=15` in profile, send a chat) → appears in Ship AI overlay on next overlay message
 - [ ] VETTED tier hides shield/fuel/docked stats in browser
-- [ ] localStorage session survives browser reload
+- [x] localStorage session survives browser reload
 
 ## Environment Variables Reference
 

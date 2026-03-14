@@ -359,7 +359,7 @@ if (storedToken) {
       sessionTier = payload.tier;
       sessionChar = payload.character_name;
       if (sessionTier === 'NONE') showAccessDenied(sessionChar, payload.address);
-      else showMainUI(payload);
+      else { showMainUI(payload); loadStructureProfile(); }
     }
   } catch(e) { /* expired or invalid — fall through to auth gate */ }
 }

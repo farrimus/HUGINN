@@ -4,7 +4,7 @@
 
 **Hackathon deadline:** March 31, 2026.
 
-**Last updated:** 2026-03-13 (Structure AI fully built + Move contract deployed to Sui testnet)
+**Last updated:** 2026-03-14 (Structure AI end-to-end confirmed working in Chrome + EVE Frontier SSU browser)
 
 ---
 
@@ -57,7 +57,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 
 ---
 
-## Status — 2026-03-13
+## Status — 2026-03-14
 
 | Component | Status |
 |---|---|
@@ -72,12 +72,12 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | Ship profile (`GET/POST /ship-profile`) | ✓ Persistent profile + per-request overrides for hypothetical routes |
 | Chat intent → auto-route | ✓ Navigation phrases in chat trigger route calculation before Claude responds |
 | Structure AI backend | ✓ Built — auth, tier resolution, profile, Claude streaming, alert bridge |
-| Structure auth endpoints (`/auth/challenge`, `/auth/verify`) | ✓ Built — Sui ed25519 + JWT |
+| Structure auth endpoints (`/auth/challenge`, `/auth/verify`) | ✓ Working — zkLogin (0x05) passthrough, registry ID server-configured |
 | `static/structure.html` | ✓ Built — amber terminal UI, auth gate, info panel, SSE chat |
 | Move contract (`AccessRegistry`) | ✓ Deployed to Sui testnet — package `0xf335...55b9` |
 | AccessRegistry `keep-7a` (owner `0x442f`) | ✓ Object `0x89e9...dc0` |
 | AccessRegistry `keep-7a` (owner `0xff09`) | ✓ Object `0xf5ce...708` |
-| EVEVault wallet injection in SSU browser | Pending — in-game connect flow not yet tested |
+| EVEVault wallet injection in SSU browser | ✓ Working — Chrome + SSU browser confirmed, URL truncation fix applied |
 | Ship stat auto-extraction | Future — manual input required for now (see Future Thinking below) |
 | ImGui navigation panel | Planned — pending ship params UX decision |
 
