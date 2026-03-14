@@ -55,13 +55,20 @@ def test_verify_raises_for_wrong_address():
     pytest.skip("Needs real EVEVault test vector")
 
 def test_verify_rejects_unsupported_scheme_flag():
-    from cryptography.exceptions import InvalidSignature
     from src.structure_auth import verify_sui_personal_message
     import base64
-    # Build a fake signature with flag=0xFF (unsupported)
     fake_sig = base64.b64encode(bytes([0xFF]) + bytes(96)).decode()
     with pytest.raises(ValueError, match="Unsupported"):
         verify_sui_personal_message(b"hello", fake_sig, "0x" + "00" * 32)
+
+def test_verify_accepts_zklogin_flag():
+    """zkLogin signatures (flag=0x03) are accepted without Groth16 verification (hackathon mode)."""
+    from src.structure_auth import verify_sui_personal_message
+    import base64
+    # Minimal zkLogin-flagged signature — crypto not checked, just flag dispatch
+    fake_zklogin_sig = base64.b64encode(bytes([0x03]) + bytes(96)).decode()
+    result = verify_sui_personal_message(b"test-nonce", fake_zklogin_sig, "0x" + "aa" * 32)
+    assert result is True
 
 
 from src.structure_auth import issue_jwt, decode_jwt

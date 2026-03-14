@@ -30,6 +30,20 @@ log = logging.getLogger(__name__)
 
 load_dotenv()
 
+# Server-side registry map: structure_id -> Nova AccessRegistry object ID.
+# This avoids passing the full 66-char hex ID through the in-game browser URL bar,
+# which truncates it. The client sends nova_registry_object_id as a hint (or omits it);
+# the server always prefers its own configured value.
+_STRUCTURE_REGISTRY_MAP: dict[str, str] = {}
+_registry_env = os.environ.get("NOVA_REGISTRY_OBJECT_ID", "")
+_registry_structure = os.environ.get("NOVA_REGISTRY_STRUCTURE_ID", "keep-7a")
+if _registry_env:
+    _STRUCTURE_REGISTRY_MAP[_registry_structure] = _registry_env
+
+def _registry_for(structure_id: str, client_hint: Optional[str] = None) -> Optional[str]:
+    """Return the best registry object ID for a structure. Server map takes priority."""
+    return _STRUCTURE_REGISTRY_MAP.get(structure_id) or client_hint
+
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -306,18 +320,21 @@ async def auth_verify(req: VerifyRequest):
     # 4. Resolve access tier
     tier = "NONE"
     profile = load_structure_profile(req.structure_id)
+    registry_id = _registry_for(req.structure_id, req.nova_registry_object_id)
+    log.info("auth_verify: address=%s structure=%s registry_id=%r (client_hint=%r)",
+             req.address, req.structure_id, registry_id, req.nova_registry_object_id)
 
     if profile is None:
         # First-ever auth — check if this address is the on-chain owner
-        if req.nova_registry_object_id:
-            registry = await nova_client.get_access_registry(req.nova_registry_object_id)
+        if registry_id:
+            registry = await nova_client.get_access_registry(registry_id)
             if registry and nova_client.resolve_tier(req.address, registry) == "OWNER":
                 # Auto-create profile
                 profile = StructureProfile(
                     structure_id=req.structure_id,
                     owner_address=req.address,
                     owner_character_id=character_id,
-                    nova_registry_object_id=req.nova_registry_object_id,
+                    nova_registry_object_id=registry_id,
                 )
                 try:
                     save_structure_profile(profile)
@@ -329,8 +346,8 @@ async def auth_verify(req: VerifyRequest):
     else:
         if req.address.lower() == profile.owner_address.lower():
             tier = "OWNER"
-        elif profile.nova_registry_object_id:
-            registry = await nova_client.get_access_registry(profile.nova_registry_object_id)
+        elif registry_id or profile.nova_registry_object_id:
+            registry = await nova_client.get_access_registry(registry_id or profile.nova_registry_object_id)
             if registry:
                 tier = nova_client.resolve_tier(req.address, registry)
 

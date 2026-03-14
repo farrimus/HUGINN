@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 NOVA_RPC_URL = os.environ.get(
     "NOVA_RPC_URL",
-    "https://fullnode.devnet.sui.io"  # placeholder — replace with Nova endpoint
+    "https://fullnode.testnet.sui.io"
 )
 
 
@@ -39,6 +39,7 @@ class NovaClient:
         Sui JSON-RPC method: sui_getObject
         https://docs.sui.io/sui-api-ref#sui_getobject
         """
+        log.info("get_access_registry called: len=%d repr=%r", len(object_id), object_id)
         payload = {
             "jsonrpc": "2.0",
             "id": 1,

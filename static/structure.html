@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Structure Systems</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080700;
+      --bg2:       #0d0b00;
+      --bg3:       #110e00;
+      --border:    #2a1f00;
+      --border2:   #1a1200;
+      --accent:    #f59e0b;
+      --accent2:   #fbbf24;
+      --dim:       #5a4a20;
+      --text:      #c8b890;
+      --text2:     #8a7850;
+      --ok:        #22c55e;
+      --warn:      #ef4444;
+      --mono:      'Share Tech Mono', monospace;
+      --sans:      'Rajdhani', 'DIN', sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    /* ── CORNER CUT PANELS ── */
+    .panel {
+      border: 1px solid var(--border);
+      position: relative;
+    }
+    .panel::before, .panel::after {
+      content: ''; position: absolute;
+      width: 10px; height: 10px;
+      border-color: var(--border); border-style: solid;
+    }
+    .panel::before { top: -1px; right: -1px; border-width: 1px 1px 0 0; }
+    .panel::after  { bottom: -1px; left: -1px; border-width: 0 0 1px 1px; }
+
+    .panel-header {
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border2);
+      padding: 6px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      user-select: none;
+    }
+    .panel-header .title { color: var(--accent); }
+    .panel-header .hint  { color: var(--dim); font-size: 10px; }
+
+    /* ── LAYOUT ── */
+    #app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── AUTH GATE ── */
+    #auth-gate {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 32px;
+    }
+    .auth-title {
+      font-size: 11px;
+      letter-spacing: 4px;
+      color: var(--dim);
+      text-transform: uppercase;
+      text-align: center;
+    }
+    .auth-structure-name {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-align: center;
+    }
+    .auth-body {
+      max-width: 340px;
+      text-align: center;
+      color: var(--text2);
+      font-size: 12px;
+      line-height: 1.6;
+      letter-spacing: 0.5px;
+    }
+    .btn-connect {
+      background: var(--bg3);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--sans);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 10px 28px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-connect:hover { background: #1a1200; }
+    .btn-connect:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .auth-status {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--dim);
+      letter-spacing: 1px;
+      min-height: 18px;
+      text-align: center;
+    }
+
+    /* ── ACCESS DENIED ── */
+    #access-denied {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 32px;
+    }
+    .denied-title  { font-size: 14px; letter-spacing: 3px; color: var(--warn); text-transform: uppercase; }
+    .denied-body   { color: var(--text2); font-size: 12px; text-align: center; max-width: 300px; line-height: 1.6; }
+    .denied-char   { font-family: var(--mono); font-size: 12px; color: var(--accent2); }
+
+    /* ── MAIN UI ── */
+    #main-ui {
+      display: none;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── INFO PANEL ── */
+    #info-panel { flex-shrink: 0; }
+    #info-content {
+      padding: 10px 12px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      background: var(--bg2);
+      overflow: hidden;
+      transition: max-height 0.25s ease, padding 0.25s ease;
+      max-height: 300px;
+    }
+    #info-content.collapsed { max-height: 0; padding-top: 0; padding-bottom: 0; }
+
+    .stat {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      padding: 5px 7px;
+    }
+    .sk { display: block; font-size: 9px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+    .sv { display: block; font-size: 12px; font-family: var(--mono); color: var(--accent2); margin-top: 2px; }
+    .sv.ok   { color: var(--ok); }
+    .sv.warn { color: var(--warn); }
+
+    #alert-bar {
+      background: #120a00;
+      border-top: 1px solid var(--border2);
+      border-bottom: 1px solid var(--border2);
+      padding: 5px 12px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--accent);
+      display: none;
+      gap: 8px;
+      align-items: center;
+    }
+    #alert-bar.visible { display: flex; }
+    .alert-label { color: var(--warn); font-weight: 700; }
+
+    /* ── CHAT SECTION ── */
+    #chat-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #chat-header {
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border2);
+      padding: 5px 12px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--dim);
+      text-transform: uppercase;
+    }
+    #chat-status { color: var(--accent); }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--accent) var(--bg3);
+    }
+    .msg { font-family: var(--mono); font-size: 12px; line-height: 1.5; }
+    .msg-prefix { font-size: 9px; letter-spacing: 1px; color: var(--dim); margin-bottom: 2px; }
+    .msg-ai   .msg-prefix { color: var(--accent); }
+    .msg-user .msg-prefix { color: var(--text2); }
+    .msg-ai   .msg-body   { color: var(--accent2); }
+    .msg-user .msg-body   { color: var(--text); }
+
+    #input-row {
+      border-top: 1px solid var(--border2);
+      padding: 8px 12px;
+      display: flex;
+      gap: 6px;
+      background: var(--bg);
+    }
+    #input {
+      flex: 1;
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 7px 10px;
+      outline: none;
+    }
+    #input:focus { border-color: var(--accent); }
+    #input::placeholder { color: var(--dim); }
+    #send-btn {
+      background: var(--bg3);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--sans);
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 1px;
+      padding: 7px 14px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    #send-btn:hover { background: #1a1200; }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- AUTH GATE -->
+  <div id="auth-gate">
+    <div class="auth-title">Identity Verification Required</div>
+    <div class="auth-structure-name" id="gate-structure-name">STRUCTURE SYSTEMS</div>
+    <div class="auth-body">
+      This facility requires wallet authentication to proceed.
+      Connect your EVE Frontier wallet to verify your identity.
+    </div>
+    <button class="btn-connect" id="connect-btn" onclick="connectWallet()">
+      Connect Wallet
+    </button>
+    <div class="auth-status" id="auth-status"></div>
+  </div>
+
+  <!-- ACCESS DENIED -->
+  <div id="access-denied">
+    <div class="denied-title">Access Denied</div>
+    <div class="denied-char" id="denied-char"></div>
+    <div class="denied-body">
+      Your identity has been confirmed but you are not authorized to access this structure.
+      Contact the structure owner to request access.
+    </div>
+  </div>
+
+  <!-- MAIN UI -->
+  <div id="main-ui">
+
+    <!-- Info panel -->
+    <div id="info-panel" class="panel">
+      <div class="panel-header" onclick="toggleInfoPanel()">
+        <span class="title" id="panel-title">STRUCTURE SYSTEMS</span>
+        <span class="hint" id="collapse-hint">▲ COLLAPSE</span>
+      </div>
+      <div id="info-content">
+        <div class="stat"><span class="sk">Structure</span><span class="sv" id="s-name">—</span></div>
+        <div class="stat"><span class="sk">System</span><span class="sv" id="s-system">—</span></div>
+        <div class="stat"><span class="sk">Type</span><span class="sv" id="s-type">—</span></div>
+        <div class="stat"><span class="sk">Shield</span><span class="sv ok" id="s-shield">—</span></div>
+        <div class="stat"><span class="sk">Fuel</span><span class="sv" id="s-fuel">—</span></div>
+        <div class="stat"><span class="sk">Access</span><span class="sv" id="s-tier">—</span></div>
+        <div class="stat"><span class="sk">Services</span><span class="sv" id="s-services">—</span></div>
+        <div class="stat"><span class="sk">Docked</span><span class="sv" id="s-docked">—</span></div>
+        <div class="stat"><span class="sk">Wallet</span><span class="sv ok" id="s-wallet">CONNECTED</span></div>
+      </div>
+      <div id="alert-bar">
+        <span class="alert-label">⚠</span>
+        <span id="alert-text"></span>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div id="chat-section">
+      <div id="chat-header">
+        <span>STRUCTURE AI COMMS</span>
+        <span id="chat-status">READY</span>
+      </div>
+      <div id="messages"></div>
+      <div id="input-row">
+        <input id="input" placeholder="Transmit to structure AI..." autocomplete="off"
+               onkeydown="if(event.key==='Enter') sendMessage()">
+        <button id="send-btn" onclick="sendMessage()">SEND</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const SERVER = '';  // same origin
+const params = new URLSearchParams(location.search);
+const STRUCTURE_ID = params.get('id') || 'unknown';
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let sessionToken = null;
+let sessionTier = null;
+let sessionChar = null;
+let chatHistory = [];
+let infoCollapsed = false;
+let walletAddress = null;
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+document.getElementById('gate-structure-name').textContent = STRUCTURE_ID.toUpperCase();
+
+// Restore session from localStorage
+const storedToken = localStorage.getItem('struct_token_' + STRUCTURE_ID);
+if (storedToken) {
+  try {
+    const payload = JSON.parse(atob(storedToken.split('.')[1]));
+    if (payload.exp * 1000 > Date.now()) {
+      sessionToken = storedToken;
+      sessionTier = payload.tier;
+      sessionChar = payload.character_name;
+      if (sessionTier === 'NONE') showAccessDenied(sessionChar, payload.address);
+      else showMainUI(payload);
+    }
+  } catch(e) { /* expired or invalid — fall through to auth gate */ }
+}
+
+// ── WALLET STANDARD REGISTRY ───────────────────────────────────────────────
+// Wallet Standard protocol:
+// - wallet-standard:register-wallet detail is a CALLBACK, not the wallet.
+//   Call it with the registry; the wallet then calls registry.register(wallet).
+// - wallet-standard:app-ready detail is the registry; wallet calls registry.register(wallet).
+const _wallets = [];
+const _walletRegistry = {
+  get: () => _wallets,
+  on: () => ({ unsubscribe: () => {} }),
+  register: (w) => { if (w && w.features && !_wallets.includes(w)) _wallets.push(w); },
+};
+window["@wallet-standard/app"] = _walletRegistry;
+window.addEventListener('wallet-standard:register-wallet', ({ detail }) => {
+  if (typeof detail === 'function') detail(_walletRegistry);  // correct: call callback
+  else if (detail && detail.features) _walletRegistry.register(detail);  // fallback
+});
+window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: _walletRegistry }));
+
+// ── WALLET CONNECT ─────────────────────────────────────────────────────────
+async function connectWallet() {
+  const btn = document.getElementById('connect-btn');
+  const status = document.getElementById('auth-status');
+  btn.disabled = true;
+  setStatus('Connecting wallet...');
+
+  try {
+    // Discover EVE Vault via Sui Wallet Standard
+    let wallet = await findEveVault(3000);
+
+    if (!wallet) throw new Error(
+      'No wallet found. walletStd=' + !!window["@wallet-standard/app"] +
+      ' wallets=' + (window["@wallet-standard/app"]?.get().length ?? 0) +
+      ' names=[' + (window["@wallet-standard/app"]?.get().map(w => w.name).join(',') ?? '') + ']'
+    );
+
+    setStatus('Requesting connection...');
+    const { accounts } = await wallet.features['standard:connect'].connect();
+    if (!accounts || accounts.length === 0) throw new Error('No accounts returned');
+    walletAddress = accounts[0].address;
+
+    setStatus('Signing identity challenge...');
+
+    // Get nonce from server
+    const challengeRes = await fetch(SERVER + '/auth/challenge', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({structure_id: STRUCTURE_ID})
+    });
+    if (!challengeRes.ok) throw new Error('Challenge request failed');
+    const {nonce} = await challengeRes.json();
+
+    // Sign nonce
+    const signResult = await wallet.features['sui:signPersonalMessage'].signPersonalMessage({
+      message: new TextEncoder().encode(nonce),
+      account: accounts[0],
+    });
+    const signature = signResult.signature;
+
+    setStatus('Verifying identity...');
+
+    // Verify with server
+    const verifyBody = {address: walletAddress, signature, nonce, structure_id: STRUCTURE_ID};
+    const regId = params.get('registry');
+    if (regId) verifyBody.nova_registry_object_id = regId;
+
+    const verifyRes = await fetch(SERVER + '/auth/verify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(verifyBody)
+    });
+
+    if (!verifyRes.ok) {
+      const err = await verifyRes.json();
+      throw new Error(err.detail || 'Verification failed');
+    }
+
+    const {token, tier, character_name, character_id} = await verifyRes.json();
+    localStorage.setItem('struct_token_' + STRUCTURE_ID, token);
+    sessionToken = token;
+    sessionTier = tier;
+    sessionChar = character_name;
+
+    if (tier === 'NONE') {
+      showAccessDenied(character_name, walletAddress);
+    } else {
+      showMainUI({character_name, character_id, tier, structure_id: STRUCTURE_ID});
+      loadStructureProfile();
+    }
+
+  } catch(e) {
+    setStatus('Error: ' + e.message, true);
+    btn.disabled = false;
+  }
+}
+
+function isEveVault(w) {
+  if (!w || !w.name) return false;
+  const n = w.name.toLowerCase();
+  return n.includes("eve") && n.includes("vault");
+}
+
+async function findEveVault(timeoutMs) {
+  // 1. Check already-registered wallets
+  const reg = window["@wallet-standard/app"];
+  if (reg) {
+    const wallets = reg.get();
+    // Try EVE Vault first, fall back to any Sui wallet
+    const found = wallets.find(isEveVault) || wallets[0];
+    if (found) return found;
+  }
+
+  // 2. Wait for late registration
+  return new Promise(resolve => {
+    const tid = setTimeout(() => {
+      // Last chance: take any registered wallet
+      const reg2 = window["@wallet-standard/app"];
+      const wallets = reg2 ? reg2.get() : [];
+      resolve(wallets.find(isEveVault) || wallets[0] || null);
+    }, timeoutMs);
+    const handler = (e) => {
+      const w = e.detail || e;
+      if (w) { clearTimeout(tid); window.removeEventListener('wallet-standard:register-wallet', handler); resolve(w); }
+    };
+    window.addEventListener('wallet-standard:register-wallet', handler);
+  });
+}
+
+function setStatus(msg, isError) {
+  const el = document.getElementById('auth-status');
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--warn)' : 'var(--text)';
+}
+
+// ── UI STATE TRANSITIONS ──────────────────────────────────────────────────
+function showAccessDenied(charName, address) {
+  document.getElementById('auth-gate').style.display = 'none';
+  const denied = document.getElementById('access-denied');
+  denied.style.display = 'flex';
+  document.getElementById('denied-char').textContent = charName || address;
+}
+
+function showMainUI(payload) {
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('main-ui').style.display = 'flex';
+  document.getElementById('panel-title').textContent = STRUCTURE_ID.toUpperCase() + ' SYSTEMS';
+  document.getElementById('s-tier').textContent = payload.tier;
+  document.getElementById('s-wallet').textContent = (payload.character_name || '').toUpperCase().slice(0, 12);
+  // Hide sensitive stats for VETTED tier
+  if (payload.tier === 'VETTED') {
+    ['s-shield','s-fuel','s-services','s-docked'].forEach(id => {
+      document.getElementById(id).closest('.stat').style.display = 'none';
+    });
+  }
+}
+
+// ── INFO PANEL ────────────────────────────────────────────────────────────
+function toggleInfoPanel() {
+  infoCollapsed = !infoCollapsed;
+  document.getElementById('info-content').classList.toggle('collapsed', infoCollapsed);
+  document.getElementById('collapse-hint').textContent = infoCollapsed ? '▼ EXPAND' : '▲ COLLAPSE';
+}
+
+async function loadStructureProfile() {
+  try {
+    const res = await fetch(SERVER + '/structure/' + STRUCTURE_ID, {
+      headers: {'Authorization': 'Bearer ' + sessionToken}
+    });
+    if (!res.ok) return;
+    const p = await res.json();
+    document.getElementById('s-name').textContent     = (p.structure_name || '').toUpperCase();
+    document.getElementById('s-system').textContent   = (p.system_name   || '—').toUpperCase();
+    document.getElementById('s-type').textContent     = (p.structure_type|| '—');
+    if (p.shield_pct !== undefined) {
+      const sv = document.getElementById('s-shield');
+      sv.textContent = p.shield_pct.toFixed(0) + '%';
+      sv.className = 'sv ' + (p.shield_pct < 20 ? 'warn' : 'ok');
+    }
+    if (p.fuel_pct !== undefined) {
+      const fv = document.getElementById('s-fuel');
+      fv.textContent = p.fuel_pct.toFixed(0) + '%';
+      fv.className = 'sv ' + (p.fuel_pct < 10 ? 'warn' : p.fuel_pct < 25 ? '' : 'ok');
+    }
+    if (p.services_online !== undefined)
+      document.getElementById('s-services').textContent = p.services_online + '/' + (p.services_total || '?');
+    if (p.docked_count !== undefined)
+      document.getElementById('s-docked').textContent = p.docked_count;
+    // Routine alerts
+    if (p.routine_alerts && p.routine_alerts.length > 0) {
+      const latest = p.routine_alerts[p.routine_alerts.length - 1];
+      document.getElementById('alert-text').textContent = latest.message;
+      document.getElementById('alert-bar').classList.add('visible');
+    }
+  } catch(e) { /* non-fatal */ }
+}
+
+// ── CHAT ──────────────────────────────────────────────────────────────────
+function appendMessage(role, text) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg msg-' + role;
+  const prefix = document.createElement('div');
+  prefix.className = 'msg-prefix';
+  prefix.textContent = role === 'ai' ? '// ' + STRUCTURE_ID.toUpperCase() + ' SYSTEMS' : '// PILOT';
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  body.textContent = text;
+  div.appendChild(prefix);
+  div.appendChild(body);
+  msgs.appendChild(div);
+  div.scrollIntoView({behavior: 'smooth'});
+  return body;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const msg = input.value.trim();
+  if (!msg || !sessionToken) return;
+
+  input.value = '';
+  document.getElementById('send-btn').disabled = true;
+  document.getElementById('chat-status').textContent = 'TRANSMITTING...';
+
+  appendMessage('user', msg);
+  chatHistory.push({role: 'user', content: msg});
+
+  const aiBody = appendMessage('ai', '');
+  let fullResponse = '';
+
+  try {
+    const res = await fetch(SERVER + '/structure-chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionToken},
+      body: JSON.stringify({message: msg, history: chatHistory.slice(-20), structure_id: STRUCTURE_ID})
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      aiBody.textContent = '[ERROR: ' + (err.detail || 'Unknown error') + ']';
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') break;
+        try {
+          const {text} = JSON.parse(payload);
+          if (text) { fullResponse += text; aiBody.textContent = fullResponse; }
+        } catch(e) {}
+      }
+    }
+
+    chatHistory.push({role: 'assistant', content: fullResponse});
+    localStorage.setItem('struct_history_' + STRUCTURE_ID, JSON.stringify(chatHistory.slice(-40)));
+
+  } catch(e) {
+    aiBody.textContent = '[Connection error: ' + e.message + ']';
+  } finally {
+    document.getElementById('send-btn').disabled = false;
+    document.getElementById('chat-status').textContent = 'READY';
+  }
+}
+
+// Restore chat history
+const storedHistory = localStorage.getItem('struct_history_' + STRUCTURE_ID);
+if (storedHistory) {
+  try {
+    chatHistory = JSON.parse(storedHistory);
+    chatHistory.forEach(m => appendMessage(m.role === 'user' ? 'user' : 'ai', m.content));
+  } catch(e) {}
+}
+</script>
+</body>
+</html>

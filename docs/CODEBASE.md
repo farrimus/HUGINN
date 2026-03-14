@@ -4,7 +4,7 @@
 
 **Hackathon deadline:** March 31, 2026.
 
-**Last updated:** 2026-03-13 (Structure AI backend complete)
+**Last updated:** 2026-03-13 (Structure AI fully built + Move contract deployed to Sui testnet)
 
 ---
 
@@ -73,7 +73,11 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | Chat intent → auto-route | ✓ Navigation phrases in chat trigger route calculation before Claude responds |
 | Structure AI backend | ✓ Built — auth, tier resolution, profile, Claude streaming, alert bridge |
 | Structure auth endpoints (`/auth/challenge`, `/auth/verify`) | ✓ Built — Sui ed25519 + JWT |
-| `static/structure.html` | Pending — SSU browser frontend deferred |
+| `static/structure.html` | ✓ Built — amber terminal UI, auth gate, info panel, SSE chat |
+| Move contract (`AccessRegistry`) | ✓ Deployed to Sui testnet — package `0xf335...55b9` |
+| AccessRegistry `keep-7a` (owner `0x442f`) | ✓ Object `0x89e9...dc0` |
+| AccessRegistry `keep-7a` (owner `0xff09`) | ✓ Object `0xf5ce...708` |
+| EVEVault wallet injection in SSU browser | Pending — in-game connect flow not yet tested |
 | Ship stat auto-extraction | Future — manual input required for now (see Future Thinking below) |
 | ImGui navigation panel | Planned — pending ship params UX decision |
 
@@ -131,7 +135,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │
 ├── static/
 │   ├── index.html                  # In-game browser chat UI (Tailwind, SSE, auto-reconnect)
-│   └── structure.html              # [PENDING] SSU browser Structure AI chat UI
+│   └── structure.html              # SSU browser Structure AI chat UI (amber terminal, wallet auth, SSE chat)
 │
 ├── data/
 │   ├── system_index.json           # 24,501 systems: name (lowercase) → system_id (from world API)
@@ -143,6 +147,14 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   ├── gate_graph.json             # Legacy — world API gate data (empty gateLinks, superseded by systems.json)
 │   └── structures/                 # [generated] Per-structure JSON profiles (created on first OWNER auth)
 │       └── {structure_id}.json
+│
+├── move/
+│   └── access_registry/            # Sui Move package — deployed to testnet
+│       ├── Move.toml               # Package manifest (edition 2024.beta, Sui testnet dep)
+│       ├── sources/
+│       │   └── access_registry.move # AccessRegistry shared object — owner/tribe/vetted lists
+│       └── tests/
+│           └── access_registry_tests.move  # 5 Move unit tests (all passing)
 │
 └── docs/
     ├── CODEBASE.md                 # This file
@@ -156,6 +168,35 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
             ├── 2026-03-11-blockchain-research.md
             └── 2026-03-13-structure-ai-design.md
 ```
+
+---
+
+## Sui / Nova Deployment
+
+| Item | Value |
+|------|-------|
+| Network | Sui testnet (`https://fullnode.testnet.sui.io`) |
+| Package ID | `0xf33568afc1a24e7b5de4db95d01b5db1d0ef6a99269251fb9a355dde844255b9` |
+| AccessRegistry `keep-7a` (owner `0x442f...`) | `0x89e9b9b90acc3b7b576c7fe81015e0a6d333d9ae3e69133c8b1786c826f05dc0` |
+| AccessRegistry `keep-7a` (owner `0xff09...`) | `0xf5ceffdbe44bb38e4796d7b885d0d95c5047fd2fe2e2a4e62eb5865512f64708` |
+| Deployer address (server keypair) | `0x9a3e759f11844fd9f03afd9a51237c027bfaf50c7bf944a6c58ca4091c01f8a7` |
+| Sui config on VPS | `/root/.sui/sui_config/client.yaml` |
+
+**Structure AI URL pattern:**
+```
+http://<VPS_IP>:8745/static/structure.html?id=<structure_id>&registry=<object_id>
+```
+
+**Add tribe/vetted members** (must be called from the owner's wallet):
+```bash
+sui client call \
+  --package 0xf33568afc1a24e7b5de4db95d01b5db1d0ef6a99269251fb9a355dde844255b9 \
+  --module registry --function add_tribe \
+  --args <REGISTRY_OBJECT_ID> <WALLET_ADDRESS> \
+  --gas-budget 5000000
+```
+
+**Known issue:** EVEVault wallet injection into the SSU browser for external URLs is untested. If `window.__suiWallets` is empty on connect, the wallet is not being injected — check EVE Frontier builder Discord for SSU browser wallet injection requirements.
 
 ---
 
