@@ -279,13 +279,59 @@ _ROUTE_RE = re.compile(
     r"(?:a\s+)?(?:route|course|path)?\s*(?:to|toward(?:s)?)\s+([\w][\w\-]*[\w])",
     re.IGNORECASE,
 )
+_SLASH_ROUTE_RE = re.compile(r'^/route\s+(.+)$', re.IGNORECASE)
 
 def _extract_route_destination(message: str) -> Optional[str]:
     m = _ROUTE_RE.search(message)
     return m.group(1) if m else None
 
+@app.get("/current-route", dependencies=[Depends(require_token)])
+async def get_current_route():
+    """Return the active route stored in log_buffer, or null."""
+    return {"route": log_buffer.current_route}
+
+@app.post("/route/clear", dependencies=[Depends(require_token)])
+async def clear_route():
+    """Clear the active route."""
+    log_buffer.current_route = None
+    return {"cleared": True}
+
 @app.post("/chat", dependencies=[Depends(require_token)])
 async def chat(req: ChatRequest):
+    # Handle /route DEST command directly — no Claude needed
+    m = _SLASH_ROUTE_RE.match(req.message.strip())
+    if m:
+        dest = m.group(1).strip()
+        origin = log_buffer.current_system or ""
+        if not origin:
+            def _no_origin():
+                yield f"data: {json.dumps({'text': 'SYSTEM UNKNOWN — jump to a system first.'})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(_no_origin(), media_type="text/event-stream")
+        if not route_engine.ready():
+            def _not_ready():
+                yield f"data: {json.dumps({'text': 'Route engine offline — systems.json not loaded.'})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(_not_ready(), media_type="text/event-stream")
+        result = route_engine.bfs(origin, dest)
+        if result is None:
+            reply = f"NO GATE ROUTE: {origin.upper()} → {dest.upper()} — disconnected clusters."
+        else:
+            log_buffer.add({"type": "route_planned", **result})
+            path = result.get("path", [])
+            jumps = result.get("jumps", 0)
+            if len(path) > 5:
+                path_str = f"{path[0].upper()} → [{len(path)-2} hops] → {path[-1].upper()}"
+            else:
+                path_str = " → ".join(p.upper() for p in path)
+            reply = f"ROUTE SET: {path_str} ({jumps} jump{'s' if jumps != 1 else ''})"
+            for w in result.get("warnings", [])[:3]:
+                reply += f"\nWARN: {w}"
+        def _route_reply(text=reply):
+            yield f"data: {json.dumps({'text': text})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(_route_reply(), media_type="text/event-stream")
+
     # Auto-plot route if message contains a navigation intent
     dest = _extract_route_destination(req.message)
     if dest and route_engine.ready():

@@ -1,14 +1,15 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "overlay_core.h"
+#include "../overlay_ui/render.h"
 
 // ---------------------------------------------------------------------------
 // renderer::initialize — called from worker thread after DLL_PROCESS_ATTACH
-// Phase 3 will start the shared memory polling thread here.
 // ---------------------------------------------------------------------------
 namespace renderer {
 void initialize() {
     OutputDebugStringW(L"[overlay] renderer::initialize — starting hook setup\n");
+    ui::init();
     hook::initialize();
 }
 } // namespace renderer
