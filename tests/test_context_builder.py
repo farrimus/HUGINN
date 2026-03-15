@@ -228,3 +228,131 @@ def test_multiple_structure_alerts_all_shown():
     ]
     result = build_context_block(None, [], "UTR-SN4", structure_alerts=alerts)
     assert result.count("STRUCTURE ALERT") == 2
+
+
+# ---------------------------------------------------------------------------
+# Route planned
+# ---------------------------------------------------------------------------
+
+_SHORT_ROUTE = {
+    "type":       "route_planned",
+    "origin":     "jita",
+    "destination": "utr-sn4",
+    "path":       ["jita", "perimeter", "utr-sn4"],
+    "jumps":      2,
+    "gate_hops":  2,
+    "direct_jumps": 0,
+    "warnings":   [],
+    "highlights": [],
+    "est_time_min": None,
+}
+
+
+def test_route_planned_basic():
+    block = build_context_block(None, [], "JITA", current_route=_SHORT_ROUTE)
+    assert "ROUTE PLANNED" in block
+    assert "JITA" in block
+    assert "PERIMETER" in block
+    assert "UTR-SN4" in block
+    assert "2 jumps" in block
+
+
+def test_route_planned_single_jump_singular():
+    route = {**_SHORT_ROUTE, "path": ["jita", "perimeter"], "jumps": 1}
+    block = build_context_block(None, [], "JITA", current_route=route)
+    assert "1 jump" in block
+    assert "1 jumps" not in block
+
+
+def test_route_planned_est_time_shown():
+    route = {**_SHORT_ROUTE, "est_time_min": 14}
+    block = build_context_block(None, [], "JITA", current_route=route)
+    assert "14 min" in block
+
+
+def test_route_planned_no_est_time_omitted():
+    block = build_context_block(None, [], "JITA", current_route=_SHORT_ROUTE)
+    assert "est" not in block
+
+
+def test_route_planned_warning_shown():
+    route = {**_SHORT_ROUTE, "warnings": ["PERIMETER: O0-class star (37000K) — jump disruption risk"]}
+    block = build_context_block(None, [], "JITA", current_route=route)
+    assert "ROUTE WARN" in block
+    assert "PERIMETER" in block
+    assert "O0" in block
+
+
+def test_route_planned_warnings_capped_at_three():
+    route = {**_SHORT_ROUTE, "warnings": [f"WARN{i}" for i in range(5)]}
+    block = build_context_block(None, [], "JITA", current_route=route)
+    assert block.count("ROUTE WARN") == 3
+
+
+def test_route_planned_highlight_shown():
+    route = {**_SHORT_ROUTE, "highlights": ["UTR-SN4: 8 planets (Temperate, Gas) — resource-rich"]}
+    block = build_context_block(None, [], "JITA", current_route=route)
+    assert "ROUTE STOP" in block
+    assert "8 planets" in block
+
+
+def test_route_planned_highlights_capped_at_two():
+    route = {**_SHORT_ROUTE, "highlights": [f"STOP{i}" for i in range(4)]}
+    block = build_context_block(None, [], "JITA", current_route=route)
+    assert block.count("ROUTE STOP") == 2
+
+
+def test_route_planned_long_path_truncated():
+    long_path = [f"sys{i}" for i in range(10)]
+    route = {**_SHORT_ROUTE, "path": long_path, "jumps": 9}
+    block = build_context_block(None, [], "SYS0", current_route=route)
+    assert "ROUTE PLANNED" in block
+    assert "9 jumps" in block
+    # Intermediate systems not expanded inline
+    assert "sys1" not in block
+    assert "sys5" not in block
+    # But origin and destination present
+    assert "SYS0" in block
+    assert "SYS9" in block
+
+
+def test_route_planned_short_path_not_truncated():
+    route = {**_SHORT_ROUTE}  # 3 systems — below threshold
+    block = build_context_block(None, [], "JITA", current_route=route)
+    # All 3 systems shown
+    assert "JITA" in block
+    assert "PERIMETER" in block
+    assert "UTR-SN4" in block
+
+
+def test_route_error_shown():
+    route = {
+        "type":     "route_planned",
+        "error":    "No gate route found to DELTA",
+        "path":     [],
+        "jumps":    0,
+        "warnings": [],
+        "highlights": [],
+    }
+    block = build_context_block(None, [], "JITA", current_route=route)
+    assert "ROUTE ERROR" in block
+    assert "No gate route" in block
+    assert "ROUTE PLANNED" not in block
+
+
+def test_route_error_suppresses_path_display():
+    route = {
+        "type":  "route_planned",
+        "error": "Unknown system: void",
+        "path":  [],
+        "jumps": 0,
+        "warnings": [],
+        "highlights": [],
+    }
+    block = build_context_block(None, [], "JITA", current_route=route)
+    assert "ROUTE PLANNED" not in block
+
+
+def test_no_route_when_none():
+    block = build_context_block(None, [], "JITA", current_route=None)
+    assert "ROUTE" not in block

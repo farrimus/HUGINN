@@ -121,18 +121,32 @@ def build_context_block(
 
     # --- Planned route (set by client RouteCalculator via route_planned event) ---
     if current_route:
-        path = current_route.get("path", [])
-        jumps = current_route.get("jumps", len(path) - 1 if len(path) > 1 else 0)
-        est = current_route.get("est_time_min")
-        warnings = current_route.get("warnings", [])
-        if path:
-            route_str = f"ROUTE PLANNED: {' → '.join(path)} ({jumps} jump{'s' if jumps != 1 else ''}"
-            if est:
-                route_str += f", est {est} min"
-            route_str += ")"
-            if warnings:
-                route_str += f" | WARNINGS: {'; '.join(warnings)}"
-            lines.append(route_str)
+        error = current_route.get("error")
+        if error:
+            lines.append(f"ROUTE ERROR: {error}")
+        else:
+            path     = current_route.get("path", [])
+            jumps    = current_route.get("jumps", len(path) - 1 if len(path) > 1 else 0)
+            est      = current_route.get("est_time_min")
+            warnings = current_route.get("warnings", [])
+            highlights = current_route.get("highlights", [])
+            if path:
+                # Truncate long paths: show first → ... (N hops) → last
+                if len(path) > 5:
+                    path_str = f"{path[0].upper()} → [{len(path)-2} hops] → {path[-1].upper()}"
+                else:
+                    path_str = " → ".join(p.upper() for p in path)
+                route_str = f"ROUTE PLANNED: {path_str} ({jumps} jump{'s' if jumps != 1 else ''}"
+                if est:
+                    route_str += f", est {est} min"
+                route_str += ")"
+                lines.append(route_str)
+                # Warnings on their own line — cap at 3
+                for w in warnings[:3]:
+                    lines.append(f"ROUTE WARN: {w}")
+                # Resource/exploration highlights — cap at 2
+                for h in highlights[:2]:
+                    lines.append(f"ROUTE STOP: {h}")
 
     block = "\n".join(lines)
     return block[:2000]
