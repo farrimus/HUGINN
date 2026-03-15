@@ -10,11 +10,20 @@ INDEX_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "system_index
 
 log = logging.getLogger(__name__)
 
-REAL_BASE_URL = "https://world-api-stillness.live.tech.evefrontier.com"
+REAL_BASE_URL = "https://world-api-utopia.uat.pub.evefrontier.com"
+
+_WORLD_API_URL_MAP = {
+    "utopia":    "https://world-api-utopia.uat.pub.evefrontier.com",
+    "stillness": "https://world-api-stillness.live.tech.evefrontier.com",
+}
 
 class WorldAPIClient:
     def __init__(self, base_url: str = None, cache_ttl: float = 30.0):
-        self.base_url = base_url or os.getenv("WORLD_API_BASE_URL", REAL_BASE_URL)
+        # WORLD_API_BASE_URL takes precedence; then WORLD_API_ENV; then utopia default
+        _env_url = _WORLD_API_URL_MAP.get(
+            os.getenv("WORLD_API_ENV", "utopia"), _WORLD_API_URL_MAP["utopia"]
+        )
+        self.base_url = base_url or os.getenv("WORLD_API_BASE_URL") or _env_url
         self.cache_ttl = cache_ttl
         self._cache: dict = {}          # cache_key -> (data, timestamp)
         self._system_index: dict = {}   # name (lowercase) -> system_id
@@ -234,6 +243,20 @@ class WorldAPIClient:
     async def get_system_by_id(self, system_id: int) -> Optional[dict]:
         """Fetch full system data by ID directly."""
         return await self._cached_fetch(f"/v2/solarsystems/{system_id}")
+
+    async def get_killmails(self, system_id: int) -> list:
+        """Fetch recent killmails for a solar system. Returns [] on error."""
+        try:
+            result = await self._fetch("/v2/killmails", {"solarSystemId": system_id})
+            if isinstance(result, list):
+                return result
+            # Some API versions wrap in {data: [...]}
+            if isinstance(result, dict):
+                return result.get("data", [])
+            return []
+        except Exception as e:
+            log.warning("get_killmails(%s) failed: %s", system_id, e)
+            return []
 
 # Global singleton
 world_api = WorldAPIClient()
