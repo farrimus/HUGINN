@@ -8,6 +8,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from parsers import parse_gamelog_line, parse_chatlog_line
 from session_tracker import SessionTracker
+from route_calculator import RouteCalculator
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -81,6 +82,11 @@ def _decode_raw(raw: bytes, encoding: str, strip_bom: bool) -> str:
         elif raw.startswith(b"\xef\xbb\xbf"):
             raw = raw[3:]
     return raw.decode(encoding, errors="ignore")
+
+
+# Module-level RouteCalculator — shared across all log handlers.
+# systems.json is downloaded once on first /route command.
+_route_calc = RouteCalculator(SERVER_URL, SERVER_TOKEN, data_dir=os.path.dirname(__file__) or ".")
 
 
 class LogFileHandler(FileSystemEventHandler):
@@ -180,7 +186,17 @@ class LogFileHandler(FileSystemEventHandler):
                     if channel:
                         parsed["channel"] = channel
                     for out_event in self.tracker.process(parsed):
-                        send_event(out_event)
+                        # Intercept /route commands — run locally, don't send chat noise
+                        if (out_event.get("type") == "chat"
+                                and out_event.get("message", "").startswith("/route")):
+                            route_event = _route_calc.handle_command(
+                                out_event["message"],
+                                self.tracker.current_system,
+                            )
+                            if route_event:
+                                send_event(route_event)
+                        else:
+                            send_event(out_event)
         except Exception as e:
             log.warning("Error reading %s: %s", path, e)
 
