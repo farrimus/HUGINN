@@ -11,6 +11,20 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
+# Module-level imports for testability (can be patched in tests).
+# nova_client and structure_profile helpers are imported lazily at first use to
+# avoid circular imports at module load time.
+try:
+    from src.nova_client import nova_client
+except Exception:  # pragma: no cover
+    nova_client = None  # type: ignore[assignment]
+
+try:
+    from src.structure_profile import load_profile, save_profile
+except Exception:  # pragma: no cover
+    load_profile = None  # type: ignore[assignment]
+    save_profile = None  # type: ignore[assignment]
+
 SSU_POLL_INTERVAL = 60      # seconds
 KILLMAIL_POLL_INTERVAL = 300  # 5 minutes
 TURRET_POLL_INTERVAL = 60    # seconds (same as SSU poll — spec §background-tasks)
@@ -18,42 +32,122 @@ TURRET_POLL_INTERVAL = 60    # seconds (same as SSU poll — spec §background-t
 _running = False
 
 
-async def poll_ssu_state(ssu_object_id: str, structure_id: str, system_id: int):
-    """Poll sui_getObject on SSU_OBJECT_ID → append ssu_state event."""
-    from src.nova_client import nova_client
-    from src.memory_store import get_memory_store
+async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
+    """Poll SSU on-chain state. Two hops: StorageUnit → NetworkNode for fuel.
 
-    store = get_memory_store(structure_id)
+    Hop 1 fetches the StorageUnit object for status and energy_source_id.
+    Hop 2 fetches the NetworkNode (energy_source_id) for fuel quantity/capacity
+    and connected_assembly_ids (proxy for services_online).
+
+    shield_pct is NOT polled — SSUs have no on-chain shield field.
+    docked_count is NOT polled — no on-chain field exists; manual-override only.
+    """
+    # Hop 1: fetch StorageUnit
     try:
-        result = await nova_client._rpc("sui_getObject", [
+        ssu_data = await nova_client._rpc("sui_getObject", [
             ssu_object_id,
             {"showContent": True, "showType": True}
         ])
-        fields = (
-            result.get("result", {})
+    except Exception as e:
+        log.warning("poll_ssu_state: RPC hop 1 failed for %s: %s", ssu_object_id, e)
+        return
+
+    fields = (
+        ssu_data.get("result", {})
+        .get("data", {})
+        .get("content", {})
+        .get("fields", {})
+    )
+    if not fields:
+        log.warning("poll_ssu_state: no fields in StorageUnit object %s", ssu_object_id)
+        return
+
+    profile = load_profile(structure_id)
+    if not profile:
+        log.warning("poll_ssu_state: no profile found for structure_id %s", structure_id)
+        return
+
+    # Status: ONLINE / OFFLINE / NULL from AssemblyStatus enum
+    status_val = fields.get("status", {})
+    if isinstance(status_val, dict):
+        inner = status_val.get("fields", {}).get("status")
+        if isinstance(inner, dict):
+            # Sui Move enum variant: {"variant": "ONLINE"} or {"name": "ONLINE"}
+            status_str = inner.get("variant") or inner.get("name") or str(inner)
+        else:
+            status_str = str(inner) if inner is not None else None
+    else:
+        status_str = str(status_val) if status_val is not None else None
+
+    # Hop 2: fetch NetworkNode for fuel and connected assemblies
+    energy_source_id = fields.get("energy_source_id")
+    # energy_source_id may be nested: {"fields": {"id": "0x..."}} or a bare string or None/Some
+    if isinstance(energy_source_id, dict):
+        energy_source_id = (
+            energy_source_id.get("fields", {}).get("id")
+            or energy_source_id.get("id")
+            or energy_source_id.get("Some")
+        )
+
+    fuel_pct = None
+    services_online = None
+    if energy_source_id:
+        try:
+            node_data = await nova_client._rpc("sui_getObject", [
+                energy_source_id,
+                {"showContent": True, "showType": True}
+            ])
+        except Exception as e:
+            log.warning("poll_ssu_state: RPC hop 2 failed for NetworkNode %s: %s",
+                        energy_source_id, e)
+            node_data = {}
+
+        node_fields = (
+            node_data.get("result", {})
             .get("data", {})
             .get("content", {})
             .get("fields", {})
         )
-        if fields:
-            log.debug("SSU object fields: %s", list(fields.keys()))
-            data = {
-                "fuel_pct": _extract_fuel_pct(fields),
-                "anchor_status": fields.get("anchorStatus") or fields.get("anchor_status") or "unknown",
-                "services_online": fields.get("servicesOnline") or fields.get("services_online") or 0,
-                "services_total": fields.get("servicesTotal") or fields.get("services_total") or 0,
-                "raw_fields": list(fields.keys()),
-            }
-            store.append_event("ssu_state", system_id, data)
-            log.info("SSU state polled: fuel=%s anchor=%s", data["fuel_pct"], data["anchor_status"])
-        else:
-            log.warning("SSU poll: no fields in response for %s", ssu_object_id)
-    except Exception as e:
-        log.warning("SSU state poll failed: %s", e)
+        if node_fields:
+            fuel = node_fields.get("fuel", {})
+            if isinstance(fuel, dict):
+                fuel = fuel.get("fields", fuel)
+            qty = fuel.get("quantity")
+            cap = fuel.get("max_capacity")
+            if qty is not None and cap is not None and int(cap) > 0:
+                fuel_pct = round(int(qty) * 100 / int(cap), 1)
+
+            # connected_assembly_ids length → proxy for services_online
+            connected = node_fields.get("connected_assembly_ids") or []
+            services_online = len(connected)
+    else:
+        log.debug("poll_ssu_state: no energy_source_id on SSU %s, skipping hop 2", ssu_object_id)
+
+    changed = False
+    if fuel_pct is not None and profile.fuel_pct != fuel_pct:
+        profile.fuel_pct = fuel_pct
+        changed = True
+    if services_online is not None and profile.services_online != services_online:
+        profile.services_online = services_online
+        changed = True
+    # shield_pct NOT polled — SSUs have no on-chain shield field
+    # docked_count NOT polled — no on-chain field; manual-override only
+
+    if status_str:
+        log.info("SSU %s status: %s  fuel: %s%%  services: %s",
+                 structure_id, status_str, fuel_pct, services_online)
+
+    if changed:
+        save_profile(profile)
+        log.info("poll_ssu_state: updated profile for %s", structure_id)
 
 
 def _extract_fuel_pct(fields: dict) -> float:
-    """Best-effort fuel percentage extraction. Returns 100.0 if not determinable."""
+    """Deprecated — fuel extraction is now inline in poll_ssu_state (two-hop RPC).
+
+    Retained to avoid breaking any direct callers outside this module, but no
+    longer called internally. Will be removed in a future cleanup pass.
+    """
     for key in ("fuelAmount", "fuel_amount", "fuel", "fuelPct", "fuel_pct"):
         val = fields.get(key)
         if val is not None:
@@ -182,7 +276,7 @@ async def poll_turret(turret_object_id: str, structure_id: str, system_id: int):
 async def _ssu_loop(ssu_object_id: str, structure_id: str, system_id: int):
     """Run SSU + Sui events polling every 60s."""
     while True:
-        await poll_ssu_state(ssu_object_id, structure_id, system_id)
+        await poll_ssu_state(structure_id, ssu_object_id)
         await poll_sui_events(ssu_object_id, structure_id, system_id)
         await asyncio.sleep(SSU_POLL_INTERVAL)
 
