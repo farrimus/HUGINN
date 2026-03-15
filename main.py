@@ -313,20 +313,43 @@ async def chat(req: ChatRequest):
                 yield f"data: {json.dumps({'text': 'Route engine offline — systems.json not loaded.'})}\n\n"
                 yield "data: [DONE]\n\n"
             return StreamingResponse(_not_ready(), media_type="text/event-stream")
-        result = route_engine.bfs(origin, dest)
+
+        # Try hybrid A* (gates + direct jumps with fuel calc) then fall back to gate-only BFS
+        profile = load_profile()
+        result = route_engine.route(origin, dest, profile)
         if result is None:
-            reply = f"NO GATE ROUTE: {origin.upper()} → {dest.upper()} — disconnected clusters."
+            result = route_engine.bfs(origin, dest)
+
+        if result is None:
+            reply = f"NO ROUTE: {origin.upper()} → {dest.upper()} — systems unreachable within fuel range."
         else:
             log_buffer.add({"type": "route_planned", **result})
-            path = result.get("path", [])
-            jumps = result.get("jumps", 0)
+            path       = result.get("path", [])
+            jumps      = result.get("jumps", 0)
+            gate_hops  = result.get("gate_hops", 0)
+            direct_j   = result.get("direct_jumps", 0)
+            fuel_used  = result.get("fuel_used")
+            fuel_left  = result.get("fuel_remaining")
+
             if len(path) > 5:
                 path_str = f"{path[0].upper()} → [{len(path)-2} hops] → {path[-1].upper()}"
             else:
                 path_str = " → ".join(p.upper() for p in path)
-            reply = f"ROUTE SET: {path_str} ({jumps} jump{'s' if jumps != 1 else ''})"
-            for w in result.get("warnings", [])[:3]:
+
+            jump_label = f"{jumps} jump{'s' if jumps != 1 else ''}"
+            if gate_hops > 0 and direct_j > 0:
+                jump_label += f" ({gate_hops} gate, {direct_j} direct)"
+            elif direct_j > 0:
+                jump_label += " (direct)"
+
+            reply = f"ROUTE SET: {path_str} ({jump_label})"
+            if fuel_used is not None and fuel_used > 0:
+                reply += f"\nFUEL: {fuel_used:.1f}t"
+                if fuel_left is not None:
+                    reply += f" | {fuel_left:.1f}t remaining"
+            for w in result.get("warnings", [])[:2]:
                 reply += f"\nWARN: {w}"
+
         def _route_reply(text=reply):
             yield f"data: {json.dumps({'text': text})}\n\n"
             yield "data: [DONE]\n\n"

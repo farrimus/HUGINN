@@ -8,7 +8,6 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from parsers import parse_gamelog_line, parse_chatlog_line
 from session_tracker import SessionTracker
-from route_calculator import RouteCalculator
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -84,9 +83,9 @@ def _decode_raw(raw: bytes, encoding: str, strip_bom: bool) -> str:
     return raw.decode(encoding, errors="ignore")
 
 
-# Module-level RouteCalculator — shared across all log handlers.
-# systems.json is downloaded once on first /route command.
-_route_calc = RouteCalculator(SERVER_URL, SERVER_TOKEN, data_dir=os.path.dirname(__file__) or ".")
+# Route command parser — used only to extract the destination from "/route DEST".
+# Actual routing is delegated to the server's POST /route (hybrid A* + fuel calc).
+from route_calculator import _parse_command as _parse_route_command
 
 
 class LogFileHandler(FileSystemEventHandler):
@@ -186,15 +185,26 @@ class LogFileHandler(FileSystemEventHandler):
                     if channel:
                         parsed["channel"] = channel
                     for out_event in self.tracker.process(parsed):
-                        # Intercept /route commands — run locally, don't send chat noise
+                        # Intercept /route commands — delegate to server for hybrid A* routing.
+                        # Server stores the result in log_buffer; no need to POST to /log/ingest.
                         if (out_event.get("type") == "chat"
                                 and out_event.get("message", "").startswith("/route")):
-                            route_event = _route_calc.handle_command(
-                                out_event["message"],
-                                self.tracker.current_system,
-                            )
-                            if route_event:
-                                send_event(route_event)
+                            dest = _parse_route_command(out_event["message"])
+                            origin = self.tracker.current_system
+                            if dest and origin:
+                                headers = {"X-Server-Token": SERVER_TOKEN} if SERVER_TOKEN else {}
+                                try:
+                                    requests.post(
+                                        f"{SERVER_URL}/route",
+                                        json={"origin": origin, "destination": dest},
+                                        headers=headers,
+                                        timeout=30,
+                                    )
+                                    log.info("Route requested: %s → %s", origin, dest)
+                                except Exception as e:
+                                    log.warning("Route request failed: %s", e)
+                            else:
+                                log.warning("Route command ignored: origin=%r dest=%r", origin, dest)
                         else:
                             send_event(out_event)
         except Exception as e:
