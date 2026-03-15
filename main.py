@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse, JSONResponse, Response
+from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
@@ -78,6 +78,23 @@ async def health():
 async def rebuild_index():
     count = await world_api.rebuild_index()
     return {"systems_indexed": count}
+
+@app.get("/data/systems", dependencies=[Depends(require_token)])
+async def get_systems(request: Request):
+    """Serve systems.json for client-side RouteCalculator. ~7 MB; ETag + 304 supported."""
+    path = os.path.join(os.path.dirname(__file__), "data", "systems.json")
+    if not os.path.exists(path):
+        return JSONResponse(status_code=503, content={"detail": "systems.json not found. Run build_universe.py."})
+    # Read only built_at for ETag — avoids loading 7 MB into memory just for the tag.
+    with open(path) as f:
+        head = f.read(128)
+    import re as _re
+    m = _re.search(r'"built_at"\s*:\s*"([^"]+)"', head)
+    etag = f'"{m.group(1)}"' if m else '"unknown"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304)
+    return FileResponse(path, media_type="application/json",
+                        headers={"ETag": etag, "Cache-Control": "public, max-age=86400"})
 
 @app.get("/data/gate-graph", dependencies=[Depends(require_token)])
 async def gate_graph(request: Request):
