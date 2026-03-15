@@ -70,6 +70,14 @@ class NovaClient:
             log.warning("Nova RPC error fetching AccessRegistry %s: %s", object_id, e)
             return None
 
+    async def _rpc(self, method: str, params: list) -> dict:
+        """Generic Sui JSON-RPC call. Returns the full response dict."""
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(self._rpc_url, json=payload)
+            r.raise_for_status()
+            return r.json()
+
     def resolve_tier(self, address: str, registry: AccessRegistry) -> str:
         """Resolve access tier for a wallet address against an AccessRegistry."""
         addr = address.lower()

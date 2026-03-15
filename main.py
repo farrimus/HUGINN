@@ -48,9 +48,23 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app):
-    # Run index build in background — don't block startup
-    # The index loads from disk instantly if cached; API fetch retries on DNS failure
+    # World API index (existing)
     asyncio.create_task(world_api.load_or_build_index())
+
+    # Bootstrap memory store
+    _structure_id = os.environ.get("NOVA_REGISTRY_STRUCTURE_ID", "keep-7a")
+    from src.memory_store import get_memory_store
+    get_memory_store(_structure_id)  # creates dirs if missing
+
+    # Start SSU background polling
+    _ssu_object_id = os.environ.get("SSU_OBJECT_ID", "")
+    from src.structure_profile import load_profile as load_structure_profile_fn
+    _profile = load_structure_profile_fn(_structure_id)
+    _system_id = _profile.system_id if _profile else 0
+
+    from src.ssu_poller import start_background_tasks
+    start_background_tasks(_structure_id, _ssu_object_id, _system_id)
+
     yield
 
 app = FastAPI(title="Ship AI Companion", lifespan=lifespan)
