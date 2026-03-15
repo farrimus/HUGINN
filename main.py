@@ -417,14 +417,35 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
         profile.routine_alerts = (profile.routine_alerts + routine)[-10:]
         save_structure_profile(profile)
 
-    # Fetch local system data for context
-    system_data = None
-    if profile.system_name:
-        system_data = await world_api.get_system(profile.system_name)
-    local_kills = len((system_data or {}).get("kills", []))
-    local_pilots = 0  # world API doesn't expose pilot count directly
+    # Memory
+    from src.memory_store import get_memory_store
+    mem_store = get_memory_store(req.structure_id)
+    summary = mem_store.get_summary()
+    memory_text = summary.get("text", "")
 
-    context = build_structure_context(profile, tier, local_kills=local_kills, local_pilots=local_pilots)
+    # Kills nearby (best-effort)
+    kills_nearby = 0
+    if profile.system_id:
+        try:
+            kills_raw = await world_api.get_killmails(system_id=profile.system_id)
+            from datetime import datetime, timezone, timedelta
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+            for k in kills_raw:
+                t = k.get("time") or k.get("timestamp") or ""
+                try:
+                    kt = datetime.fromisoformat(t.replace("Z", "+00:00"))
+                    if kt >= cutoff:
+                        kills_nearby += 1
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
+    context = build_structure_context(
+        profile, tier,
+        memory_text=memory_text,
+        kills_nearby=kills_nearby,
+    )
 
     def event_stream():
         try:
@@ -450,6 +471,11 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
         except Exception as e:
             log.error("Structure chat stream error: %s", e)
             yield f"data: {json.dumps({'error': 'Stream interrupted.'})}\n\n"
-        yield "data: [DONE]\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+            try:
+                mem_store.rebuild_summary()
+            except Exception as e_rebuild:
+                log.warning("Summary rebuild failed: %s", e_rebuild)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

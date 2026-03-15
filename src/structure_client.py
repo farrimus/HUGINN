@@ -6,6 +6,7 @@ Separate from claude_client.py — different system prompt, different context fo
 import os
 import time
 import logging
+import json as _json
 from typing import Optional
 from anthropic import Anthropic
 
@@ -13,7 +14,51 @@ from src.structure_profile import StructureProfile
 
 log = logging.getLogger(__name__)
 
-STRUCTURE_SYSTEM_PROMPT = """You are the intelligence of {structure_name}, a {structure_type} in {system_name}.
+_GATE_GRAPH: dict | None = None
+_GATE_GRAPH_PATH = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "data", "gate_graph.json")
+)
+
+def _load_gate_graph() -> dict:
+    global _GATE_GRAPH
+    if _GATE_GRAPH is None:
+        try:
+            with open(_GATE_GRAPH_PATH) as f:
+                data = _json.load(f)
+            # Support both flat dict and {adj: {...}} format
+            if "adj" in data:
+                _GATE_GRAPH = data["adj"]
+            else:
+                _GATE_GRAPH = data
+        except Exception as e:
+            log.warning("Failed to load gate_graph.json: %s", e)
+            _GATE_GRAPH = {}
+    return _GATE_GRAPH
+
+
+def _spectral_label(code: str) -> str:
+    """Convert spectral class code to human label."""
+    _MAP = {
+        "G": "G (Yellow)", "G2": "G2 (Yellow)",
+        "K": "K (Orange)", "K7": "K7 (Orange)",
+        "M": "M (Red)", "F": "F (White-Yellow)",
+        "A": "A (White)", "B": "B (Blue-White)",
+        "O": "O (Blue)",
+    }
+    if not code:
+        return "Unknown"
+    return _MAP.get(code, _MAP.get(code[:1], code))
+
+
+def _count_planets(planets: list) -> dict:
+    """Count planets by typeDescription."""
+    counts: dict = {}
+    for p in planets:
+        ptype = p.get("typeDescription") or "Unknown"
+        counts[ptype] = counts.get(ptype, 0) + 1
+    return counts
+
+STRUCTURE_SYSTEM_PROMPT = """You are the intelligence of {structure_name}, a {structure_type} in {system_name}, {region_name}.
 
 You are not a ship AI. You do not move. You watch.
 
@@ -30,34 +75,83 @@ Two knowledge tiers:
 
 When routine maintenance items are due, state them plainly. When the structure is threatened, say so without drama. When pilots ask about the structure's past, you may have incomplete records."""
 
-CONTEXT_CAP = 1500
+CONTEXT_CAP = 2000
 
 
 def build_structure_context(
-    profile: StructureProfile,
+    profile,
     tier: str,
-    local_kills: int = 0,
-    local_pilots: int = 0,
+    memory_text: str = "",
+    kills_nearby: int = 0,
 ) -> str:
     """
-    Build the [STRUCTURE SENSORS] context block for the Structure AI.
+    Build the [STRUCTURE SENSORS] + [STRUCTURE MEMORY] context block.
     Filters sensitive fields based on access tier.
+    Total output is capped at CONTEXT_CAP (2000) chars.
     """
-    lines = []
-    lines.append(f"STRUCTURE: {profile.structure_name} | type: {profile.structure_type} | system: {profile.system_name}")
+    from src.galaxy_db import galaxy_db
 
+    lines = []
+    # Identity line always present
+    region_part = f" | region: {profile.region_name}" if profile.region_name else ""
+    lines.append(f"STRUCTURE: {profile.structure_name} | type: {profile.structure_type} | system: {profile.system_name}{region_part}")
+
+    # Universe data from galaxy_db (OWNER/TRIBE only for full detail)
+    if tier in ("OWNER", "TRIBE") and profile.system_id:
+        try:
+            sys_row = galaxy_db.get_system(profile.system_id)
+            if sys_row:
+                spectral = sys_row.get("star_spectral_class") or ""
+                star_label = _spectral_label(spectral)
+                celestials = galaxy_db.get_celestials_in_system(profile.system_id)
+                planet_counts = _count_planets(celestials.get("planets", []))
+                lagrange_count = len(celestials.get("lagrange_points", []))
+                star_line = f"STAR: {star_label}"
+                if planet_counts:
+                    planet_str = ", ".join(f"{v}× {k}" for k, v in sorted(planet_counts.items()))
+                    star_line += f" | PLANETS: {planet_str}"
+                if lagrange_count:
+                    star_line += f" | LAGRANGE: {lagrange_count} points"
+                lines.append(star_line)
+        except Exception as e:
+            log.warning("build_structure_context: galaxy_db lookup failed: %s", e)
+
+    # Gates from gate_graph.json
+    if profile.system_name:
+        gates = _load_gate_graph().get(profile.system_name.upper(), [])
+        if gates:
+            lines.append(f"GATES: {', '.join(gates)}")
+
+    # Status (OWNER/TRIBE only)
     if tier in ("OWNER", "TRIBE"):
         lines.append(f"STATUS: shield: {profile.shield_pct:.0f}% | fuel: {profile.fuel_pct:.0f}% | services: {profile.services_online}/{profile.services_total}")
-        lines.append(f"DOCKED: {profile.docked_count} ship(s)")
+        if kills_nearby > 0:
+            lines.append(f"KILLS NEARBY: {kills_nearby} in system (2h)")
 
-    lines.append(f"LOCAL: {local_pilots} pilots in system | kills last 1h: {local_kills}")
-
+    # Pending alerts (OWNER/TRIBE only)
     if tier in ("OWNER", "TRIBE") and profile.routine_alerts:
         for alert in profile.routine_alerts[-3:]:
             lines.append(f"PENDING: {alert.get('message', '')}")
 
-    block = "\n".join(lines)
-    return block[:CONTEXT_CAP]
+    sensors_block = "\n".join(lines)
+
+    # Memory block (OWNER/TRIBE only, capped at 300 chars)
+    memory_block = ""
+    if tier in ("OWNER", "TRIBE") and memory_text:
+        memory_block = f"\n[STRUCTURE MEMORY]\n{memory_text[:300]}"
+
+    full = sensors_block + memory_block
+
+    # Hard cap: truncate memory first, then sensors
+    if len(full) <= CONTEXT_CAP:
+        return full
+
+    # Drop memory first
+    if len(sensors_block) <= CONTEXT_CAP:
+        return sensors_block
+
+    # Truncate sensors from bottom
+    return sensors_block[:CONTEXT_CAP]
 
 
 def detect_alerts(profile: StructureProfile) -> list:
@@ -97,6 +191,7 @@ class StructureClient:
             structure_name=profile.structure_name,
             structure_type=profile.structure_type,
             system_name=profile.system_name,
+            region_name=profile.region_name or "Unknown Region",
             tier=tier,
             character_name=character_name,
             character_id=character_id,

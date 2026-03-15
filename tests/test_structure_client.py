@@ -73,3 +73,51 @@ def test_lobby_prompt_has_no_internal_data():
 def test_lobby_client_instantiates():
     client = LobbyClient()
     assert client is not None
+
+import json, os
+
+def make_profile_with_system(**kwargs):
+    base = dict(structure_id="keep-7a", owner_address="0xabc",
+                structure_name="Keep-7A", structure_type="Smart Storage Unit",
+                system_name="UTR-SN4", region_name="Deep Space", system_id=30000001,
+                shield_pct=97.0, fuel_pct=84.0,
+                services_online=3, services_total=3, docked_count=2)
+    base.update(kwargs)
+    return StructureProfile(**base)
+
+def test_context_includes_region_name():
+    ctx = build_structure_context(make_profile_with_system(), "OWNER")
+    assert "Deep Space" in ctx
+
+def test_context_cap_is_2000():
+    from src.structure_client import CONTEXT_CAP
+    assert CONTEXT_CAP == 2000
+
+def test_context_removes_local_pilots_line():
+    ctx = build_structure_context(make_profile_with_system(), "OWNER")
+    assert "LOCAL:" not in ctx
+    assert "pilots in system" not in ctx
+
+def test_context_vetted_hides_status():
+    ctx = build_structure_context(make_profile_with_system(), "VETTED")
+    assert "STATUS" not in ctx
+    assert "shield:" not in ctx.lower()
+
+def test_system_prompt_includes_region_name():
+    from src.structure_client import StructureClient
+    client = StructureClient()
+    prompt = client.build_system_prompt(
+        make_profile_with_system(region_name="The Forge"),
+        "OWNER", "Alice", 123
+    )
+    assert "The Forge" in prompt
+
+def test_context_with_memory_block(tmp_path):
+    from src.memory_store import MemoryStore
+    store = MemoryStore(base_dir=str(tmp_path), structure_id="keep-7a")
+    store.bootstrap()
+    store.append_event("docking", 1, {"pilot_address": "0xa", "character_name": "Bob"})
+    store.rebuild_summary()
+    summary = store.get_summary()
+    ctx = build_structure_context(make_profile_with_system(), "OWNER", memory_text=summary["text"])
+    assert "[STRUCTURE MEMORY]" in ctx  # must be injected as named block
