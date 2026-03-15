@@ -344,11 +344,26 @@ async def auth_verify(req: VerifyRequest):
             registry = await nova_client.get_access_registry(registry_id)
             if registry and nova_client.resolve_tier(req.address, registry) == "OWNER":
                 # Auto-create profile
+                # Resolve system info at creation
+                _sys_name = os.environ.get("STRUCTURE_SYSTEM_NAME", "")
+                _system_id = 0
+                _region_name = ""
+                if _sys_name:
+                    from src.galaxy_db import galaxy_db as _gdb
+                    _sys_row = _gdb.get_system(_sys_name)
+                    if _sys_row:
+                        _system_id = _sys_row.get("solarSystemId") or 0
+                        _region_name = _sys_row.get("regionName") or ""
+                        _sys_name = _sys_row.get("name") or _sys_name
+
                 profile = StructureProfile(
                     structure_id=req.structure_id,
                     owner_address=req.address,
                     owner_character_id=character_id,
                     nova_registry_object_id=registry_id,
+                    system_name=_sys_name,
+                    system_id=_system_id,
+                    region_name=_region_name,
                 )
                 try:
                     save_structure_profile(profile)
@@ -373,6 +388,43 @@ async def auth_verify(req: VerifyRequest):
         "tier": tier,
         "structure_id": req.structure_id,
     })
+
+    # 6. Upsert pilot profile in memory store
+    _sid = req.structure_id
+    from src.memory_store import get_memory_store
+    mem = get_memory_store(_sid)
+    mem.upsert_pilot(
+        address=req.address,
+        character_name=character_name,
+        character_id=character_id,
+        tier=tier,
+    )
+
+    # 7. Backfill system_id / region_name on profile if missing
+    if profile and (profile.system_id == 0 or not profile.region_name):
+        _sys_name = os.environ.get("STRUCTURE_SYSTEM_NAME", profile.system_name or "")
+        if _sys_name:
+            from src.galaxy_db import galaxy_db
+            sys_row = galaxy_db.get_system(_sys_name)
+            if sys_row:
+                changed = False
+                if profile.system_id == 0:
+                    profile.system_id = sys_row.get("solarSystemId") or 0
+                    changed = True
+                if not profile.region_name:
+                    profile.region_name = sys_row.get("regionName") or "Unknown Region"
+                    changed = True
+                if not profile.system_name:
+                    profile.system_name = sys_row.get("name") or _sys_name
+                    changed = True
+                if changed:
+                    try:
+                        save_structure_profile(profile)
+                        log.info("Profile backfilled: system_id=%d region=%s",
+                                 profile.system_id, profile.region_name)
+                    except Exception as e:
+                        log.warning("Profile backfill save failed: %s", e)
+
     return {"token": token, "tier": tier, "character_name": character_name, "character_id": character_id}
 
 
