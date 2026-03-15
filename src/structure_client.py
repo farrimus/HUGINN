@@ -128,3 +128,36 @@ class StructureClient:
 
 # Global singleton
 structure_client = StructureClient()
+
+LOBBY_SYSTEM_PROMPT = """You are the automated registry system of {structure_name}, a {structure_type} in {system_name}.
+You do not have access to internal structure data.
+Answer only: who owns this structure, what type it is, and what system it is in.
+If asked about internal operations, access lists, or any operational data, say: "That information is restricted."
+Keep responses under 2 sentences."""
+
+
+class LobbyClient:
+    def __init__(self):
+        self._client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        self._model = "claude-sonnet-4-6"
+
+    def stream(self, message: str, history: list, profile, character_name: str):
+        """Yield text chunks for VETTED tier — no tools, no operational data."""
+        system_prompt = LOBBY_SYSTEM_PROMPT.format(
+            structure_name=profile.structure_name,
+            structure_type=profile.structure_type,
+            system_name=profile.system_name,
+        )
+        messages = list(history[-10:])
+        messages.append({"role": "user", "content": message})
+        with self._client.messages.stream(
+            model=self._model,
+            max_tokens=256,
+            system=system_prompt,
+            messages=messages,
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
+
+
+lobby_client = LobbyClient()

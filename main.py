@@ -23,7 +23,7 @@ from src.ship_profile import (
 )
 from src.structure_auth import nonce_store, verify_sui_personal_message, issue_jwt, decode_jwt, lookup_character
 from src.structure_profile import StructureProfile, load_profile as load_structure_profile, save_profile as save_structure_profile
-from src.structure_client import structure_client, build_structure_context, detect_alerts
+from src.structure_client import structure_client, lobby_client, build_structure_context, detect_alerts
 from src.nova_client import nova_client
 
 log = logging.getLogger(__name__)
@@ -428,15 +428,24 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
 
     def event_stream():
         try:
-            for chunk in structure_client.stream(
-                message=req.message,
-                history=req.history,
-                context_block=context,
-                profile=profile,
-                tier=tier,
-                character_name=session["character_name"],
-                character_id=session["character_id"],
-            ):
+            if tier == "VETTED":
+                gen = lobby_client.stream(
+                    message=req.message,
+                    history=req.history,
+                    profile=profile,
+                    character_name=session["character_name"],
+                )
+            else:
+                gen = structure_client.stream(
+                    message=req.message,
+                    history=req.history,
+                    context_block=context,
+                    profile=profile,
+                    tier=tier,
+                    character_name=session["character_name"],
+                    character_id=session["character_id"],
+                )
+            for chunk in gen:
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
         except Exception as e:
             log.error("Structure chat stream error: %s", e)
