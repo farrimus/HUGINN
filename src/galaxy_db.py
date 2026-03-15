@@ -23,27 +23,29 @@ class GalaxyDB:
     def _row_to_dict(self, row) -> dict:
         return dict(row) if row else None
 
+    _SQL_SYSTEM_BY_ID = """
+        SELECT s.*, r.name AS regionName, c.name AS constellationName
+        FROM SolarSystems s
+        LEFT JOIN Regions r ON s.regionId = r.regionId
+        LEFT JOIN Constellations c ON s.constellationId = c.constellationId
+        WHERE s.solarSystemId = ?
+    """
+    _SQL_SYSTEM_BY_NAME = """
+        SELECT s.*, r.name AS regionName, c.name AS constellationName
+        FROM SolarSystems s
+        LEFT JOIN Regions r ON s.regionId = r.regionId
+        LEFT JOIN Constellations c ON s.constellationId = c.constellationId
+        WHERE LOWER(s.name) = LOWER(?)
+    """
+
     def get_system(self, name_or_id) -> dict | None:
         """Return SolarSystems row joined with region/constellation names."""
-        sql = """
-            SELECT s.*,
-                   r.name AS regionName,
-                   c.name AS constellationName
-            FROM SolarSystems s
-            LEFT JOIN Regions r ON s.regionId = r.regionId
-            LEFT JOIN Constellations c ON s.constellationId = c.constellationId
-            WHERE {}
-        """
         try:
             with self._connect() as conn:
                 if isinstance(name_or_id, int) or (isinstance(name_or_id, str) and name_or_id.isdigit()):
-                    row = conn.execute(
-                        sql.format("s.solarSystemId = ?"), (int(name_or_id),)
-                    ).fetchone()
+                    row = conn.execute(self._SQL_SYSTEM_BY_ID, (int(name_or_id),)).fetchone()
                 else:
-                    row = conn.execute(
-                        sql.format("LOWER(s.name) = LOWER(?)"), (str(name_or_id),)
-                    ).fetchone()
+                    row = conn.execute(self._SQL_SYSTEM_BY_NAME, (str(name_or_id),)).fetchone()
                 return self._row_to_dict(row)
         except Exception as e:
             log.warning("galaxy_db.get_system(%r) failed: %s", name_or_id, e)
