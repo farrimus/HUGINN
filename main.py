@@ -253,11 +253,13 @@ class StructureChatRequest(BaseModel):
 
 class StructureProfileUpdate(BaseModel):
     structure_name: Optional[str] = None
-    fuel_pct: Optional[float] = None
-    shield_pct: Optional[float] = None
+    structure_type: Optional[str] = None
+    system_name:    Optional[str] = None
+    fuel_pct:       Optional[float] = None
+    shield_pct:     Optional[float] = None
     services_online: Optional[int] = None
-    services_total: Optional[int] = None
-    docked_count: Optional[int] = None
+    services_total:  Optional[int] = None
+    docked_count:   Optional[int] = None
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -461,6 +463,25 @@ async def get_structure_profile(structure_id: str, session: dict = Depends(requi
 @app.post("/structure/{structure_id}")
 async def update_structure_profile(structure_id: str, req: StructureProfileUpdate,
                                     session: dict = Depends(require_structure_jwt)):
+    if session["structure_id"] != structure_id:
+        raise HTTPException(status_code=403, detail="Token not valid for this structure")
+    if session["tier"] != "OWNER":
+        raise HTTPException(status_code=403, detail="Only the owner can update the profile")
+    profile = load_structure_profile(structure_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Structure not found")
+    updates = req.model_dump(exclude_none=True)
+    for k, v in updates.items():
+        if hasattr(profile, k):
+            setattr(profile, k, v)
+    save_structure_profile(profile)
+    return profile.as_dict_for_tier("OWNER")
+
+
+@app.patch("/structure/{structure_id}")
+async def patch_structure_profile(structure_id: str, req: StructureProfileUpdate,
+                                   session: dict = Depends(require_structure_jwt)):
+    """Partial update of structure profile fields. OWNER JWT required."""
     if session["structure_id"] != structure_id:
         raise HTTPException(status_code=403, detail="Token not valid for this structure")
     if session["tier"] != "OWNER":
