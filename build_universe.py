@@ -18,6 +18,7 @@ Output files:
 """
 
 import json
+import math
 import re
 import sqlite3
 import time
@@ -134,14 +135,20 @@ if db_path.exists():
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
 
-    # Star temperatures + authoritative spectral class from DB (bulk — one query)
+    # Star temperatures + authoritative spectral class + luminosity + radius from DB (bulk — one query)
     # DB star_spectral_class is more accurate than the ResFiles type_name parse.
-    star_temps = {}
-    db_spectral = {}
-    for row in conn.execute("SELECT solarSystemId, star_temperature, star_spectral_class FROM SolarSystems"):
+    star_data: dict[str, dict] = {}
+    for row in conn.execute(
+        "SELECT solarSystemId, star_temperature, star_spectral_class, "
+        "star_luminosity, star_radius FROM SolarSystems"
+    ):
         sid = str(row["solarSystemId"])
-        star_temps[sid]   = row["star_temperature"]
-        db_spectral[sid]  = row["star_spectral_class"]
+        star_data[sid] = {
+            "temp":       row["star_temperature"],
+            "spectral":   row["star_spectral_class"],
+            "luminosity": row["star_luminosity"] or 0.0,
+            "radius":     row["star_radius"] or 0.0,
+        }
 
     # Planet type counts per system (bulk — one query)
     planet_types: dict[str, dict] = {}
@@ -162,26 +169,73 @@ if db_path.exists():
     ):
         lagrange_counts[str(row["solarSystemId"])] = row["cnt"]
 
+    # Max planet orbit radius per system
+    max_planet_orbit: dict[str, float] = {}
+    for row in conn.execute(
+        "SELECT solarSystemId, MAX(orbitRadius) as max_orbit FROM Planets GROUP BY solarSystemId"
+    ):
+        max_planet_orbit[str(row["solarSystemId"])] = row["max_orbit"] or 0.0
+
+    # Max Lagrange point distance from star (star at origin in system local coords)
+    max_lagrange_dist: dict[str, float] = {}
+    for row in conn.execute(
+        "SELECT solarSystemId, centerX, centerY, centerZ FROM LagrangePoints"
+    ):
+        sid = str(row["solarSystemId"])
+        dist = math.sqrt(row["centerX"]**2 + row["centerY"]**2 + row["centerZ"]**2)
+        if dist > max_lagrange_dist.get(sid, 0.0):
+            max_lagrange_dist[sid] = dist
+
     conn.close()
+
+    # Constants for safe_jump_temp formula
+    _L_SUN = 3.828e26
+    _K     = 100
 
     enriched = 0
     for sys_id, s in systems.items():
-        temp = star_temps.get(sys_id)
+        sd   = star_data.get(sys_id, {})
+        temp = sd.get("temp")
         s["star_temperature"] = temp
         s["hot_system"]       = temp is not None and temp > 10000
         # Prefer DB spectral class (physically derived) over ResFiles type_name parse
-        if db_spectral.get(sys_id):
-            s["spectral_class"] = db_spectral[sys_id]
+        if sd.get("spectral"):
+            s["spectral_class"] = sd["spectral"]
         s["planet_count"]     = planet_counts.get(sys_id, 0)
         s["planet_types"]     = planet_types.get(sys_id, {})
         s["lagrange_count"]   = lagrange_counts.get(sys_id, 0)
+
+        # Compute safe_jump_temp
+        star_lum   = sd.get("luminosity", 0.0)
+        star_rad   = sd.get("radius", 0.0)
+        planet_orb = max_planet_orbit.get(sys_id, 0.0)
+        lagrange_d = max_lagrange_dist.get(sys_id, 0.0)
+        max_orbit_m = max(planet_orb, lagrange_d)
+        if max_orbit_m == 0.0:
+            max_orbit_m = star_rad  # star-only system → hot
+
+        s["star_luminosity"] = star_lum
+        s["max_orbit_m"]     = max_orbit_m
+
+        if star_lum > 0.0 and max_orbit_m > 0.0:
+            _D = max_orbit_m / 299_792_458.0
+            s["safe_jump_temp"] = 100.0 * (2.0 / math.pi) * math.atan(
+                _K * 2.0 * math.pi * math.sqrt(star_lum / _L_SUN) / _D
+            )
+        else:
+            s["safe_jump_temp"] = 0.0
+
         enriched += 1
 
-    hot = sum(1 for s in systems.values() if s.get("hot_system"))
+    hot         = sum(1 for s in systems.values() if s.get("hot_system"))
+    red_zone    = sum(1 for s in systems.values() if s.get("safe_jump_temp", 0) >= 90)
+    yellow_zone = sum(1 for s in systems.values() if 70 <= s.get("safe_jump_temp", 0) < 90)
     print(f"  Enriched:       {enriched:,} systems")
     print(f"  Hot systems:    {hot:,}  (star_temperature > 10,000 K)")
     print(f"  With planets:   {sum(1 for s in systems.values() if s.get('planet_count', 0) > 0):,}")
     print(f"  With lagrange:  {sum(1 for s in systems.values() if s.get('lagrange_count', 0) > 0):,}")
+    print(f"  Red zone (>=90):    {red_zone:,}  systems")
+    print(f"  Yellow/Orange zone (70-89): {yellow_zone:,}  systems")
 else:
     print(f"\nNote: {db_path.name} not found — skipping enrichment (star_temperature, planet_types, lagrange_count)")
 
