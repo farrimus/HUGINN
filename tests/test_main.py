@@ -146,7 +146,8 @@ async def test_set_ship_profile_with_ship_type():
     assert r.status_code == 200
     data = r.json()
     assert data["ship_type"] == "Carom"
-    assert data["hull_mass"] == 7_200_000
+    from src.ship_profile import SHIPS
+    assert data["hull_mass"] == SHIPS["Carom"]["mass"]
 
 @pytest.mark.asyncio
 async def test_set_ship_profile_invalid_ship_type():

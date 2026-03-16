@@ -384,9 +384,10 @@ async def activate_route(req: RouteActivateRequest):
             })
         # Swap: primary becomes what was alternative, alternative becomes what was primary
         old_primary = log_buffer.current_route
-        log_buffer.current_route       = log_buffer.pending_alternative
+        log_buffer.current_route      = log_buffer.pending_alternative
         log_buffer.pending_alternative = old_primary
     # "primary" — current_route is already primary; no-op
+    log_buffer.add({"type": "route_planned", **{k: v for k, v in log_buffer.current_route.items() if k != "alternative"}})
     return log_buffer.current_route
 
 @app.post("/chat", dependencies=[Depends(require_token)])
