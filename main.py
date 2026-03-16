@@ -30,6 +30,29 @@ log = logging.getLogger(__name__)
 
 load_dotenv()
 
+# ---------------------------------------------------------------------------
+# Live log broadcaster — streams server log lines to connected SSE clients
+# ---------------------------------------------------------------------------
+from collections import deque
+
+_log_history: deque = deque(maxlen=200)
+_log_clients: list[asyncio.Queue] = []
+_log_loop: asyncio.AbstractEventLoop | None = None
+
+class _LogBroadcastHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord):
+        line = self.format(record)
+        _log_history.append(line)
+        if _log_loop and not _log_loop.is_closed():
+            for q in list(_log_clients):
+                _log_loop.call_soon_threadsafe(q.put_nowait, line)
+
+_broadcast_handler = _LogBroadcastHandler()
+_broadcast_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(_broadcast_handler)
+
 # Server-side registry map: structure_id -> Nova AccessRegistry object ID.
 # This avoids passing the full 66-char hex ID through the in-game browser URL bar,
 # which truncates it. The client sends nova_registry_object_id as a hint (or omits it);
@@ -48,6 +71,9 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app):
+    global _log_loop
+    _log_loop = asyncio.get_event_loop()
+
     # World API index (existing)
     asyncio.create_task(world_api.load_or_build_index())
 
@@ -193,6 +219,7 @@ class RouteRequest(BaseModel):
     fuel_quantity:  Optional[float] = None
     external_temp:  Optional[float] = None
     gate_only:      bool            = False  # force gate-only BFS
+    cost_mode:      str             = "jumps"  # "jumps" or "fuel"
 
 @app.post("/route", dependencies=[Depends(require_token)])
 async def plan_route(req: RouteRequest):
@@ -221,7 +248,8 @@ async def plan_route(req: RouteRequest):
             fuel_quantity=req.fuel_quantity,
             external_temp=req.external_temp,
         )
-        result = route_engine.route(origin, req.destination, profile)
+        result = route_engine.route(origin, req.destination, profile,
+                                    cost_mode=req.cost_mode)
         if result["type"] == "no_route" and not req.gate_only:
             bfs_result = route_engine.bfs(origin, req.destination)
             if bfs_result:
@@ -270,6 +298,31 @@ async def debug():
         "world_api_data":  system_data,
         "context_block":   context,
     }
+
+@app.get("/logs/stream", dependencies=[Depends(require_token)])
+async def logs_stream():
+    """SSE stream of live server log lines. Sends recent history first, then live."""
+    q: asyncio.Queue = asyncio.Queue()
+    for line in _log_history:
+        await q.put(line)
+    _log_clients.append(q)
+
+    async def generate():
+        try:
+            while True:
+                line = await q.get()
+                yield f"data: {json.dumps({'line': line})}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            try:
+                _log_clients.remove(q)
+            except ValueError:
+                pass
+
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
 
 class LogEvent(BaseModel):
     model_config = ConfigDict(extra="allow")

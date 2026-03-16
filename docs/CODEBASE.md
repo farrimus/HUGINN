@@ -4,7 +4,7 @@
 
 **Hackathon deadline:** March 31, 2026.
 
-**Last updated:** 2026-03-16 (Nav computer: heat-aware A*, alternative route, 13-ship SHIPS table, two-route overlay display, F7 ship profile panel)
+**Last updated:** 2026-03-16 (Nav computer: heat-aware A*, alternative route, 13-ship SHIPS table, two-route overlay display, F7 ship profile panel; safe_jump_temp formula corrected — Cold Ice Giants and Lagrange points excluded; cost_mode routing parameter; per-hop metadata in route result; debug.html dev console; check_temps.py)
 
 ---
 
@@ -962,6 +962,43 @@ Updated 2026-03-13. Full replacement of the previous minimal version.
 
 ---
 
+## `static/debug.html` — Developer Debug Console
+
+Added 2026-03-16. Standalone dev tool served at `http://vps-ip:8745/static/debug.html`. Not linked from `index.html`; browser-only, not shown in-game.
+
+**Layout:** Three-column (equal thirds):
+
+| Column | Contents |
+|--------|----------|
+| Left | Live log stream — SSE from `GET /logs/stream`, auto-scroll, line counter |
+| Middle | Ship profile editor → Nav computer route planner → Route result display → Agent chat |
+| Right | Pipeline state — `GET /pipeline-state` polled every 5 s, full column height |
+
+**Nav computer in debug.html:**
+- Origin / Destination fields: `oninput` uppercases, `text-transform: uppercase` CSS
+- Ship type dropdown (all 13 ships), fuel type dropdown, fuel quantity, adaptive level
+- **Route mode dropdown:** "Fewest jumps" (`cost_mode=jumps`), "Least fuel" (`cost_mode=fuel`), "Gate only" (`cost_mode=gate`)
+- POSTs `POST /route` with full ship profile + `cost_mode`; renders result as vertical hop chain
+
+**Route result display:**
+Each hop rendered as a labeled connector between system boxes:
+```
+[ SYSTEM-A ] ──GATE── [ SYSTEM-B ]
+                         78.2° | 3 planets
+[ SYSTEM-B ] ──142.5 LY── [ SYSTEM-C ]
+                              22.1° | 5 planets
+```
+Temp color-coding: green < 70°, yellow 70–79°, orange 80–89°, red ≥ 90°.
+
+**Agent chat:**
+- POSTs `{message, history}` to `POST /chat` with `SERVER_TOKEN` bearer auth
+- Response body is **streamed directly** via `ReadableStream` reader (not via separate SSE endpoint)
+- `chatBusy` flag disables send button during streaming; clears on stream close
+
+**Token:** `SERVER_TOKEN` constant in script block — set to `.env` value at deploy time (same as `index.html`).
+
+---
+
 ## Overlay — File-by-File
 
 Source: `overlay/` (built on Windows, deployed to gaming PC as `overlay.dll` + `injector.exe`)
@@ -1099,11 +1136,16 @@ H(D) = 100 × (2/π) × arctan(100 × 2π × √(L / L_sun) / D)
 
 ### Router algorithm
 
-`route_engine.py` provides two modes:
+`route_engine.py` provides three modes via the `cost_mode` parameter:
 
-1. **`bfs(origin, dest)`** — gate-only, free, no ship params. Finds shortest gate-hop path within a connected cluster. Fast (< 5ms). Used as fallback when A* returns no result.
+1. **`bfs(origin, dest)`** — gate-only, free, no ship params. Finds shortest gate-hop path within a connected cluster. Fast (< 5ms). Used as fallback when A* returns no result (also surfaced as `cost_mode="gate"` in the API).
 
-2. **`route(origin, dest, profile)`** — heat-aware A* hybrid. Gate hops cost 0 LY; direct jumps cost distance in LY. Per-node jump range is computed from the system's `safe_jump_temp` (not the player's `external_temp`). Red-zone systems (≥90°) block outbound direct jumps (range=0). `_SpatialIndex` narrows candidates via sorted X-axis binary search + dy/dz AABB guards.
+2. **`route(origin, dest, profile, cost_mode="jumps")`** — heat-aware A* hybrid.
+   - **`cost_mode="jumps"`** (default): minimizes hop count. Gate hops cost 1; direct jumps cost 1. Heuristic = dist_to_dest / max_range. Finds fewest-hop paths even when the route refuels en route at cool systems.
+   - **`cost_mode="fuel"`**: minimizes total LY flown. Gate hops cost 0 LY; direct jumps cost distance in LY. Heuristic = 0 (Dijkstra). Finds routes that string gate hops together to save fuel even at the cost of many more hops.
+   - **`cost_mode="gate"`**: calls BFS, gate hops only.
+
+   Per-node jump range is computed from the system's `safe_jump_temp` (not the player's `external_temp`). Red-zone systems (≥90°) block outbound direct jumps (range=0). `_SpatialIndex` narrows candidates via sorted X-axis binary search + dy/dz AABB guards.
 
    **Alternative route:** After the primary A* pass, if any system in `path[1:-1]` has `safe_jump_temp ≥ WARM_SYSTEM_TEMP (70.0)`, a second A* pass runs with those hot systems excluded as direct-jump waypoints (gates through them are still allowed). The alternative is stored in `log_buffer.pending_alternative`. Calling `POST /route/activate` swaps `current_route ↔ pending_alternative`.
 
@@ -1135,9 +1177,12 @@ H(D) = 100 × (2/π) × arctan(100 × 2π × √(L / L_sun) / D)
 H(D) = 100 × (2/π) × arctan(K × 2π × √(L / L_sun) / D)
 ```
 where `L_sun = 3.828e26 W`, `K = 100` (game canonical), `D = max_orbit_m / 299_792_458` (light-seconds).
-- **Red zone** (≥90°): no outbound direct jump possible
-- **Warm zone** (≥70°): triggers alternative route computation
-- 159 red-zone systems, ~905 warm-zone systems (out of 24,426)
+
+`max_orbit_m` = outermost **planet** orbitRadius, excluding **Cold Ice Giants** (their extreme orbits cause severe underestimation). **Lagrange points are not used** — ef-map.com confirmed planets-only. For star-only systems, `max_orbit_m` falls back to `star_radius`.
+
+- **Red zone** (≥90°): no outbound direct jump possible — 655 systems
+- **Warm zone** (70–89°): triggers alternative route computation — 1,254 systems
+- Total systems: 24,426
 
 **Gate network facts:**
 - 3,438 unique gate pairs, 231 disconnected clusters, largest = 39 systems
@@ -1178,17 +1223,40 @@ budget_ly = (fuel_quantity × fuel_quality) / (1e-7 × M_current)
 ```json
 {
   "type": "route_planned",
-  "path": ["system-a", "system-b", "system-c"],
+  "path": ["SYSTEM-A", "SYSTEM-B", "SYSTEM-C"],
   "jumps": 2,
   "jump_types": ["gate", "direct"],
   "total_ly": 142.5,
   "fuel_used": 87.4,
   "fuel_remaining": 412.6,
-  "hot_systems": ["system-b"],
-  "warnings": ["system-b: safe_jump_temp 78.2° — warm zone"],
+  "hot_systems": ["SYSTEM-B"],
+  "warnings": ["SYSTEM-B: safe_jump_temp 78.2° — warm zone"],
+  "cost_mode": "jumps",
+  "origin_temp": 36.9,
+  "origin_planets": 4,
+  "hops": [
+    {
+      "from": "SYSTEM-A",
+      "to": "SYSTEM-B",
+      "type": "gate",
+      "distance_ly": 0.0,
+      "dest_temp": 78.2,
+      "dest_planets": 3
+    },
+    {
+      "from": "SYSTEM-B",
+      "to": "SYSTEM-C",
+      "type": "direct",
+      "distance_ly": 142.5,
+      "dest_temp": 22.1,
+      "dest_planets": 5
+    }
+  ],
   "alternative": { ...same shape, or null }
 }
 ```
+
+System names are stored and returned **uppercase** (e.g. `UR8-K7K`, not `ur8-k7k`). Input fields in the UI enforce uppercase via `oninput` and `text-transform: uppercase`.
 
 `GET /current-route` returns:
 ```json
@@ -1372,6 +1440,8 @@ python diagnose.py
 | Client-side RouteCalculator | ✓ Done — `log-agent/route_calculator.py` | — |
 | Ship stat auto-extraction | Manual input via F7 panel — SHIPS table covers all 13 ships; fuel qty + adaptive still manual | Medium |
 | Route engine calibration | Formulas verified against spec; real in-game testing needed to confirm edge cases | Medium |
+| ef-map golden tests | `tests/test_ef_map_comparison.py` has 1 confirmed system (UR8-K7K=36.9°). Use `scripts/check_temps.py` to add more from ef-map.com. | Medium |
+| Blend / time-optimized routing | Deferred future feature. Design doc: `docs/future-features/blend-routing.md`. Shows fewest-jump + least-fuel side by side; time model needs ship jump cooldown formula from ef-map. | Medium |
 | `ssu_poller.poll_ssu_state` | SSU Sui object field mapping unverified — `_extract_fuel_pct()` may need adjustment for real on-chain layout | **High** |
 | WatchTower webhook | Not implemented — deferred post-hackathon. Would POST shield/fuel alerts to Discord/Slack. | Medium |
 | `GET /data/systems` endpoint | ✓ Done — ETag/304, FileResponse, token-gated | — |
@@ -1414,6 +1484,8 @@ python diagnose.py
 | `docs/superpowers/plans/2026-03-15-structure-ai-context-enrichment.md` | 10-task implementation plan — galaxy_db, memory_store, ssu_poller, LobbyClient, context enrichment |
 | `docs/superpowers/specs/2026-03-15-nav-computer-design.md` | Nav computer design spec — heat formula, routing, overlay panels, API |
 | `docs/superpowers/plans/2026-03-16-nav-computer.md` | 7-task nav computer implementation plan (completed) |
+| `docs/future-features/blend-routing.md` | Deferred feature design — compare+blend routing (fewest-jump vs least-fuel vs time-optimal) |
+| `scripts/check_temps.py` | CLI tool — print `safe_jump_temp` + jump ranges for named systems; cross-check vs ef-map.com |
 | `data/PROGRAMMER_GUIDE.md` | SQLite schema reference for `eve_universe.db` (tables, columns, query patterns) |
 | `log-agent/tests/` | Best examples of how parsers and tracker behave |
 | `tests/test_context_builder.py` | Best examples of context block output format |

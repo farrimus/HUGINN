@@ -42,7 +42,7 @@ index_data = load("system_index.json")
 
 # Build id→name lookup from system_index (which is name→id)
 name_to_id = index_data.get("index", {})
-id_to_name = {str(v): k for k, v in name_to_id.items()}
+id_to_name = {str(v): k.upper() for k, v in name_to_id.items()}
 print(f"  Name lookup: {len(id_to_name):,} systems")
 
 solar_systems = starmap.get("solarSystems", {})
@@ -169,28 +169,21 @@ if db_path.exists():
     ):
         lagrange_counts[str(row["solarSystemId"])] = row["cnt"]
 
-    # Max planet orbit radius per system
+    # Max planet orbit radius per system — exclude Cold Ice Giants (they have
+    # extremely wide orbits that cause safe_jump_temp to be underestimated;
+    # ef-map excludes them from the outermost-planet calculation).
     max_planet_orbit: dict[str, float] = {}
     for row in conn.execute(
-        "SELECT solarSystemId, MAX(orbitRadius) as max_orbit FROM Planets GROUP BY solarSystemId"
+        "SELECT solarSystemId, MAX(orbitRadius) as max_orbit FROM Planets "
+        "WHERE typeDescription != 'Cold Ice Giant' GROUP BY solarSystemId"
     ):
         max_planet_orbit[str(row["solarSystemId"])] = row["max_orbit"] or 0.0
-
-    # Max Lagrange point distance from star (star at origin in system local coords)
-    max_lagrange_dist: dict[str, float] = {}
-    for row in conn.execute(
-        "SELECT solarSystemId, centerX, centerY, centerZ FROM LagrangePoints"
-    ):
-        sid = str(row["solarSystemId"])
-        dist = math.sqrt(row["centerX"]**2 + row["centerY"]**2 + row["centerZ"]**2)
-        if dist > max_lagrange_dist.get(sid, 0.0):
-            max_lagrange_dist[sid] = dist
 
     conn.close()
 
     # Constants for safe_jump_temp formula
     _L_SUN = 3.828e26
-    _K     = 100          # game-canonical scaling constant (higher K = more sensitivity to luminosity vs distance)
+    _K     = 100          # game-canonical scaling constant
 
     enriched = 0
     for sys_id, s in systems.items():
@@ -205,12 +198,11 @@ if db_path.exists():
         s["planet_types"]     = planet_types.get(sys_id, {})
         s["lagrange_count"]   = lagrange_counts.get(sys_id, 0)
 
-        # Compute safe_jump_temp
-        star_lum   = sd.get("luminosity", 0.0)
-        star_rad   = sd.get("radius", 0.0)
-        planet_orb = max_planet_orbit.get(sys_id, 0.0)
-        lagrange_d = max_lagrange_dist.get(sys_id, 0.0)
-        max_orbit_m = max(planet_orb, lagrange_d)
+        # Compute safe_jump_temp using outermost non-Cold-Ice-Giant planet orbit only.
+        # Lagrange points are excluded — ef-map uses planet orbitRadius only.
+        star_lum    = sd.get("luminosity", 0.0)
+        star_rad    = sd.get("radius", 0.0)
+        max_orbit_m = max_planet_orbit.get(sys_id, 0.0)
         if max_orbit_m == 0.0:
             max_orbit_m = star_rad  # star-only system → hot
 

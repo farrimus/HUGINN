@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ship AI — Dev Console</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0d0f; color: #7fb38a; font-family: 'Courier New', monospace; font-size: 13px; height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── toolbar ── */
+    #toolbar { padding: 8px 12px; border-bottom: 1px solid #1a2e1f; display: flex; gap: 12px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+    .label { color: #4a6b52; font-size: 11px; letter-spacing: 1px; }
+    #status { font-size: 11px; }
+    .ok   { color: #7fb38a; }
+    .err  { color: #c0392b; }
+    .warn { color: #d4a017; }
+    button { background: #0f1f14; border: 1px solid #2a4a30; color: #7fb38a; padding: 4px 10px; cursor: pointer; font-family: inherit; font-size: 11px; }
+    button:hover { background: #1a3020; }
+
+    /* ── three-column layout ── */
+    #main { display: flex; flex: 1; overflow: hidden; }
+    .pane { display: flex; flex-direction: column; border-right: 1px solid #1a2e1f; min-width: 0; }
+    .pane:last-child { border-right: none; }
+    .pane-header { padding: 6px 10px; border-bottom: 1px solid #1a2e1f; font-size: 11px; color: #4a6b52; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+
+    /* col 1: log stream */
+    #log-pane { flex: 1; }
+    #log-out  { flex: 1; overflow-y: auto; padding: 8px; line-height: 1.5; }
+    .log-line { white-space: pre-wrap; word-break: break-all; padding: 1px 0; }
+    .log-line.ERROR, .log-line.CRITICAL { color: #e74c3c; }
+    .log-line.WARNING { color: #d4a017; }
+    .log-line.DEBUG   { color: #3a5a42; }
+
+    /* col 2: nav computer + chat stacked */
+    #nav-pane   { width: 360px; flex-shrink: 0; overflow-y: auto; }
+    #nav-body   { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+
+    .section { border: 1px solid #1a2e1f; padding: 8px; }
+    .section-title { font-size: 10px; letter-spacing: 1px; color: #4a6b52; margin-bottom: 6px; }
+    .field { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .field label { font-size: 11px; color: #5a9a6a; min-width: 100px; }
+    .field input, .field select { flex: 1; background: #0f1f14; border: 1px solid #2a4a30; color: #7fb38a; padding: 3px 6px; font-family: inherit; font-size: 12px; min-width: 0; }
+    .field input:focus, .field select:focus { outline: none; border-color: #5a9a6a; }
+    select option { background: #0f1f14; }
+
+    #route-result { font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
+    .route-ok   { color: #7fb38a; }
+    .route-warn { color: #d4a017; }
+    .route-err  { color: #e74c3c; }
+
+    .btn-row { display: flex; gap: 6px; }
+    .btn-primary   { flex: 1; background: #0f1f14; border: 1px solid #3a6a40; color: #7fb38a; padding: 6px; cursor: pointer; font-family: inherit; font-size: 11px; letter-spacing: 1px; }
+    .btn-primary:hover   { background: #1a3020; }
+    .btn-secondary { background: #0f1f14; border: 1px solid #2a4a30; color: #4a6b52; padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 11px; }
+    .btn-secondary:hover { background: #151f17; color: #7fb38a; }
+
+    /* route hop chain — vertical */
+    .hop-chain   { display: flex; flex-direction: column; gap: 0; margin-top: 4px; }
+    .hop-node    { display: flex; align-items: stretch; gap: 0; }
+    .hop-node-left { display: flex; flex-direction: column; align-items: center; width: 18px; flex-shrink: 0; }
+    .hop-node-dot  { width: 8px; height: 8px; border: 1px solid #3a6a40; background: #0a0d0f; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+    .hop-node-dot.hot   { border-color: #d4a017; background: #2a1800; }
+    .hop-node-dot.red   { border-color: #e74c3c; background: #1a0000; }
+    .hop-node-dot.dest  { border-color: #aad4aa; background: #0a1a0a; width: 10px; height: 10px; }
+    .hop-node-line { flex: 1; width: 1px; background: #1a3020; }
+    .hop-node-body { flex: 1; padding: 3px 0 3px 8px; min-width: 0; }
+    .hop-sys-name  { font-size: 11px; color: #7fb38a; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hop-sys-name.dest { color: #aad4aa; }
+    .hop-sys-meta  { font-size: 10px; color: #4a6b52; margin-top: 1px; }
+    .hop-sys-meta .temp-safe   { color: #5a9a6a; }
+    .hop-sys-meta .temp-warm   { color: #c8a020; }
+    .hop-sys-meta .temp-orange { color: #d46a10; }
+    .hop-sys-meta .temp-red    { color: #e74c3c; }
+
+    /* connector between nodes */
+    .hop-connector-row  { display: flex; align-items: flex-start; gap: 0; }
+    .hop-conn-left      { display: flex; flex-direction: column; align-items: center; width: 18px; flex-shrink: 0; }
+    .hop-conn-line      { width: 1px; background: #1a3020; flex: 1; min-height: 4px; }
+    .hop-conn-body      { flex: 1; padding: 2px 0 2px 8px; }
+    .hop-conn-label     { font-size: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .conn-gate   { color: #3a6aaf; }
+    .conn-direct { color: #4a8a5a; }
+    .conn-dist   { color: #5a7a6a; }
+    .conn-temp   { }
+    .conn-planets { color: #3a6a52; }
+
+    /* chat (inside nav col, at bottom) */
+    .chat-section { border: 1px solid #1a2e1f; display: flex; flex-direction: column; min-height: 220px; }
+    #chat-messages { flex: 1; overflow-y: auto; padding: 8px; line-height: 1.5; font-size: 12px; max-height: 300px; }
+    .chat-msg       { margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
+    .chat-msg.user   { color: #5a9a6a; }
+    .chat-msg.ai     { color: #7fb38a; }
+    .chat-msg.system { color: #4a6b52; font-size: 11px; }
+    #chat-input-row { display: flex; gap: 6px; padding: 6px 8px; border-top: 1px solid #1a2e1f; flex-shrink: 0; }
+    #chat-input { flex: 1; background: #0f1f14; border: 1px solid #2a4a30; color: #7fb38a; padding: 4px 7px; font-family: inherit; font-size: 12px; }
+    #chat-input:focus { outline: none; border-color: #5a9a6a; }
+    #chat-send { background: #0f1f14; border: 1px solid #3a6a40; color: #7fb38a; padding: 4px 10px; cursor: pointer; font-family: inherit; font-size: 11px; }
+    #chat-send:hover { background: #1a3020; }
+
+    /* col 3: pipeline state — full height */
+    #pipeline-pane { width: 400px; flex-shrink: 0; }
+    #pipeline-out  { flex: 1; overflow-y: auto; padding: 8px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; color: #5a9a6a; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="label">SHIP AI // DEV CONSOLE</span>
+  <span id="status" class="ok">connecting...</span>
+  <button onclick="clearLog()">CLEAR LOG</button>
+  <label style="color:#4a6b52;font-size:11px;">
+    <input type="checkbox" id="autoscroll" checked> autoscroll
+  </label>
+  <label style="color:#4a6b52;font-size:11px;">
+    <input type="checkbox" id="filter-debug"> hide debug
+  </label>
+</div>
+
+<div id="main">
+
+  <!-- ── col 1: live log ── -->
+  <div id="log-pane" class="pane" style="display:flex;flex-direction:column;">
+    <div class="pane-header">
+      <span>LIVE LOG STREAM</span>
+      <span id="log-count">0 lines</span>
+    </div>
+    <div id="log-out"></div>
+  </div>
+
+  <!-- ── col 2: nav computer + agent chat stacked ── -->
+  <div id="nav-pane" class="pane">
+    <div class="pane-header">
+      <span>NAV COMPUTER</span>
+      <span id="profile-status" style="color:#4a6b52">—</span>
+    </div>
+    <div id="nav-body">
+
+      <!-- ship profile -->
+      <div class="section">
+        <div class="section-title">SHIP PROFILE</div>
+        <div class="field">
+          <label>Ship</label>
+          <select id="p-ship" onchange="onShipChange()">
+            <option value="">— custom —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Fuel type</label>
+          <select id="p-fuel-type">
+            <option value="">—</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Fuel qty (u)</label>
+          <input type="number" id="p-fuel-qty" min="0" step="100">
+        </div>
+        <div class="field">
+          <label>Adaptive</label>
+          <select id="p-adaptive">
+            <option value="0">0 — none</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </div>
+        <div id="profile-stats" style="font-size:11px;color:#5a9a6a;margin-top:4px;line-height:1.6;"></div>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="btn-primary" onclick="saveProfile()">SAVE PROFILE</button>
+          <button class="btn-secondary" onclick="loadProfile()">RELOAD</button>
+        </div>
+      </div>
+
+      <!-- route planner -->
+      <div class="section">
+        <div class="section-title">ROUTE PLANNER</div>
+        <div class="field">
+          <label>Origin</label>
+          <input type="text" id="r-origin" placeholder="leave blank = current system"
+                 oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase">
+        </div>
+        <div class="field">
+          <label>Destination</label>
+          <input type="text" id="r-dest" placeholder="system name"
+                 oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase">
+        </div>
+        <div class="field">
+          <label>Mode</label>
+          <select id="r-mode">
+            <option value="optimal">Fewest jumps (gate + direct)</option>
+            <option value="fuel">Least fuel (minimize LY)</option>
+            <option value="gate">Gate only</option>
+          </select>
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="btn-primary" onclick="planRoute()">PLOT ROUTE</button>
+          <button class="btn-secondary" onclick="clearRoute()">CLEAR</button>
+        </div>
+      </div>
+
+      <!-- route result -->
+      <div class="section" id="route-section" style="display:none;">
+        <div class="section-title">ROUTE RESULT</div>
+        <div id="route-result"></div>
+      </div>
+
+      <!-- agent chat -->
+      <div class="chat-section">
+        <div class="section-title" style="padding:6px 8px 0;display:flex;justify-content:space-between;">
+          <span>AGENT CHAT</span>
+          <span id="chat-status" style="color:#4a6b52;font-size:10px;">—</span>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-row">
+          <input type="text" id="chat-input" placeholder="Message ship AI..." onkeydown="if(event.key==='Enter')sendChat()">
+          <button id="chat-send" onclick="sendChat()">SEND</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── col 3: pipeline state — full height ── -->
+  <div id="pipeline-pane" class="pane" style="display:flex;flex-direction:column;">
+    <div class="pane-header">
+      <span>PIPELINE STATE (/debug)</span>
+      <span style="display:flex;gap:8px;align-items:center;">
+        <span id="debug-age" style="color:#4a6b52"></span>
+        <button onclick="fetchDebug()" style="padding:2px 8px;font-size:10px;">REFRESH</button>
+      </span>
+    </div>
+    <div id="pipeline-out">loading...</div>
+  </div>
+
+</div>
+
+<script>
+const TOKEN = "5740edb0fb25a051db4a932c3622bd69ce47d487bc501f2bde4cb7e19907c454";
+let lineCount = 0;
+let debugTimer = null;
+let chatHistory = [];
+let chatBusy = false;
+
+let allShips = {};
+let allFuelTypes = {};
+
+// ═══════════════════════════════════════
+// LOG STREAM
+// ═══════════════════════════════════════
+
+function levelOf(line) {
+  if (/\bERROR\b|\bCRITICAL\b/.test(line)) return "ERROR";
+  if (/\bWARNING\b|\bWARN\b/.test(line))   return "WARNING";
+  if (/\bDEBUG\b/.test(line))              return "DEBUG";
+  return "INFO";
+}
+
+function appendLine(text) {
+  const lvl = levelOf(text);
+  if (lvl === "DEBUG" && document.getElementById('filter-debug').checked) return;
+  const out = document.getElementById('log-out');
+  const div = document.createElement('div');
+  div.className = 'log-line ' + lvl;
+  div.textContent = text;
+  out.appendChild(div);
+  lineCount++;
+  document.getElementById('log-count').textContent = lineCount + ' lines';
+  if (document.getElementById('autoscroll').checked) div.scrollIntoView();
+}
+
+function clearLog() {
+  document.getElementById('log-out').innerHTML = '';
+  lineCount = 0;
+  document.getElementById('log-count').textContent = '0 lines';
+}
+
+function setStatus(msg, ok) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = ok ? 'ok' : 'err';
+}
+
+function fetchSSE() {
+  fetch('/logs/stream', { headers: { 'X-Server-Token': TOKEN } })
+    .then(res => {
+      if (!res.ok) { setStatus('log error: HTTP ' + res.status, false); return; }
+      setStatus('connected', true);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      function read() {
+        reader.read().then(({ done, value }) => {
+          if (done) { setStatus('disconnected — reconnecting...', false); setTimeout(fetchSSE, 2000); return; }
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n');
+          buf = parts.pop();
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data: ')) continue;
+            try { const obj = JSON.parse(line.slice(6)); if (obj.line) appendLine(obj.line); } catch(e) {}
+          }
+          read();
+        }).catch(() => { setStatus('disconnected — reconnecting...', false); setTimeout(fetchSSE, 2000); });
+      }
+      read();
+    })
+    .catch(() => { setStatus('disconnected — reconnecting...', false); setTimeout(fetchSSE, 2000); });
+}
+
+// ═══════════════════════════════════════
+// PIPELINE STATE
+// ═══════════════════════════════════════
+
+async function fetchDebug() {
+  try {
+    const res = await fetch('/debug', { headers: { 'X-Server-Token': TOKEN } });
+    const data = await res.json();
+    document.getElementById('pipeline-out').textContent = JSON.stringify(data, null, 2);
+    document.getElementById('debug-age').textContent = new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('pipeline-out').textContent = 'error: ' + e.message;
+  }
+}
+
+setInterval(fetchDebug, 5000);
+
+// ═══════════════════════════════════════
+// SHIP PROFILE
+// ═══════════════════════════════════════
+
+async function loadProfile() {
+  try {
+    const res = await fetch('/ship-profile', { headers: { 'X-Server-Token': TOKEN } });
+    const p = await res.json();
+    allShips = p.ships || {};
+    allFuelTypes = p.fuel_types || {};
+
+    const shipSel = document.getElementById('p-ship');
+    shipSel.innerHTML = '<option value="">— custom —</option>';
+    for (const [name] of Object.entries(allShips).sort()) {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      if (name === p.ship_type) opt.selected = true;
+      shipSel.appendChild(opt);
+    }
+
+    rebuildFuelOptions(p.ship_type, p.fuel_type);
+    document.getElementById('p-fuel-qty').value = p.fuel_quantity ?? '';
+    document.getElementById('p-adaptive').value = p.adaptive_level ?? 0;
+    updateProfileStats(p);
+    document.getElementById('profile-status').textContent = p.ship_type || 'custom';
+  } catch(e) {
+    document.getElementById('profile-status').textContent = 'error';
+  }
+}
+
+function rebuildFuelOptions(shipName, selectedFuel) {
+  const sel = document.getElementById('p-fuel-type');
+  sel.innerHTML = '';
+  for (const [ft, quality] of Object.entries(allFuelTypes)) {
+    const opt = document.createElement('option');
+    opt.value = ft;
+    opt.textContent = `${ft} (Q${quality})`;
+    if (ft === selectedFuel) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function onShipChange() {
+  rebuildFuelOptions(document.getElementById('p-ship').value,
+                     document.getElementById('p-fuel-type').value);
+}
+
+function updateProfileStats(p) {
+  document.getElementById('profile-stats').textContent =
+    `range  ${(p.jump_range_ly||0).toFixed(1)} LY\nbudget ${(p.fuel_budget_ly||0).toFixed(1)} LY\nmass   ${((p.hull_mass||0)/1e6).toFixed(2)} t`;
+}
+
+async function saveProfile() {
+  const body = {
+    ship_type:      document.getElementById('p-ship').value || null,
+    fuel_type:      document.getElementById('p-fuel-type').value || null,
+    fuel_quantity:  parseFloat(document.getElementById('p-fuel-qty').value) || null,
+    adaptive_level: parseInt(document.getElementById('p-adaptive').value) || 0,
+  };
+  try {
+    const res = await fetch('/ship-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Server-Token': TOKEN },
+      body: JSON.stringify(body)
+    });
+    const p = await res.json();
+    if (!res.ok) {
+      document.getElementById('profile-status').textContent = 'ERROR: ' + (p.detail || res.status);
+      return;
+    }
+    updateProfileStats(p);
+    document.getElementById('profile-status').textContent = (p.ship_type || 'custom') + ' saved';
+  } catch(e) {
+    document.getElementById('profile-status').textContent = 'save failed';
+  }
+}
+
+// ═══════════════════════════════════════
+// ROUTE PLANNER
+// ═══════════════════════════════════════
+
+async function planRoute() {
+  const dest = document.getElementById('r-dest').value.trim();
+  if (!dest) { showRouteError('Enter a destination.'); return; }
+  const origin   = document.getElementById('r-origin').value.trim() || undefined;
+  const mode     = document.getElementById('r-mode').value;
+  const gateOnly = mode === 'gate';
+  const costMode = mode === 'fuel' ? 'fuel' : 'jumps';
+  const body = { destination: dest, gate_only: gateOnly, cost_mode: costMode };
+  if (origin) body.origin = origin;
+
+  document.getElementById('route-section').style.display = '';
+  document.getElementById('route-result').innerHTML = '<span style="color:#4a6b52">computing...</span>';
+
+  try {
+    const res = await fetch('/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Server-Token': TOKEN },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) { showRouteError(data.detail || ('HTTP ' + res.status)); return; }
+    renderRoute(data);
+  } catch(e) {
+    showRouteError(e.message);
+  }
+}
+
+async function clearRoute() {
+  document.getElementById('route-section').style.display = 'none';
+  try { await fetch('/route/clear', { method: 'POST', headers: { 'X-Server-Token': TOKEN } }); } catch(e) {}
+}
+
+function showRouteError(msg) {
+  document.getElementById('route-section').style.display = '';
+  document.getElementById('route-result').innerHTML = `<span class="route-err">ERROR: ${escHtml(msg)}</span>`;
+}
+
+function tempClass(t) {
+  if (t >= 90) return 'temp-red';
+  if (t >= 80) return 'temp-orange';
+  if (t >= 70) return 'temp-warm';
+  return 'temp-safe';
+}
+
+function dotClass(t) {
+  if (t >= 90) return 'red';
+  if (t >= 70) return 'hot';
+  return '';
+}
+
+function buildHopChain(path, hops, originTemp, originPlanets, isLast) {
+  // hops[i] describes the jump FROM path[i] TO path[i+1]
+  if (!path.length) return '';
+  let html = '<div class="hop-chain">';
+
+  // Origin node
+  const oDot = dotClass(originTemp);
+  html += `
+    <div class="hop-node">
+      <div class="hop-node-left">
+        <div class="hop-node-dot ${oDot}"></div>
+        <div class="hop-node-line"></div>
+      </div>
+      <div class="hop-node-body">
+        <div class="hop-sys-name">${escHtml(path[0])}</div>
+        <div class="hop-sys-meta">
+          <span class="${tempClass(originTemp)}">${originTemp.toFixed(1)}°</span>
+          <span class="conn-planets"> · ${originPlanets}p</span>
+        </div>
+      </div>
+    </div>`;
+
+  for (let i = 0; i < hops.length; i++) {
+    const h = hops[i];
+    const isDest = i === hops.length - 1;
+    const connCls  = h.type === 'gate' ? 'conn-gate' : 'conn-direct';
+    const typeLabel = h.type === 'gate' ? 'GATE' : 'JUMP';
+    const distStr  = h.type === 'direct' ? `${h.distance_ly.toFixed(1)} LY` : '';
+
+    // Connector
+    html += `
+      <div class="hop-connector-row">
+        <div class="hop-conn-left">
+          <div class="hop-conn-line"></div>
+        </div>
+        <div class="hop-conn-body">
+          <div class="hop-conn-label">
+            <span class="${connCls}">${typeLabel}</span>
+            ${distStr ? `<span class="conn-dist">${escHtml(distStr)}</span>` : ''}
+          </div>
+        </div>
+      </div>`;
+
+    // Destination node
+    const dDot = isDest ? 'dest' : dotClass(h.dest_temp);
+    html += `
+      <div class="hop-node">
+        <div class="hop-node-left">
+          <div class="hop-node-dot ${dDot}"></div>
+          ${isDest ? '' : '<div class="hop-node-line"></div>'}
+        </div>
+        <div class="hop-node-body">
+          <div class="hop-sys-name${isDest?' dest':''}">${escHtml(h.to)}</div>
+          <div class="hop-sys-meta">
+            <span class="${tempClass(h.dest_temp)}">${h.dest_temp.toFixed(1)}°</span>
+            <span class="conn-planets"> · ${h.dest_planets}p</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function renderRoute(r) {
+  const out = document.getElementById('route-result');
+  if (r.type === 'no_route') {
+    out.innerHTML = `<span class="route-err">NO ROUTE — ${escHtml((r.warnings||[]).join('; '))}</span>`;
+    return;
+  }
+
+  const jtypes = r.jump_types || [];
+  const gateCount   = jtypes.filter(t => t === 'gate').length;
+  const directCount = jtypes.filter(t => t === 'direct').length;
+
+  const modeLabel = r.cost_mode === 'fuel' ? 'FUEL OPT' : r.jumps === (r.jump_types||[]).filter(t=>t==='gate').length ? 'GATE' : 'JUMP OPT';
+  let html = `<div class="route-ok" style="margin-bottom:4px;">${r.jumps} jump${r.jumps===1?'':'s'}  ·  ${r.total_ly.toFixed(1)} LY  ·  fuel ${r.fuel_used.toFixed(0)}u→${r.fuel_remaining.toFixed(0)}u</div>`;
+  html += `<div style="font-size:10px;color:#4a6b52;margin-bottom:4px;">${directCount} ship · ${gateCount} gate</div>`;
+
+  for (const w of (r.warnings || []))
+    html += `<div class="route-warn" style="font-size:10px;margin-bottom:2px;">! ${escHtml(w)}</div>`;
+
+  html += buildHopChain(r.path || [], r.hops || [], r.origin_temp ?? 0, r.origin_planets ?? 0);
+
+  if (r.alternative) {
+    const a = r.alternative;
+    const aGates  = (a.jump_types||[]).filter(t=>t==='gate').length;
+    const aDirect = (a.jump_types||[]).filter(t=>t==='direct').length;
+    html += `<div style="margin-top:10px;border-top:1px solid #1a2e1f;padding-top:8px;">`;
+    html += `<div style="font-size:10px;color:#4a6b52;margin-bottom:3px;">ALT ROUTE — avoids warm systems</div>`;
+    html += `<div class="route-ok" style="font-size:11px;margin-bottom:2px;">${a.jumps} jumps · ${a.total_ly.toFixed(1)} LY</div>`;
+    html += `<div style="font-size:10px;color:#4a6b52;margin-bottom:4px;">${aDirect} ship · ${aGates} gate</div>`;
+    html += buildHopChain(a.path || [], a.hops || [], a.origin_temp ?? 0, a.origin_planets ?? 0);
+    html += '</div>';
+  }
+
+  out.innerHTML = html;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══════════════════════════════════════
+// AGENT CHAT
+// ═══════════════════════════════════════
+
+function appendChat(text, role) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + (role || 'system');
+  div.textContent = (role === 'user' ? '> ' : '  ') + text;
+  const msgs = document.getElementById('chat-messages');
+  msgs.appendChild(div);
+  div.scrollIntoView();
+  return div;
+}
+
+function setChatStatus(msg) {
+  document.getElementById('chat-status').textContent = msg;
+}
+
+async function sendChat() {
+  if (chatBusy) return;
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  appendChat(msg, 'user');
+  chatHistory.push({ role: 'user', content: msg });
+  chatBusy = true;
+  setChatStatus('sending...');
+  document.getElementById('chat-send').disabled = true;
+
+  // The /chat POST streams the AI response directly in its response body (SSE format).
+  // We read the stream from the response, not from a separate GET endpoint.
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Server-Token': TOKEN },
+      body: JSON.stringify({ message: msg, history: chatHistory.slice(-10) })
+    });
+
+    if (!res.ok) {
+      appendChat('request failed: HTTP ' + res.status, 'system');
+      setChatStatus('error');
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let aiDiv = null;
+    let aiText = '';
+
+    setChatStatus('streaming...');
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        if (payload === '[DONE]') break;
+        try {
+          const obj = JSON.parse(payload);
+          if (obj.text) {
+            if (!aiDiv) {
+              aiDiv = appendChat('', 'ai');
+              aiText = '';
+            }
+            aiText += obj.text;
+            aiDiv.textContent = '  ' + aiText;
+            aiDiv.scrollIntoView();
+          }
+          if (obj.error) {
+            appendChat('error: ' + obj.error, 'system');
+          }
+        } catch(e) {}
+      }
+    }
+
+    if (aiText) chatHistory.push({ role: 'assistant', content: aiText });
+    setChatStatus('ready');
+  } catch(e) {
+    appendChat('stream error: ' + e.message, 'system');
+    setChatStatus('error');
+  } finally {
+    chatBusy = false;
+    document.getElementById('chat-send').disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+
+fetchSSE();
+fetchDebug();
+loadProfile();
+
+document.getElementById('r-dest').addEventListener('keydown',   e => { if (e.key==='Enter') planRoute(); });
+document.getElementById('r-origin').addEventListener('keydown', e => { if (e.key==='Enter') planRoute(); });
+</script>
+</body>
+</html>

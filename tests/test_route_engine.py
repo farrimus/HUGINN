@@ -92,31 +92,36 @@ def test_red_zone_no_direct_jump_out():
 
 def test_alternative_route_triggered_by_hot_intermediate():
     """Alternative route computed when primary path has temp >= 70 intermediate."""
-    # Three systems in a line — primary MUST go through HotMid (only path).
-    # CoolMid is a diagonal detour the alt route can take instead.
+    # End is placed just beyond direct jump range so A* must route via an intermediate.
+    # HotMid is collinear (lower heuristic) → chosen as primary intermediate.
+    # CoolMid is a slight diagonal detour used by the alternative.
+    #
+    # Layout (LY):  Start(0,0) — HotMid(200,0) — End(400,0)
+    #                                CoolMid(200,50)
+    # Range = 399 LY → direct Start→End (400 LY) is out of range.
+    # HotMid at 70° still has ~213 LY range → can reach End (200 LY away). ✓
+    LY = 9.46e15
     systems = {
-        "1": {"id": 1, "name": "Start",  "x": 0.0,          "y": 0.0, "z": 0.0,
+        "1": {"id": 1, "name": "Start",  "x": 0.0,        "y": 0.0,       "z": 0.0,
               "gate_links": [], "safe_jump_temp": 0.0},
-        "2": {"id": 2, "name": "HotMid", "x": 9.46e15 * 10, "y": 0.0, "z": 0.0,
-              "gate_links": [], "safe_jump_temp": 75.0},   # yellow — triggers alt
-        "3": {"id": 3, "name": "End",    "x": 9.46e15 * 20, "y": 0.0, "z": 0.0,
+        "2": {"id": 2, "name": "HotMid", "x": LY * 200,   "y": 0.0,       "z": 0.0,
+              "gate_links": [], "safe_jump_temp": 70.0},   # just at WARM threshold
+        "3": {"id": 3, "name": "End",    "x": LY * 400,   "y": 0.0,       "z": 0.0,
               "gate_links": [], "safe_jump_temp": 0.0},
-        "4": {"id": 4, "name": "CoolMid","x": 9.46e15 * 10, "y": 9.46e15 * 5,  "z": 0.0,
-              "gate_links": [], "safe_jump_temp": 0.0},    # cooler detour
+        "4": {"id": 4, "name": "CoolMid","x": LY * 200,   "y": LY * 50,   "z": 0.0,
+              "gate_links": [], "safe_jump_temp": 0.0},
     }
     e = _make_engine(systems)
-    # Range 600 LY covers direct hops; fuel unlimited
-    p = _profile(range_ly=600.0)
+    # Range 399 LY: direct Start→End (400 LY) out of reach; both 2-hop paths valid.
+    # HotMid is collinear → lower heuristic → chosen as primary.
+    p = _profile(range_ly=399.0)
     result = e.route("Start", "End", p)
     assert result is not None
-    # The only direct path Start→End is via HotMid (collinear, cheapest LY cost).
-    # A* minimizes total_ly so primary should go through HotMid (0+10=10 LY vs 0+~11.18+~11.18 LY).
-    # hot_systems must be non-empty (HotMid is in path[1:-1]).
     assert result["hot_systems"] == ["HotMid"], (
         f"Expected primary to go through HotMid, got hot_systems={result['hot_systems']}, "
         f"path={result['path']}"
     )
-    # Alternative must exist (route via CoolMid)
+    # Alternative must exist (route via CoolMid, avoiding HotMid as direct waypoint)
     assert result["alternative"] is not None, "Expected an alternative route avoiding HotMid"
     assert "HotMid" not in result["alternative"].get("path", []), (
         "Alternative should not route through HotMid"

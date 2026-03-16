@@ -1,7 +1,7 @@
 # Nav Computer — Implementation Spec
 
 **Date:** 2026-03-15
-**Status:** Approved for implementation
+**Status:** Implemented (2026-03-16 — see amendment notes below)
 
 ---
 
@@ -26,8 +26,10 @@ H(D) = 100 × (2/π) × arctan(K × 2π × √(L / L_sun) / D)
 - Output: 0–100 game units (asymptotic, never exceeds 100)
 
 **Safe jump point distance:**
-- Systems with planets or Lagrange points: use the outermost object's orbit radius
-- Systems with star only: use `star_radius` (from DB `SolarSystems.star_radius`) — will produce temp near 100, effectively no-jump
+- `D` uses the **outermost non-Cold-Ice-Giant planet's orbitRadius only**. Cold Ice Giants have extreme orbital radii that cause severe underestimation of heat (confirmed via ef-map.com comparison). **Lagrange points are not used** — ef-map.com uses planet orbits only, not Lagrange points.
+- Systems with star only (no planets): use `star_radius` as fallback — will produce temp near 100, effectively no-jump.
+
+> **Amendment 2026-03-16:** Original spec said "use outermost object's orbit radius" (including Lagrange points). This was corrected after calibration against ef-map.com: UR8-K7K target 36.9° — planets-only formula gives 37.0° ✓; with Lagrange points included the result was 10.8° ✗. Cold Ice Giants also excluded from the planet set for the same reason.
 
 **Temperature zones:**
 
@@ -115,14 +117,16 @@ budget_ly = (fuel_quantity × fuel_quality) / (1e-7 × M_current)
 
 ### build_universe.py additions
 
-For each system, add three new fields by querying the DB:
+For each system, add new fields by querying the DB:
 
 ```python
 # star_luminosity — from SolarSystems table
 star_luminosity = row["star_luminosity"]  # watts
 
-# max_orbit_m — outermost planet orbit radius, or star_radius fallback
-max_orbit_m = max(planet orbit radii) or lagrange point distances
+# max_orbit_m — outermost non-Cold-Ice-Giant planet orbit radius, or star_radius fallback
+# Lagrange points are NOT used (ef-map.com confirmed planets-only)
+# Cold Ice Giants excluded (extreme orbits produce severe heat underestimation)
+max_orbit_m = MAX(orbitRadius) WHERE typeDescription != 'Cold Ice Giant'
 if none found: max_orbit_m = star_radius  # star-only system, will be very hot
 
 # safe_jump_temp — official formula
@@ -134,6 +138,9 @@ safe_jump_temp = 100 * (2/math.pi) * math.atan(K * 2 * math.pi * math.sqrt(star_
 ```
 
 Systems with `safe_jump_temp ≥ 90` (Red zone) produce `node_range_ly = 0` in the A* expansion — no direct jump out is possible, but gate edges through them remain available. The primary route may freely use Yellow (70–79) and Orange (80–89) systems as direct-jump waypoints. The alternative route is the one that additionally avoids all systems with `safe_jump_temp ≥ 70` as direct-jump waypoints.
+
+- **Red zone (≥90°):** 655 systems (revised from original estimate of 159)
+- **Warm zone (70–89°):** 1,254 systems (revised from ~905)
 
 `systems.json` size impact: ~11 MB → ~12 MB. ETag cache means clients only re-download on rebuild.
 
@@ -177,6 +184,18 @@ Update `current_mass` computation: `hull_mass + extra_cargo_kg`. Fuel quantity d
 
 ### route_engine.py changes
 
+**Routing modes (`cost_mode` parameter):**
+
+> **Amendment 2026-03-16:** The route engine now supports three modes, exposed as `cost_mode` in `POST /route` and echoed back in the result.
+
+| `cost_mode` | Algorithm | Gate cost | Direct cost | Heuristic | Goal |
+|-------------|-----------|-----------|-------------|-----------|------|
+| `"jumps"` (default) | A* | 1 hop | 1 hop | dist/max_range | Fewest hops |
+| `"fuel"` | Dijkstra (A* h=0) | 0 LY | distance_ly | 0 | Minimum LY flown |
+| `"gate"` | BFS | — | not used | — | Gates only |
+
+Fuel-optimized mode often routes through many gate hops to avoid long direct jumps, reducing total LY significantly at the cost of more hops. Example: UR8-K7K → EVV-7GK: jumps-opt = 2 hops / 200.4 LY; fuel-opt = 9 hops / 154.1 LY.
+
 **Per-node jump range.** At each A* node expansion, compute outbound range from that node's `safe_jump_temp` rather than using a fixed ship range:
 
 ```python
@@ -196,16 +215,32 @@ Gate edges are always available regardless of heat.
 
 **Route result shape:**
 
+> **Amendment 2026-03-16:** Additional fields added: `cost_mode`, `origin_temp`, `origin_planets`, and per-hop metadata `hops`. System names are stored and returned **uppercase**.
+
 ```python
 {
     "type": "route_planned",
-    "path": ["sys-a", "sys-b", ...],          # system names
+    "path": ["SYS-A", "SYS-B", ...],          # system names (uppercase)
     "jumps": 6,                                # edges traversed = len(path) - 1
-    "jump_types": ["direct", "gate", ...],     # len(jump_types) == jumps, one entry per edge
+    "jump_types": ["direct", "gate", ...],     # len == jumps, one entry per edge
     "total_ly": 142.3,
     "fuel_used": 87.0,
     "fuel_remaining": 213.0,
-    "hot_systems": ["sys-c"],                  # intermediate systems with safe_jump_temp ≥ 70 (same threshold used to trigger and build the alternative)
+    "hot_systems": ["SYS-C"],                  # intermediate systems with safe_jump_temp ≥ 70
+    "cost_mode": "jumps",                      # echoed from request
+    "origin_temp": 36.9,                       # safe_jump_temp of origin system
+    "origin_planets": 4,                       # planet_count of origin system
+    "hops": [
+        {
+            "from": "SYS-A",
+            "to": "SYS-B",
+            "type": "gate",                    # "gate" or "direct"
+            "distance_ly": 0.0,
+            "dest_temp": 78.2,
+            "dest_planets": 3
+        },
+        ...
+    ],
     "alternative": { ...same shape... } | None,
     "warnings": [],
 }
@@ -362,3 +397,16 @@ SHIP: Lai | EU-90 × 2400u | range 380 LY | budget 1141 LY
 - Player-owned gate routing (architecture supports it as a future edge type)
 - Route time estimates
 - Multi-waypoint routing
+
+---
+
+## Deferred Features (post-2026-03-16)
+
+### Compare+Blend Routing
+
+A third routing mode that models **time cost** in addition to fuel cost, enabling a combined score. Design discussion captured in `docs/future-features/blend-routing.md`.
+
+Key open questions before implementation:
+1. Ship jump cooldown formula — proportional to origin system `safe_jump_temp`; exact formula not yet confirmed from ef-map.com
+2. Gate transit time — need in-game measurement of gate jump duration
+3. UI: side-by-side panel showing jumps-opt, fuel-opt, and time-opt routes simultaneously

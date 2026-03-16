@@ -196,62 +196,78 @@ class RouteEngine:
         d_id: str,
         profile: ShipProfile,
         exclude_direct: Optional[set] = None,
+        cost_mode: str = "jumps",
     ) -> Optional[tuple]:
         """
-        Run A* and return (path_ids, edge_types, total_ly) or None.
+        Hybrid A* / Dijkstra router.
 
-        exclude_direct: set of system IDs that cannot be used as
-                        direct-jump intermediate waypoints. Gates still work.
-                        Origin and destination are never excluded.
+        cost_mode="jumps" (default):
+            Minimise hop count. Gates and direct jumps both cost 1.
+            Heuristic: straight-line dist / max possible range.
+
+        cost_mode="fuel":
+            Minimise total direct-jump LY (Dijkstra).
+            Gate hops cost 0. Direct jumps cost their distance in LY.
+            Heuristic: 0 (pure Dijkstra — gates make any lower bound inadmissible).
+
+        Returns (path_ids, edge_types, total_ly) or None.
         """
-        fuel_budget_ly = profile.fuel_budget()
+        c_eff = profile.specific_heat * (1.0 + profile.adaptive_level * 0.02)
+        cur_mass = profile.hull_mass + profile.extra_cargo_kg
+        global_max_range = (T_MAX * c_eff * profile.hull_mass) / (HEAT_CONSTANT * cur_mass) if cur_mass > 0 else 0.0
+
         dx, dy, dz = self._pos_ly(d_id)
+        fuel_mode = (cost_mode == "fuel")
 
         def heuristic(sid: str) -> float:
+            if fuel_mode:
+                return 0.0  # gates are free → no admissible lower bound on fuel
             x, y, z = self._pos_ly(sid)
-            return math.sqrt((x - dx)**2 + (y - dy)**2 + (z - dz)**2)
+            dist = math.sqrt((x - dx)**2 + (y - dy)**2 + (z - dz)**2)
+            if global_max_range <= 0:
+                return float("inf")
+            return dist / global_max_range
 
-        # heap: (f, g_ly, sid, path_ids, edge_types)
-        heap  = [(heuristic(o_id), 0.0, o_id, [o_id], [])]
-        best  = {}  # sid → best g_ly seen
+        # heap: (f, g_cost, sid, path_ids, edge_types, acc_ly)
+        # g_cost = jump count (jumps mode) or accumulated LY (fuel mode)
+        heap = [(heuristic(o_id), 0.0, o_id, [o_id], [], 0.0)]
+        best: dict = {}  # sid → best g_cost seen
 
         while heap:
-            f, g_ly, cur_id, path, edge_types = heapq.heappop(heap)
+            f, g_cost, cur_id, path, edge_types, acc_ly = heapq.heappop(heap)
 
             if cur_id == d_id:
-                return (path, edge_types, g_ly)
+                return (path, edge_types, acc_ly)
 
-            if cur_id in best and best[cur_id] <= g_ly:
+            if cur_id in best and best[cur_id] <= g_cost:
                 continue
-            best[cur_id] = g_ly
+            best[cur_id] = g_cost
 
             cx, cy, cz = self._pos_ly(cur_id)
 
-            # Gate neighbours (cost 0)
+            # Gate neighbours — free in fuel mode, 1 jump in jumps mode
+            gate_step = 0.0 if fuel_mode else 1.0
             for nb in self._systems.get(cur_id, {}).get("gate_links", []):
                 nb_id = str(nb)
-                if nb_id not in best or best[nb_id] > g_ly:
-                    f_new = g_ly + heuristic(nb_id)
-                    heapq.heappush(heap, (f_new, g_ly, nb_id,
-                                          path + [nb_id], edge_types + ["gate"]))
+                g_new = g_cost + gate_step
+                if nb_id not in best or best[nb_id] > g_new:
+                    heapq.heappush(heap, (g_new + heuristic(nb_id), g_new, nb_id,
+                                          path + [nb_id], edge_types + ["gate"], acc_ly))
 
             # Direct jump neighbours
-            node_range_ly = self._node_range_ly(cur_id, profile)
-            if node_range_ly > 0.0 and g_ly <= fuel_budget_ly:
-                for nb_id in self._spatial.within_range(cx, cy, cz, node_range_ly):
+            node_range = self._node_range_ly(cur_id, profile)
+            if node_range > 0.0:
+                for nb_id in self._spatial.within_range(cx, cy, cz, node_range):
                     if nb_id == cur_id:
                         continue
-                    # Skip excluded systems as direct waypoints (not as destination)
                     if exclude_direct and nb_id in exclude_direct and nb_id != d_id:
                         continue
                     d_jump = self._dist_ly(cur_id, nb_id)
-                    g_new  = g_ly + d_jump
-                    if g_new > fuel_budget_ly:
-                        continue
+                    g_new = g_cost + (d_jump if fuel_mode else 1.0)
                     if nb_id not in best or best[nb_id] > g_new:
-                        f_new = g_new + heuristic(nb_id)
-                        heapq.heappush(heap, (f_new, g_new, nb_id,
-                                              path + [nb_id], edge_types + ["direct"]))
+                        heapq.heappush(heap, (g_new + heuristic(nb_id), g_new, nb_id,
+                                              path + [nb_id], edge_types + ["direct"],
+                                              acc_ly + d_jump))
         return None
 
     # ------------------------------------------------------------------
@@ -259,7 +275,7 @@ class RouteEngine:
     # ------------------------------------------------------------------
 
     def route(self, origin: str, destination: str,
-              profile: ShipProfile) -> dict:
+              profile: ShipProfile, cost_mode: str = "jumps") -> dict:
         """
         Find the fuel-cheapest route. Returns a route dict (never None).
         If unreachable, returns a no_route dict.
@@ -269,8 +285,15 @@ class RouteEngine:
         d_id = self._by_name.get(destination.lower().strip())
 
         if not o_id or not d_id:
-            log.warning("Route: system not found (%s → %s)", origin, destination)
+            unknown = origin if not o_id else destination
+            log.warning("Route: system not found: %r", unknown)
             return self._no_route(destination, profile)
+
+        node_range = self._node_range_ly(o_id, profile)
+        log.info("Route %s → %s | mode=%s | origin temp %.1f° | range %.1f LY | %s %s %.0fu",
+                 origin, destination, cost_mode,
+                 self._systems.get(o_id, {}).get("safe_jump_temp", 0.0),
+                 node_range, profile.ship_type or "?", profile.fuel_type, profile.fuel_quantity)
 
         if o_id == d_id:
             return {
@@ -286,11 +309,15 @@ class RouteEngine:
                 "warnings":       [],
             }
 
-        primary = self._run_astar(o_id, d_id, profile)
+        primary = self._run_astar(o_id, d_id, profile, cost_mode=cost_mode)
         if primary is None:
+            log.warning("Route: no path found %s → %s", origin, destination)
             return self._no_route(destination, profile)
 
         path_ids, edge_types, total_ly = primary
+        log.info("Route found: %d jumps, %.1f LY direct (%d ship jumps, %d gate jumps)",
+                 len(path_ids) - 1, total_ly,
+                 edge_types.count("direct"), edge_types.count("gate"))
 
         # Hot intermediates: intermediate nodes (not origin/dest) with temp >= WARM_SYSTEM_TEMP
         hot_sids = [
@@ -303,7 +330,7 @@ class RouteEngine:
         alternative = None
         if hot_sids:
             exclude = set(hot_sids)
-            alt = self._run_astar(o_id, d_id, profile, exclude_direct=exclude)
+            alt = self._run_astar(o_id, d_id, profile, exclude_direct=exclude, cost_mode=cost_mode)
             if alt is not None:
                 alt_ids, alt_edges, alt_ly = alt
                 if alt_ids != path_ids:
@@ -313,6 +340,7 @@ class RouteEngine:
 
         result = self._format_result(path_ids, edge_types, total_ly, profile,
                                      hot_systems=hot_systems, alternative=alternative)
+        result["cost_mode"] = cost_mode
         return result
 
     def _format_result(
@@ -329,7 +357,28 @@ class RouteEngine:
         fuel_rem   = round(profile.fuel_quantity - fuel_used, 2)
         warnings   = [w for sid in path_ids[1:] if (w := self._security_warning(sid))]
         if fuel_used > profile.fuel_quantity:
-            warnings.append("insufficient fuel for this route")
+            warnings.append(
+                f"fuel needed: {fuel_used:.0f}u — carrying {profile.fuel_quantity:.0f}u "
+                f"({fuel_used - profile.fuel_quantity:.0f}u short). Refuel en route."
+            )
+
+        # Per-hop breakdown: distance, dest system temp, dest planet count, jump type
+        hops = []
+        for i, (sid_a, sid_b, jtype) in enumerate(zip(path_ids, path_ids[1:], edge_types)):
+            dist_ly = round(self._dist_ly(sid_a, sid_b), 1) if jtype == "direct" else 0.0
+            dest    = self._systems.get(sid_b, {})
+            hops.append({
+                "from":         names[i],
+                "to":           names[i + 1],
+                "type":         jtype,
+                "distance_ly":  dist_ly,
+                "dest_temp":    round(dest.get("safe_jump_temp", 0.0), 1),
+                "dest_planets": dest.get("planet_count", 0),
+            })
+
+        # Origin system metadata
+        origin_sys = self._systems.get(path_ids[0], {})
+
         return {
             "type":           "route_planned",
             "path":           names,
@@ -341,6 +390,9 @@ class RouteEngine:
             "hot_systems":    hot_systems or [],
             "alternative":    alternative,
             "warnings":       warnings,
+            "hops":           hops,
+            "origin_temp":    round(origin_sys.get("safe_jump_temp", 0.0), 1),
+            "origin_planets": origin_sys.get("planet_count", 0),
         }
 
     def _no_route(self, destination: str, profile: ShipProfile) -> dict:
