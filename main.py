@@ -291,12 +291,13 @@ async def debug():
         live_sessions=log_buffer.get_live(),
     )
     return {
-        "current_system":  log_buffer.current_system,
-        "systems_indexed": len(world_api._system_index),
-        "buffer_events":   log_buffer.get_recent(50),
-        "live_sessions":   log_buffer.get_live(),
-        "world_api_data":  system_data,
-        "context_block":   context,
+        "current_system":           log_buffer.current_system,
+        "systems_indexed":          len(world_api._system_index),
+        "buffer_events":            log_buffer.get_recent(50),
+        "live_sessions":            log_buffer.get_live(),
+        "world_api_data":           system_data,
+        "context_block":            context,
+        "pending_structure_alerts": log_buffer.pending_structure_alerts,
     }
 
 @app.get("/logs/stream", dependencies=[Depends(require_token)])
@@ -640,6 +641,89 @@ async def chat(req: ChatRequest):
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+class StructureDebugChatRequest(BaseModel):
+    structure_id: str
+    message: str
+    history: list = []
+
+
+@app.post("/structure-debug/chat", dependencies=[Depends(require_token)])
+async def structure_debug_chat(req: StructureDebugChatRequest):
+    from dataclasses import asdict
+    profile = load_structure_profile(req.structure_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Structure profile not found")
+
+    alerts = detect_alerts(profile)
+    urgent  = [a for a in alerts if a["severity"] == "urgent"]
+    routine = [a for a in alerts if a["severity"] == "routine"]
+    for alert in urgent:
+        log_buffer.add_structure_alert(alert)
+    if routine:
+        profile.routine_alerts = (profile.routine_alerts + routine)[-10:]
+        save_structure_profile(profile)
+
+    from src.memory_store import get_memory_store
+    mem_store = get_memory_store(req.structure_id)
+    summary = mem_store.get_summary()
+    memory_text = summary.get("text", "")
+
+    context = build_structure_context(profile, "OWNER", memory_text=memory_text)
+
+    def event_stream():
+        try:
+            for chunk in structure_client.stream(
+                message=req.message,
+                history=req.history,
+                context_block=context,
+                profile=profile,
+                tier="OWNER",
+                character_name="[DEV CONSOLE]",
+                character_id=0,
+            ):
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+        except Exception as e:
+            log.error("Structure debug chat stream error: %s", e)
+            yield f"data: {json.dumps({'error': 'Stream interrupted.'})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+            try:
+                mem_store.rebuild_summary()
+            except Exception as e_rebuild:
+                log.warning("Summary rebuild failed: %s", e_rebuild)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/structure-debug/{structure_id}", dependencies=[Depends(require_token)])
+async def structure_debug_get(structure_id: str):
+    from dataclasses import asdict
+    profile = load_structure_profile(structure_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Structure profile not found")
+    return asdict(profile)
+
+
+@app.post("/structure-debug/{structure_id}", dependencies=[Depends(require_token)])
+async def structure_debug_post(structure_id: str, request: Request):
+    from dataclasses import asdict, fields as dc_fields
+    body = await request.json()
+    profile = load_structure_profile(structure_id)
+    if not profile:
+        if "owner_address" not in body:
+            raise HTTPException(status_code=404, detail="Profile not found. Include owner_address to create.")
+        profile = StructureProfile(structure_id=structure_id, owner_address=body["owner_address"])
+    known = {f.name for f in dc_fields(StructureProfile)}
+    for k, v in body.items():
+        if k in known and k != "structure_id":
+            setattr(profile, k, v)
+    try:
+        save_structure_profile(profile)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return asdict(profile)
 
 
 @app.post("/auth/challenge")

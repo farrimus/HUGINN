@@ -1,7 +1,7 @@
 # EVE Frontier Companion — Codebase Index
 
 **Hackathon deadline:** March 31, 2026.
-**Last updated:** 2026-03-16 (on-chain asset data — Phase 1/2/3)
+**Last updated:** 2026-03-16 (structure-debug dev console)
 
 This file is the entry point. It contains the architecture diagram, status table, and directory tree. Detailed reference is in `docs/ref/`.
 
@@ -82,6 +82,9 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | Structure AI backend | ✓ Built — auth, tier resolution, profile, Claude streaming, alert bridge |
 | Structure auth endpoints (`/auth/challenge`, `/auth/verify`) | ✓ Working — zkLogin (0x05) passthrough, registry ID server-configured |
 | `static/structure.html` | ✓ Built — amber terminal UI, auth gate, info panel, SSE chat |
+| `static/structure-debug.html` | ✓ Built — amber dev console: live logs, profile editor, structure AI chat, pipeline + alert panels |
+| `/structure-debug/{id}` GET/POST, `/structure-debug/chat` | ✓ Token-gated dev endpoints (no JWT); profile read/write/create, OWNER-tier AI stream |
+| `/debug` `pending_structure_alerts` field | ✓ Non-destructive peek at pending structure alerts added to `/debug` response |
 | Move contract (`AccessRegistry`) | ✓ Deployed to Sui testnet — package `0xf335...55b9` |
 | AccessRegistry `keep-7a` (owner `0x442f`) | ✓ Object `0x89e9...dc0` |
 | AccessRegistry `keep-7a` (owner `0xff09`) | ✓ Object `0xf5ce...708` |
@@ -168,7 +171,8 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 ├── static/
 │   ├── index.html                  # In-game browser chat UI (Tailwind, SSE, auto-reconnect)
 │   ├── structure.html              # SSU browser Structure AI chat UI (amber terminal, wallet auth, SSE chat)
-│   └── debug.html                  # Developer debug console (three-column: logs, nav computer, pipeline state)
+│   ├── structure-debug.html        # Structure AI dev console (amber, token-auth: logs, profile editor, AI chat, alerts)
+│   └── debug.html                  # Ship AI dev console (three-column: logs, nav computer, pipeline state)
 │
 ├── data/
 │   ├── system_index.json           # 24,501 systems: name (lowercase) → system_id (from world API)
@@ -195,6 +199,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
     ├── ref/
     │   ├── ship-ai.md              # Ship AI server modules + log agent + event flow + test coverage
     │   ├── structure-ai.md         # Structure AI modules + Sui deployment + auth endpoints
+    │   ├── structure-debug.md      # Structure AI dev console — endpoints, UI layout, /debug field
     │   ├── routing.md              # Routing architecture — algorithm, data structures, response format
     │   ├── overlay.md              # DX12 overlay C++ modules
     │   ├── ui.md                   # index.html + debug.html + in-game browser environment
@@ -215,6 +220,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | Ship AI pipeline details (modules, event flow, tests) | `docs/ref/ship-ai.md` |
 | Pipeline narrative + design rationale | `docs/log-pipeline.md` |
 | Structure AI + Sui auth + blockchain | `docs/ref/structure-ai.md` |
+| Structure AI dev console (token-gated endpoints + UI) | `docs/ref/structure-debug.md` |
 | Routing algorithm, heat formula, ship profile, response format | `docs/ref/routing.md` |
 | DX12 overlay C++ modules | `docs/ref/overlay.md` |
 | index.html, debug.html, in-game browser env | `docs/ref/ui.md` |

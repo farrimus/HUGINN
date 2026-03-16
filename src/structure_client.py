@@ -9,6 +9,9 @@ import logging
 import json as _json
 from typing import Optional
 from anthropic import Anthropic
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from src.structure_profile import StructureProfile
 
