@@ -4,6 +4,7 @@ import os
 import math
 import logging
 import bisect
+import heapq
 from collections import deque
 from typing import Optional
 
@@ -16,6 +17,7 @@ SYSTEMS_PATH = os.path.normpath(
 )
 
 LY_METERS = 9_460_730_472_580_800.0  # IAU light-year in meters
+WARM_SYSTEM_TEMP = 70.0  # systems at or above this temp trigger alternative route
 
 
 class _SpatialIndex:
@@ -125,7 +127,13 @@ class RouteEngine:
         return None
 
     def _node_range_ly(self, sid: str, profile: ShipProfile) -> float:
-        """Compute direct-jump range (LY) from a given system node."""
+        """Compute direct-jump range (LY) from a given system node.
+
+        Uses safe_jump_temp from systems.json (the ambient node temperature).
+        profile.external_temp is intentionally not used here — that field
+        reflects the player's current actual temperature, not the node's
+        ambient temperature used for route planning.
+        """
         temp = self._systems.get(sid, {}).get("safe_jump_temp", 0.0)
         if temp >= 90.0:
             return 0.0
@@ -196,8 +204,6 @@ class RouteEngine:
                         direct-jump intermediate waypoints. Gates still work.
                         Origin and destination are never excluded.
         """
-        import heapq
-
         fuel_budget_ly = profile.fuel_budget()
         dx, dy, dz = self._pos_ly(d_id)
 
@@ -231,7 +237,7 @@ class RouteEngine:
 
             # Direct jump neighbours
             node_range_ly = self._node_range_ly(cur_id, profile)
-            if node_range_ly > 0.0 and g_ly < fuel_budget_ly:
+            if node_range_ly > 0.0 and g_ly <= fuel_budget_ly:
                 for nb_id in self._spatial.within_range(cx, cy, cz, node_range_ly):
                     if nb_id == cur_id:
                         continue
@@ -286,10 +292,10 @@ class RouteEngine:
 
         path_ids, edge_types, total_ly = primary
 
-        # Hot intermediates: intermediate nodes (not origin/dest) with temp >= 70
+        # Hot intermediates: intermediate nodes (not origin/dest) with temp >= WARM_SYSTEM_TEMP
         hot_sids = [
             sid for sid in path_ids[1:-1]
-            if self._systems.get(sid, {}).get("safe_jump_temp", 0.0) >= 70.0
+            if self._systems.get(sid, {}).get("safe_jump_temp", 0.0) >= WARM_SYSTEM_TEMP
         ]
         hot_systems = [self._name(sid) for sid in hot_sids]
 
