@@ -92,7 +92,8 @@ def test_red_zone_no_direct_jump_out():
 
 def test_alternative_route_triggered_by_hot_intermediate():
     """Alternative route computed when primary path has temp >= 70 intermediate."""
-    # Build a longer system chain where we can construct a hot-intermediate scenario
+    # Three systems in a line — primary MUST go through HotMid (only path).
+    # CoolMid is a diagonal detour the alt route can take instead.
     systems = {
         "1": {"id": 1, "name": "Start",  "x": 0.0,          "y": 0.0, "z": 0.0,
               "gate_links": [], "safe_jump_temp": 0.0},
@@ -104,12 +105,22 @@ def test_alternative_route_triggered_by_hot_intermediate():
               "gate_links": [], "safe_jump_temp": 0.0},    # cooler detour
     }
     e = _make_engine(systems)
-    p = _profile(range_ly=600.0)  # can reach all in one hop
+    # Range 600 LY covers direct hops; fuel unlimited
+    p = _profile(range_ly=600.0)
     result = e.route("Start", "End", p)
     assert result is not None
-    if result.get("hot_systems"):
-        # If primary goes through HotMid, alternative should exist
-        assert result["alternative"] is not None
+    # The only direct path Start→End is via HotMid (collinear, cheapest LY cost).
+    # A* minimizes total_ly so primary should go through HotMid (0+10=10 LY vs 0+~11.18+~11.18 LY).
+    # hot_systems must be non-empty (HotMid is in path[1:-1]).
+    assert result["hot_systems"] == ["HotMid"], (
+        f"Expected primary to go through HotMid, got hot_systems={result['hot_systems']}, "
+        f"path={result['path']}"
+    )
+    # Alternative must exist (route via CoolMid)
+    assert result["alternative"] is not None, "Expected an alternative route avoiding HotMid"
+    assert "HotMid" not in result["alternative"].get("path", []), (
+        "Alternative should not route through HotMid"
+    )
 
 def test_no_route_returns_no_route_shape():
     systems = _make_systems()
