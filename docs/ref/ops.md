@@ -24,9 +24,7 @@ NOVA_RPC_URL=https://fullnode.testnet.sui.io
 # Background polling
 SSU_OBJECT_ID=<Sui object ID of the deployed SSU — leave blank to disable SSU state polling>
 TURRET_OBJECT_IDS=<comma-separated Sui object IDs of turrets — leave blank to disable>
-# Blockchain gateway (Phase 2 — verify DNS first; see structure-ai.md for DNS check command)
-BLOCKCHAIN_GW_URL=https://blockchain-gateway-stillness.live.tech.evefrontier.com
-# Player-owned structure IDs for Ship AI context (Phase 3 — comma-separated Sui object IDs)
+# Player-owned structure IDs for Ship AI context (comma-separated Sui object IDs)
 PLAYER_STRUCTURE_IDS=<comma-separated Sui object IDs of player's own structures>
 ```
 
@@ -106,8 +104,9 @@ python diagnose.py
 | `ssu_poller.poll_ssu_state` | Two-hop RPC field paths verified live 2026-03-16 — `energy_source_id` bare string, `fuel.fields.quantity/max_capacity`, `connected_assembly_ids` plain array. All handled correctly. | Resolved |
 | Assembly type labels | Real struct names confirmed: `Gate`, `Turret`, `StorageUnit`. `_TYPE_LABELS` updated. | Resolved |
 | SSU self-reference in connected list | SSU lists itself in NetworkNode `connected_assembly_ids`. Filtered in `_ssu_loop` before resolving. | Resolved |
-| `blockchain_client._parse_inventory` | Field path not confirmed — gateway DNS dead, can't curl-verify. Blocked on DNS fix. | Blocked |
-| Blockchain gateway DNS | Still `Could not resolve host` from VPS as of 2026-03-16. Phase 2 (INVENTORY) and Phase 3 (PLAYER STRUCTURE) gracefully degraded until resolved. | **High** |
+| `poll_ssu_inventory` | Resolved — inventory now read via Sui dynamic fields RPC (`suix_getDynamicFields` + `sui_getObject`). No gateway needed. | Resolved |
+| Blockchain gateway DNS | Resolved — no gateway exists; all chain data goes through Sui RPC (`fullnode.testnet.sui.io`). `blockchain_client.py` removed. | Resolved |
+| `system_name` for player structures | Not available on-chain — location is a hashed game mechanic. `get_player_structures_in_system` returns all cached structures regardless of system. | Known limitation |
 | WatchTower webhook | Not implemented — deferred post-hackathon. Would POST shield/fuel alerts to Discord/Slack. | Medium |
 | A* memory usage | Path stored as full list per heap entry (quadratic). Acceptable for dev/debug server; optimize before client-side port. | Medium |
 | `memory_store.rebuild_summary()` | Claude summarization call not yet tested end-to-end — mock used in unit tests | Medium |

@@ -293,7 +293,7 @@ Long-running asyncio tasks started at server startup (via FastAPI lifespan). Pol
 | `SSU_POLL_INTERVAL` | 60s | SSU state + connected assembly resolution |
 | `KILLMAIL_POLL_INTERVAL` | 300s | Killmail polling |
 | `TURRET_POLL_INTERVAL` | 60s | Turret state polling |
-| `INVENTORY_POLL_INTERVAL` | 300s | SSU inventory via blockchain gateway |
+| `INVENTORY_POLL_INTERVAL` | 300s | SSU inventory via Sui dynamic fields RPC |
 | `PLAYER_STRUCTURE_POLL_INTERVAL` | 120s | Player-owned structure summaries |
 
 **Poll functions:**
@@ -302,8 +302,8 @@ Long-running asyncio tasks started at server startup (via FastAPI lifespan). Pol
 |----------|--------|---------|
 | `poll_ssu_state(structure_id, ssu_object_id)` | `nova_client._rpc("sui_getObject", ...)` two-hop | `profile.fuel_pct`, `profile.services_online`, `profile.connected_assembly_ids` |
 | `poll_connected_assemblies(structure_id, assembly_ids)` | `nova_client._rpc("sui_getObject", ...)` per assembly (cap 10) | `profile.connected_assemblies` — `[{object_id, type_name, status}]` |
-| `poll_ssu_inventory(structure_id, ssu_object_id)` | `blockchain_client.get_assembly(ssu_object_id)` | `profile.ssu_inventory` — `[{type_name, quantity}]` |
-| `poll_player_structure(assembly_id)` | `blockchain_client.get_assembly(assembly_id)` | `_player_structure_cache[assembly_id]` |
+| `poll_ssu_inventory(structure_id, ssu_object_id)` | `nova_client._rpc("suix_getDynamicFields", ...)` + `sui_getObject` per field | `profile.ssu_inventory` — `[{type_name, quantity}]` |
+| `poll_player_structure(assembly_id)` | `nova_client._rpc("sui_getObject", ...)` two-hop (same pattern as `poll_ssu_state`) | `_player_structure_cache[assembly_id]` |
 | `poll_killmails(structure_id, system_id)` | `world_api.get_killmails(system_id)` | Appends new kills to `memory_store.append_event("killmail", ...)` |
 | `poll_sui_events(structure_id, ssu_object_id)` | `nova_client._rpc("suix_queryEvents", ...)` ascending, cursor-tracked | Appends on-chain events to memory store |
 | `poll_turret(structure_id, turret_object_id)` | `nova_client._rpc("sui_getObject", ...)` | Appends turret state events to memory store |
@@ -311,10 +311,10 @@ Long-running asyncio tasks started at server startup (via FastAPI lifespan). Pol
 **Module-level cache:**
 ```python
 _player_structure_cache: dict[str, dict]
-# {assembly_id: {assembly_id, type_name, status, fuel_pct, services_online, system_name}}
+# {assembly_id: {assembly_id, type_name, status, fuel_pct}}
 ```
 
-**Accessor:** `get_player_structures_in_system(system_name: str) → list[dict]` — returns entries matching the given system name (case-insensitive). Called by `main.py` `/chat` handler.
+**Accessor:** `get_player_structures_in_system(system_name: str) → list[dict]` — returns all cached entries. `system_name` parameter retained for API compatibility but not used for filtering — location is a hashed game mechanic and `system_name` is not available on-chain. Called by `main.py` `/chat` handler.
 
 **Assembly type labels** (`_TYPE_LABELS`): Confirmed real on-chain struct names (verified 2026-03-16 against live Sui testnet):
 
@@ -344,30 +344,13 @@ Legacy `SmartX` keys retained for compatibility. Unknown struct names pass throu
 
 ---
 
-## `src/blockchain_client.py` — Blockchain Gateway REST Client
+## `src/type_names.py` — Type ID → Name Resolver
 
-Thin httpx wrapper over the EVE Frontier Blockchain Gateway (`blockchain-gateway-stillness.live.tech.evefrontier.com`). Same pattern as `world_api.py` — module-level singleton, TTL cache, all errors swallowed.
+Loads `data/type_names_all.json` once at import time and exposes a single lookup function.
 
-**Config:** `BLOCKCHAIN_GW_URL` env var (default: Stillness gateway URL). 120s TTL, 10s timeout.
+**`get_type_name(type_id) → str`** — accepts int or str type_id. Returns the human-readable name (e.g. `"Thermal Composites"`) or `"Unknown"` if not found or `None` is passed.
 
-**`BlockchainClient` methods:**
-
-| Method | Endpoint | Returns |
-|--------|----------|---------|
-| `get_assembly(assembly_id) → Optional[dict]` | `GET /smartassemblies/{id}` | Full assembly dict, or `None` on any error. Logs top-level keys at DEBUG on first success (field discovery). |
-| `get_assemblies_in_system(system_id) → list` | `GET /api/assemblies?systemId={id}` | List of assembly dicts, or `[]` on error. Handles both bare-list and `{"assemblies": [...]}` shapes. |
-| `_parse_inventory(assembly_data) → list` | — | Probes `inventory`, `items`, `storageItems` key paths. Returns `[{type_name, quantity}]` or `[]`. Field path TBD — confirm from real curl response. |
-
-**Error handling:** `ConnectError` (DNS failure) and `HTTPStatusError` are both caught, logged at WARNING, and return `None`/`[]`. Cache prevents duplicate network hits within TTL.
-
-**DNS caveat:** Gateway DNS confirmed still not resolving from VPS as of 2026-03-16 (`Could not resolve host`). Phase 2 (INVENTORY) and Phase 3 (PLAYER STRUCTURE in Ship AI) are wired and gracefully degraded — no data will appear until DNS resolves. Re-verify periodically:
-```bash
-curl -sv --max-time 10 \
-  "https://blockchain-gateway-stillness.live.tech.evefrontier.com/smartassemblies/0x51b84ccdccb017c75520efe1f3ca95821523faa33c24ce2eb59c718ae45a2a2c"
-```
-HTTP 200/404 JSON → DNS works, proceed. `Could not resolve host` → still broken.
-
-**Global singleton:** `blockchain_client = BlockchainClient()`
+**Global:** `_TYPE_NAMES: dict` — loaded from `data/type_names_all.json` at module import.
 
 ---
 
@@ -397,9 +380,26 @@ result.data.type  → "0x...::gate::Gate" | "0x...::turret::Turret" | "0x...::st
 result.data.content.fields.status.fields.status.variant → "ONLINE" | "OFFLINE"
 ```
 
+**SSU Inventory (suix_getDynamicFields + sui_getObject, verified 2026-03-16):**
+```
+suix_getDynamicFields(ssu_object_id) →
+  result.data[].objectType  → filter for "inventory" in type string
+  result.data[].objectId    → object ID to fetch
+
+sui_getObject(inv_object_id, {showContent: true}) →
+  result.data.content.fields.value.fields.items.fields.contents[] →
+    .fields.key              → type_id string (e.g. "88561")
+    .fields.value.fields.type_id    → type_id (alternate path)
+    .fields.value.fields.quantity   → quantity (int or string)
+```
+Type IDs resolved via `src/type_names.py` (loads `data/type_names_all.json`):
+- `78502` → `"Velocity CD82"`
+- `88561` → `"Thermal Composites"`
+
 **Known live values (testnet, 2026-03-16):**
 - SSU: OFFLINE, fuel 0.9% (932/100000) → triggers urgent fuel alert immediately
 - Connected to: 1× Turret (OFFLINE), 2× Gate (OFFLINE) [after filtering SSU self-reference]
+- Inventory: 1× Velocity CD82 (78502), 34× Thermal Composites (88561)
 
 ---
 
@@ -427,6 +427,6 @@ python build_types.py
 | `tests/test_structure_client.py` | 24 | Enriched context (STAR/PLANETS/LAGRANGE/GATES/memory), alert detection, LobbyClient prompt, ASSEMBLIES line (OWNER/VETTED/empty), INVENTORY line |
 | `tests/test_galaxy_db.py` | 15 | `get_system` (by ID, by name, JOIN region name), `get_region`, `get_planet`, `get_celestials_in_system`, `get_jumps_from_system`, miss cases |
 | `tests/test_memory_store.py` | 12 | `append_event`, `search_events`, `get_summary`, `rebuild_summary`, `upsert_pilot`, `get_pilot` |
-| `tests/test_blockchain_client.py` | 9 | Network errors → None/[], caching on second call, `_parse_inventory` (unknown structure, inventory key, items key) |
-| `tests/test_ssu_poller.py` | 14 | Two-hop fuel, services, `connected_assembly_ids` written, `poll_connected_assemblies` type/status extraction, per-assembly error swallowed, empty list no-ops, real struct name mapping (`Gate`/`Turret`/`StorageUnit`) |
+| `tests/test_type_names.py` | 4 | Known type IDs, string key, unknown ID, None |
+| `tests/test_ssu_poller.py` | 20 | Two-hop fuel, services, `connected_assembly_ids`, `poll_connected_assemblies`, inventory dynamic fields (populate/empty/no-fields), `poll_player_structure` (cache/RPC-failure), `get_player_structures_in_system` (all returned) |
 | `tests/test_main_auth.py` | — | `auth_verify` backfills `system_id`/`region_name` on existing profiles, calls `upsert_pilot` |
