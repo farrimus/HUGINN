@@ -7,7 +7,7 @@ import bisect
 from collections import deque
 from typing import Optional
 
-from src.ship_profile import ShipProfile
+from src.ship_profile import ShipProfile, T_MAX, HEAT_CONSTANT
 
 log = logging.getLogger(__name__)
 
@@ -15,30 +15,27 @@ SYSTEMS_PATH = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "data", "systems.json")
 )
 
-LY_METERS = 9_460_000_000_000_000.0  # 1 light-year in meters
+LY_METERS = 9_460_730_472_580_800.0  # IAU light-year in meters
 
 
 class _SpatialIndex:
     """
-    Lightweight 3D spatial index: sorts systems by X and uses binary search
-    to narrow range candidates before checking exact distance. No dependencies.
+    Lightweight 3D spatial index operating in light-years.
+    Sorts by X-axis and uses binary search to narrow candidates.
     """
     def __init__(self):
-        # sorted list of (x, y, z, system_id_str)
-        self._xs: list[float] = []
-        self._data: list[tuple] = []  # (x, y, z, sid)
+        self._xs:   list[float] = []
+        self._data: list[tuple] = []  # (x_ly, y_ly, z_ly, sid)
 
-    def build(self, systems: dict):
-        entries = []
-        for sid, s in systems.items():
-            x, y, z = s.get("x", 0), s.get("y", 0), s.get("z", 0)
-            entries.append((x, y, z, sid))
+    def build(self, ly_coords: dict):
+        """Build index from {sid: (x_ly, y_ly, z_ly)} dict."""
+        entries = [(x, y, z, sid) for sid, (x, y, z) in ly_coords.items()]
         entries.sort(key=lambda e: e[0])
         self._data = entries
         self._xs   = [e[0] for e in entries]
 
     def within_range(self, cx: float, cy: float, cz: float, r: float) -> list[str]:
-        """Return system IDs within Euclidean distance r of (cx, cy, cz)."""
+        """Return system IDs within Euclidean distance r LY of (cx, cy, cz)."""
         lo = bisect.bisect_left(self._xs,  cx - r)
         hi = bisect.bisect_right(self._xs, cx + r)
         result = []
@@ -58,14 +55,11 @@ class _SpatialIndex:
 
 class RouteEngine:
     def __init__(self):
-        self._systems: dict  = {}   # id (str) → system dict
-        self._by_name: dict  = {}   # lowercase name → id (str)
-        self._spatial        = _SpatialIndex()
-        self._mtime: float   = 0.0
-
-    # ------------------------------------------------------------------
-    # Loading
-    # ------------------------------------------------------------------
+        self._systems:   dict  = {}   # id (str) → system dict (meter coords from JSON)
+        self._by_name:   dict  = {}   # lowercase name → id (str)
+        self._ly_coords: dict  = {}   # id (str) → (x_ly, y_ly, z_ly)
+        self._spatial          = _SpatialIndex()
+        self._mtime:     float = 0.0
 
     def _load(self):
         try:
@@ -83,7 +77,16 @@ class RouteEngine:
                 for k, v in self._systems.items()
                 if v.get("name")
             }
-            self._spatial.build(self._systems)
+            # Convert coordinates to LY at load time
+            self._ly_coords = {
+                sid: (
+                    s.get("x", 0) / LY_METERS,
+                    s.get("y", 0) / LY_METERS,
+                    s.get("z", 0) / LY_METERS,
+                )
+                for sid, s in self._systems.items()
+            }
+            self._spatial.build(self._ly_coords)
             self._mtime = mtime
             log.info("systems.json loaded: %d systems", len(self._systems))
         except Exception as e:
@@ -93,12 +96,7 @@ class RouteEngine:
         self._load()
         return bool(self._systems)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
     def resolve(self, name: str) -> Optional[str]:
-        """Return system ID (str) for a name, or None."""
         self._load()
         return self._by_name.get(name.lower().strip())
 
@@ -107,17 +105,14 @@ class RouteEngine:
         sid = self._by_name.get(name.lower().strip())
         return self._systems.get(sid) if sid else None
 
-    def _dist(self, sid_a: str, sid_b: str) -> float:
-        a = self._systems.get(sid_a)
-        b = self._systems.get(sid_b)
-        if not (a and b):
-            return math.inf
-        dx, dy, dz = a["x"] - b["x"], a["y"] - b["y"], a["z"] - b["z"]
-        return math.sqrt(dx*dx + dy*dy + dz*dz)
+    def _pos_ly(self, sid: str) -> tuple:
+        return self._ly_coords.get(sid, (0.0, 0.0, 0.0))
 
-    def _pos(self, sid: str) -> tuple:
-        s = self._systems.get(sid, {})
-        return s.get("x", 0), s.get("y", 0), s.get("z", 0)
+    def _dist_ly(self, sid_a: str, sid_b: str) -> float:
+        ax, ay, az = self._pos_ly(sid_a)
+        bx, by, bz = self._pos_ly(sid_b)
+        dx, dy, dz = ax - bx, ay - by, az - bz
+        return math.sqrt(dx*dx + dy*dy + dz*dz)
 
     def _name(self, sid: str) -> str:
         return self._systems.get(sid, {}).get("name", sid)
@@ -129,8 +124,17 @@ class RouteEngine:
             return f"{self._name(sid)} is null-sec"
         return None
 
+    def _node_range_ly(self, sid: str, profile: ShipProfile) -> float:
+        """Compute direct-jump range (LY) from a given system node."""
+        temp = self._systems.get(sid, {}).get("safe_jump_temp", 0.0)
+        if temp >= 90.0:
+            return 0.0
+        c_eff = profile.specific_heat * (1.0 + profile.adaptive_level * 0.02)
+        cur_mass = profile.hull_mass + profile.extra_cargo_kg
+        return ((T_MAX - temp) * c_eff * profile.hull_mass) / (HEAT_CONSTANT * cur_mass)
+
     # ------------------------------------------------------------------
-    # Gate-only BFS (free, no ship params needed)
+    # Gate-only BFS (unchanged interface, updated to match new shape)
     # ------------------------------------------------------------------
 
     def bfs(self, origin: str, destination: str) -> Optional[dict]:
@@ -141,8 +145,10 @@ class RouteEngine:
         if not o_id or not d_id:
             return None
         if o_id == d_id:
-            return {"path": [self._name(o_id)], "jumps": 0,
-                    "gate_hops": 0, "direct_jumps": 0, "warnings": []}
+            return {"type": "route_planned", "path": [self._name(o_id)],
+                    "jumps": 0, "jump_types": [], "total_ly": 0.0,
+                    "fuel_used": 0.0, "fuel_remaining": 0.0,
+                    "hot_systems": [], "alternative": None, "warnings": []}
 
         queue: deque = deque([[o_id]])
         visited: set = {o_id}
@@ -156,110 +162,194 @@ class RouteEngine:
                 if nb_id == d_id:
                     names    = [self._name(s) for s in full]
                     warnings = [w for s in full[1:] if (w := self._security_warning(s))]
-                    return {"path": names, "jumps": len(names) - 1,
-                            "gate_hops": len(names) - 1, "direct_jumps": 0,
-                            "warnings": warnings}
+                    return {
+                        "type":           "route_planned",
+                        "path":           names,
+                        "jumps":          len(names) - 1,
+                        "jump_types":     ["gate"] * (len(names) - 1),
+                        "total_ly":       0.0,
+                        "fuel_used":      0.0,
+                        "fuel_remaining": 0.0,
+                        "hot_systems":    [],
+                        "alternative":    None,
+                        "warnings":       warnings,
+                    }
                 visited.add(nb_id)
                 queue.append(full)
         return None
 
     # ------------------------------------------------------------------
-    # Hybrid A* router (gate hops free + direct jumps cost fuel)
+    # Internal A* helper
     # ------------------------------------------------------------------
 
-    def route(self, origin: str, destination: str,
-              profile: ShipProfile) -> Optional[dict]:
+    def _run_astar(
+        self,
+        o_id: str,
+        d_id: str,
+        profile: ShipProfile,
+        exclude_direct: Optional[set] = None,
+    ) -> Optional[tuple]:
         """
-        Find the fuel-cheapest route using gate hops (free) and direct jumps.
-        Uses A* with 3D Euclidean heuristic.
-        Returns None if destination is unreachable within fuel budget.
+        Run A* and return (path_ids, edge_types, total_ly) or None.
+
+        exclude_direct: set of system IDs that cannot be used as
+                        direct-jump intermediate waypoints. Gates still work.
+                        Origin and destination are never excluded.
         """
         import heapq
 
-        self._load()
-        o_id = self._by_name.get(origin.lower().strip())
-        d_id = self._by_name.get(destination.lower().strip())
-        if not o_id or not d_id:
-            log.warning("Route: system not found (%s → %s)", origin, destination)
-            return None
-
-        if o_id == d_id:
-            return {"path": [self._name(o_id)], "jumps": 0,
-                    "gate_hops": 0, "direct_jumps": 0,
-                    "total_distance_m": 0.0, "fuel_used": 0.0,
-                    "fuel_remaining": profile.fuel_quantity,
-                    "warnings": []}
-
-        jump_range   = profile.jump_range()
-        fuel_budget  = profile.fuel_budget()
-
-        if jump_range <= 0:
-            return None  # can't jump (too hot or no thermal capacity)
-
-        dx, dy, dz = self._pos(d_id)
+        fuel_budget_ly = profile.fuel_budget()
+        dx, dy, dz = self._pos_ly(d_id)
 
         def heuristic(sid: str) -> float:
-            x, y, z = self._pos(sid)
+            x, y, z = self._pos_ly(sid)
             return math.sqrt((x - dx)**2 + (y - dy)**2 + (z - dz)**2)
 
-        # heap: (f, g_dist, system_id, path_list, edge_types)
-        # g_dist = total direct-jump distance so far (gate hops are free)
-        start_h = heuristic(o_id)
-        heap    = [(start_h, 0.0, o_id, [o_id], [])]
-        best    = {}  # sid → best g_dist seen
+        # heap: (f, g_ly, sid, path_ids, edge_types)
+        heap  = [(heuristic(o_id), 0.0, o_id, [o_id], [])]
+        best  = {}  # sid → best g_ly seen
 
         while heap:
-            f, g, cur_id, path, edge_types = heapq.heappop(heap)
+            f, g_ly, cur_id, path, edge_types = heapq.heappop(heap)
 
             if cur_id == d_id:
-                names    = [self._name(s) for s in path]
-                gate_h   = edge_types.count("gate")
-                direct_h = edge_types.count("direct")
-                fuel_used = profile.fuel_for_distance(g)
-                warnings = [w for s in path[1:] if (w := self._security_warning(s))]
-                if fuel_used > profile.fuel_quantity:
-                    warnings.append("insufficient fuel for this route")
-                return {
-                    "path":            names,
-                    "jumps":           len(names) - 1,
-                    "gate_hops":       gate_h,
-                    "direct_jumps":    direct_h,
-                    "total_distance_m": g,
-                    "total_distance_ly": g / LY_METERS,
-                    "fuel_used":       round(fuel_used, 2),
-                    "fuel_remaining":  round(profile.fuel_quantity - fuel_used, 2),
-                    "warnings":        warnings,
-                }
+                return (path, edge_types, g_ly)
 
-            if cur_id in best and best[cur_id] <= g:
+            if cur_id in best and best[cur_id] <= g_ly:
                 continue
-            best[cur_id] = g
+            best[cur_id] = g_ly
 
-            cx, cy, cz = self._pos(cur_id)
+            cx, cy, cz = self._pos_ly(cur_id)
 
-            # --- Gate neighbours (cost 0) ---
+            # Gate neighbours (cost 0)
             for nb in self._systems.get(cur_id, {}).get("gate_links", []):
                 nb_id = str(nb)
-                if nb_id not in best or best[nb_id] > g:
-                    f_new = g + heuristic(nb_id)
-                    heapq.heappush(heap, (f_new, g, nb_id,
+                if nb_id not in best or best[nb_id] > g_ly:
+                    f_new = g_ly + heuristic(nb_id)
+                    heapq.heappush(heap, (f_new, g_ly, nb_id,
                                           path + [nb_id], edge_types + ["gate"]))
 
-            # --- Direct jump neighbours (cost = distance) ---
-            if g < fuel_budget:
-                for nb_id in self._spatial.within_range(cx, cy, cz, jump_range):
+            # Direct jump neighbours
+            node_range_ly = self._node_range_ly(cur_id, profile)
+            if node_range_ly > 0.0 and g_ly < fuel_budget_ly:
+                for nb_id in self._spatial.within_range(cx, cy, cz, node_range_ly):
                     if nb_id == cur_id:
                         continue
-                    d_jump = self._dist(cur_id, nb_id)
-                    g_new  = g + d_jump
-                    if g_new > fuel_budget:
+                    # Skip excluded systems as direct waypoints (not as destination)
+                    if exclude_direct and nb_id in exclude_direct and nb_id != d_id:
+                        continue
+                    d_jump = self._dist_ly(cur_id, nb_id)
+                    g_new  = g_ly + d_jump
+                    if g_new > fuel_budget_ly:
                         continue
                     if nb_id not in best or best[nb_id] > g_new:
                         f_new = g_new + heuristic(nb_id)
                         heapq.heappush(heap, (f_new, g_new, nb_id,
                                               path + [nb_id], edge_types + ["direct"]))
+        return None
 
-        return None  # unreachable
+    # ------------------------------------------------------------------
+    # Hybrid A* router
+    # ------------------------------------------------------------------
+
+    def route(self, origin: str, destination: str,
+              profile: ShipProfile) -> dict:
+        """
+        Find the fuel-cheapest route. Returns a route dict (never None).
+        If unreachable, returns a no_route dict.
+        """
+        self._load()
+        o_id = self._by_name.get(origin.lower().strip())
+        d_id = self._by_name.get(destination.lower().strip())
+
+        if not o_id or not d_id:
+            log.warning("Route: system not found (%s → %s)", origin, destination)
+            return self._no_route(destination, profile)
+
+        if o_id == d_id:
+            return {
+                "type":           "route_planned",
+                "path":           [self._name(o_id)],
+                "jumps":          0,
+                "jump_types":     [],
+                "total_ly":       0.0,
+                "fuel_used":      0.0,
+                "fuel_remaining": profile.fuel_quantity,
+                "hot_systems":    [],
+                "alternative":    None,
+                "warnings":       [],
+            }
+
+        primary = self._run_astar(o_id, d_id, profile)
+        if primary is None:
+            return self._no_route(destination, profile)
+
+        path_ids, edge_types, total_ly = primary
+
+        # Hot intermediates: intermediate nodes (not origin/dest) with temp >= 70
+        hot_sids = [
+            sid for sid in path_ids[1:-1]
+            if self._systems.get(sid, {}).get("safe_jump_temp", 0.0) >= 70.0
+        ]
+        hot_systems = [self._name(sid) for sid in hot_sids]
+
+        # Alternative route: exclude hot intermediates as direct-jump waypoints
+        alternative = None
+        if hot_sids:
+            exclude = set(hot_sids)
+            alt = self._run_astar(o_id, d_id, profile, exclude_direct=exclude)
+            if alt is not None:
+                alt_ids, alt_edges, alt_ly = alt
+                if alt_ids != path_ids:
+                    alternative = self._format_result(
+                        alt_ids, alt_edges, alt_ly, profile
+                    )
+
+        result = self._format_result(path_ids, edge_types, total_ly, profile,
+                                     hot_systems=hot_systems, alternative=alternative)
+        return result
+
+    def _format_result(
+        self,
+        path_ids: list,
+        edge_types: list,
+        total_ly: float,
+        profile: ShipProfile,
+        hot_systems: Optional[list] = None,
+        alternative: Optional[dict] = None,
+    ) -> dict:
+        names      = [self._name(sid) for sid in path_ids]
+        fuel_used  = round(profile.fuel_for_distance(total_ly), 2)
+        fuel_rem   = round(profile.fuel_quantity - fuel_used, 2)
+        warnings   = [w for sid in path_ids[1:] if (w := self._security_warning(sid))]
+        if fuel_used > profile.fuel_quantity:
+            warnings.append("insufficient fuel for this route")
+        return {
+            "type":           "route_planned",
+            "path":           names,
+            "jumps":          len(names) - 1,
+            "jump_types":     edge_types,
+            "total_ly":       round(total_ly, 2),
+            "fuel_used":      fuel_used,
+            "fuel_remaining": fuel_rem,
+            "hot_systems":    hot_systems or [],
+            "alternative":    alternative,
+            "warnings":       warnings,
+        }
+
+    def _no_route(self, destination: str, profile: ShipProfile) -> dict:
+        return {
+            "type":           "no_route",
+            "path":           [],
+            "jumps":          0,
+            "jump_types":     [],
+            "total_ly":       0.0,
+            "fuel_used":      0.0,
+            "fuel_remaining": profile.fuel_quantity,
+            "hot_systems":    [],
+            "alternative":    None,
+            "warnings":       [f"No route found to {destination}"],
+        }
 
 
 route_engine = RouteEngine()
