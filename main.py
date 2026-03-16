@@ -19,7 +19,7 @@ from src.context_builder import build_context_block
 from src.world_api import world_api
 from src.route_engine import route_engine
 from src.ship_profile import (
-    ShipProfile, FUEL_QUALITY, load_profile, save_profile
+    ShipProfile, FUEL_QUALITY, FUEL_CATEGORY, SHIPS, load_profile, save_profile
 )
 from src.structure_auth import nonce_store, verify_sui_personal_message, issue_jwt, decode_jwt, lookup_character
 from src.structure_profile import StructureProfile, load_profile as load_structure_profile, save_profile as save_structure_profile
@@ -117,6 +117,8 @@ class ShipProfileRequest(BaseModel):
     fuel_type:      Optional[str]   = None
     fuel_quantity:  Optional[float] = None
     external_temp:  Optional[float] = None
+    ship_type:      Optional[str]   = None
+    extra_cargo_kg: Optional[float] = None
 
 @app.get("/ship-profile", dependencies=[Depends(require_token)])
 async def get_ship_profile():
@@ -127,19 +129,56 @@ async def get_ship_profile():
         "jump_range_ly": p.jump_range(),
         "fuel_budget_ly": p.fuel_budget(),
         "fuel_types":    FUEL_QUALITY,
+        "ships":         {name: {"mass": s["mass"], "specific_heat": s["specific_heat"],
+                                 "fuel_category": s["fuel_category"]}
+                          for name, s in SHIPS.items()},
     }
 
 @app.post("/ship-profile", dependencies=[Depends(require_token)])
 async def set_ship_profile(req: ShipProfileRequest):
-    current = load_profile()
-    updated = current.with_overrides(**req.model_dump())
-    if req.fuel_type and req.fuel_type not in FUEL_QUALITY:
-        return JSONResponse(status_code=400, content={
+    # Validate ship_type
+    if req.ship_type is not None and req.ship_type not in SHIPS:
+        return JSONResponse(status_code=422, content={
+            "detail": f"Unknown ship type '{req.ship_type}'. Valid: {sorted(SHIPS)}"
+        })
+    # Validate fuel_type
+    if req.fuel_type is not None and req.fuel_type not in FUEL_QUALITY:
+        return JSONResponse(status_code=422, content={
             "detail": f"Unknown fuel type '{req.fuel_type}'. Valid: {list(FUEL_QUALITY)}"
         })
+    # Validate fuel_type vs ship fuel_category
+    current = load_profile()
+    effective_ship = req.ship_type or current.ship_type
+    if req.fuel_type is not None and effective_ship is not None:
+        ship_cat = SHIPS[effective_ship]["fuel_category"]
+        fuel_cat = FUEL_CATEGORY.get(req.fuel_type, "")
+        if fuel_cat != ship_cat:
+            return JSONResponse(status_code=422, content={
+                "detail": f"Fuel type '{req.fuel_type}' ({fuel_cat}) incompatible "
+                          f"with ship '{effective_ship}' ({ship_cat} only)"
+            })
+    # Validate extra_cargo_kg
+    if req.extra_cargo_kg is not None and req.extra_cargo_kg < 0:
+        return JSONResponse(status_code=422, content={"detail": "extra_cargo_kg must be >= 0"})
+
+    overrides = req.model_dump()
+    # If ship_type provided, auto-fill hull_mass and specific_heat
+    if req.ship_type is not None:
+        ship = SHIPS[req.ship_type]
+        overrides["hull_mass"]     = ship["mass"]
+        overrides["specific_heat"] = ship["specific_heat"]
+        # If no fuel_type provided, reset to default for this ship's category
+        if req.fuel_type is None:
+            default_fuel = "D1" if ship["fuel_category"] == "basic" else "SOF-40"
+            overrides["fuel_type"] = current.fuel_type if (
+                FUEL_CATEGORY.get(current.fuel_type) == ship["fuel_category"]
+            ) else default_fuel
+
+    updated = current.with_overrides(**overrides)
     save_profile(updated)
     from dataclasses import asdict
-    return {**asdict(updated), "jump_range_ly": updated.jump_range(), "fuel_budget_ly": updated.fuel_budget()}
+    return {**asdict(updated), "jump_range_ly": updated.jump_range(),
+            "fuel_budget_ly": updated.fuel_budget()}
 
 
 class RouteRequest(BaseModel):
@@ -166,6 +205,12 @@ async def plan_route(req: RouteRequest):
 
     if req.gate_only:
         result = route_engine.bfs(origin, req.destination)
+        if result is None:
+            log_buffer.current_route = None
+            log_buffer.pending_alternative = None
+            return JSONResponse(status_code=404, content={
+                "detail": f"No route found from '{origin}' to '{req.destination}'."
+            })
     else:
         profile = load_profile().with_overrides(
             hull_mass=req.hull_mass,
@@ -177,15 +222,27 @@ async def plan_route(req: RouteRequest):
             external_temp=req.external_temp,
         )
         result = route_engine.route(origin, req.destination, profile)
-        if result is None:
-            # fall back to gate-only
-            result = route_engine.bfs(origin, req.destination)
+        if result["type"] == "no_route" and not req.gate_only:
+            bfs_result = route_engine.bfs(origin, req.destination)
+            if bfs_result:
+                result = bfs_result
+                result["type"] = "route_planned"
 
-    if result is None:
-        return JSONResponse(status_code=404, content={
-            "detail": f"No route found from '{origin}' to '{req.destination}'."
-        })
-    log_buffer.add({"type": "route_planned", **result})
+        if result["type"] == "no_route":
+            log_buffer.current_route = result
+            log_buffer.pending_alternative = None
+            return JSONResponse(status_code=404, content={
+                "detail": f"No route found from '{origin}' to '{req.destination}'."
+            })
+
+    # Store both primary and alternative atomically
+    primary = {k: v for k, v in result.items() if k != "alternative"}
+    primary["alternative"] = None  # standalone copy has no nested alternative
+    alternative = result.get("alternative")
+
+    log_buffer.current_route      = primary
+    log_buffer.pending_alternative = alternative
+    log_buffer.add({"type": "route_planned", **primary})
     return result
 
 @app.get("/debug", dependencies=[Depends(require_token)])
@@ -279,6 +336,10 @@ _ROUTE_RE = re.compile(
     re.IGNORECASE,
 )
 _SLASH_ROUTE_RE = re.compile(r'^/route\s+(.+)$', re.IGNORECASE)
+_SLASH_PROFILE_RE = re.compile(
+    r'^/profile(?:\s+(?P<sub>ship|fuel|level|cargo)\s+(?P<args>.+))?$',
+    re.IGNORECASE,
+)
 
 def _extract_route_destination(message: str) -> Optional[str]:
     m = _ROUTE_RE.search(message)
@@ -286,8 +347,17 @@ def _extract_route_destination(message: str) -> Optional[str]:
 
 @app.get("/current-route", dependencies=[Depends(require_token)])
 async def get_current_route():
-    """Return the active route stored in log_buffer, or null."""
-    return {"route": log_buffer.current_route}
+    """Return the active route and alternative stored in log_buffer."""
+    current_temp = None
+    if log_buffer.current_system:
+        sys_info = route_engine.system_info(log_buffer.current_system)
+        if sys_info:
+            current_temp = sys_info.get("safe_jump_temp")
+    return {
+        "route":               log_buffer.current_route,
+        "alternative":         log_buffer.pending_alternative,
+        "current_system_temp": current_temp,
+    }
 
 @app.post("/route/clear", dependencies=[Depends(require_token)])
 async def clear_route():
@@ -295,8 +365,112 @@ async def clear_route():
     log_buffer.current_route = None
     return {"cleared": True}
 
+class RouteActivateRequest(BaseModel):
+    variant: str  # "primary" or "alternative"
+
+@app.post("/route/activate", dependencies=[Depends(require_token)])
+async def activate_route(req: RouteActivateRequest):
+    """Swap the active route to primary or alternative variant."""
+    if req.variant not in ("primary", "alternative"):
+        return JSONResponse(status_code=422, content={
+            "detail": "variant must be 'primary' or 'alternative'"
+        })
+    if log_buffer.current_route is None:
+        return JSONResponse(status_code=404, content={"detail": "no active route"})
+    if req.variant == "alternative":
+        if log_buffer.pending_alternative is None:
+            return JSONResponse(status_code=404, content={
+                "detail": "no alternative route available"
+            })
+        # Swap: primary becomes what was alternative, alternative becomes what was primary
+        old_primary = log_buffer.current_route
+        log_buffer.current_route       = log_buffer.pending_alternative
+        log_buffer.pending_alternative = old_primary
+    # "primary" — current_route is already primary; no-op
+    return log_buffer.current_route
+
 @app.post("/chat", dependencies=[Depends(require_token)])
 async def chat(req: ChatRequest):
+    # Handle /profile command directly — no Claude needed
+    pm = _SLASH_PROFILE_RE.match(req.message.strip())
+    if pm:
+        sub  = pm.group("sub")
+        args = (pm.group("args") or "").strip()
+        current = load_profile()
+        overrides = {}
+        reply_text = ""
+
+        if sub is None:
+            # /profile — print current
+            r_ly = current.jump_range()
+            b_ly = current.fuel_budget()
+            ship_str = current.ship_type or "custom"
+            reply_text = (
+                f"SHIP: {ship_str} | {current.fuel_type} x {int(current.fuel_quantity)}u"
+                f" | range {r_ly:.0f} LY | budget {b_ly:.0f} LY"
+            )
+        elif sub.lower() == "ship":
+            if args not in SHIPS:
+                reply_text = f"Unknown ship '{args}'. Valid: {', '.join(sorted(SHIPS))}"
+            else:
+                ship = SHIPS[args]
+                overrides = {
+                    "ship_type":    args,
+                    "hull_mass":    ship["mass"],
+                    "specific_heat": ship["specific_heat"],
+                }
+                # Reset fuel to category default if current fuel incompatible
+                if FUEL_CATEGORY.get(current.fuel_type) != ship["fuel_category"]:
+                    overrides["fuel_type"] = "D1" if ship["fuel_category"] == "basic" else "SOF-40"
+                reply_text = f"Ship set to {args}. Mass: {ship['mass']:,} kg, C_heat: {ship['specific_heat']}"
+        elif sub.lower() == "fuel":
+            parts = args.split()
+            if len(parts) < 2:
+                reply_text = "Usage: /profile fuel <quantity> <type>  e.g. /profile fuel 2400 EU-90"
+            elif parts[1] not in FUEL_QUALITY:
+                reply_text = f"Unknown fuel type '{parts[1]}'. Valid: {list(FUEL_QUALITY)}"
+            elif (current.ship_type is not None
+                  and FUEL_CATEGORY.get(parts[1]) != SHIPS[current.ship_type]["fuel_category"]):
+                ship_cat = SHIPS[current.ship_type]["fuel_category"]
+                reply_text = (
+                    f"Fuel type '{parts[1]}' incompatible with "
+                    f"{current.ship_type} ({ship_cat} only)"
+                )
+            else:
+                try:
+                    qty = float(parts[0])
+                    overrides = {"fuel_quantity": qty, "fuel_type": parts[1]}
+                    reply_text = f"Fuel set: {qty:.0f}u {parts[1]} (quality {FUEL_QUALITY[parts[1]]})"
+                except ValueError:
+                    reply_text = f"Invalid quantity '{parts[0]}'"
+        elif sub.lower() == "level":
+            try:
+                lvl = int(args)
+                lvl = max(0, min(10, lvl))
+                overrides = {"adaptive_level": lvl}
+                reply_text = f"Adaptive level set to {lvl}"
+            except ValueError:
+                reply_text = f"Invalid level '{args}' — must be integer 0-10"
+        elif sub.lower() == "cargo":
+            try:
+                kg = float(args)
+                if kg < 0:
+                    reply_text = "Extra cargo cannot be negative"
+                else:
+                    overrides = {"extra_cargo_kg": kg}
+                    reply_text = f"Extra cargo set to {kg:,.0f} kg"
+            except ValueError:
+                reply_text = f"Invalid cargo mass '{args}'"
+
+        if overrides:
+            updated = current.with_overrides(**overrides)
+            save_profile(updated)
+
+        def _profile_reply(text=reply_text):
+            yield f"data: {json.dumps({'text': text})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(_profile_reply(), media_type="text/event-stream")
+
     # Handle /route DEST command directly — no Claude needed
     m = _SLASH_ROUTE_RE.match(req.message.strip())
     if m:
@@ -316,38 +490,62 @@ async def chat(req: ChatRequest):
         # Try hybrid A* (gates + direct jumps with fuel calc) then fall back to gate-only BFS
         profile = load_profile()
         result = route_engine.route(origin, dest, profile)
-        if result is None:
-            result = route_engine.bfs(origin, dest)
+        if result["type"] == "no_route":
+            bfs_result = route_engine.bfs(origin, dest)
+            if bfs_result:
+                result = bfs_result
 
-        if result is None:
-            reply = f"NO ROUTE: {origin.upper()} → {dest.upper()} — systems unreachable within fuel range."
+        if result is None or result.get("type") == "no_route":
+            reply = f"NO ROUTE: {origin.upper()} -> {dest.upper()} — systems unreachable within fuel range."
         else:
-            log_buffer.add({"type": "route_planned", **result})
             path       = result.get("path", [])
             jumps      = result.get("jumps", 0)
-            gate_hops  = result.get("gate_hops", 0)
-            direct_j   = result.get("direct_jumps", 0)
+            jump_types = result.get("jump_types", [])
+            total_ly   = result.get("total_ly", 0.0)
             fuel_used  = result.get("fuel_used")
             fuel_left  = result.get("fuel_remaining")
 
-            if len(path) > 5:
-                path_str = f"{path[0].upper()} → [{len(path)-2} hops] → {path[-1].upper()}"
+            if len(path) > 1:
+                path_str = f"{path[0].upper()} -> {path[-1].upper()}"
             else:
-                path_str = " → ".join(p.upper() for p in path)
+                path_str = path[0].upper() if path else dest.upper()
 
             jump_label = f"{jumps} jump{'s' if jumps != 1 else ''}"
-            if gate_hops > 0 and direct_j > 0:
-                jump_label += f" ({gate_hops} gate, {direct_j} direct)"
-            elif direct_j > 0:
-                jump_label += " (direct)"
 
-            reply = f"ROUTE SET: {path_str} ({jump_label})"
+            # Per-hop breakdown
+            hop_lines = []
+            for i, (system, jtype) in enumerate(zip(path[:-1], jump_types), 1):
+                next_sys = path[i]
+                if jtype == "direct":
+                    sid_a = route_engine.resolve(system)
+                    sid_b = route_engine.resolve(next_sys)
+                    d = route_engine._dist_ly(sid_a, sid_b) if sid_a and sid_b else 0.0
+                    hop_lines.append(f"  {i}. {system.upper()} -> {next_sys.upper()}  direct  {d:.1f} LY")
+                else:
+                    hop_lines.append(f"  {i}. {system.upper()} -> {next_sys.upper()}  gate")
+
+            fuel_str = ""
             if fuel_used is not None and fuel_used > 0:
-                reply += f"\nFUEL: {fuel_used:.1f}t"
+                fuel_str = f"  FUEL: {fuel_used:.1f}u"
                 if fuel_left is not None:
-                    reply += f" | {fuel_left:.1f}t remaining"
+                    fuel_str += f" | {fuel_left:.1f}u remaining"
+
+            ly_str = f" · {total_ly:.1f} LY" if total_ly > 0 else ""
+
+            reply = f"ROUTE: {path_str}  {jumps} jumps{ly_str}"
+            if fuel_str:
+                reply += f"\n{fuel_str}"
+            if hop_lines:
+                reply += "\n" + "\n".join(hop_lines)
             for w in result.get("warnings", [])[:2]:
                 reply += f"\nWARN: {w}"
+
+            # Store in log_buffer
+            primary = {k: v for k, v in result.items() if k != "alternative"}
+            primary["alternative"] = None
+            log_buffer.current_route = primary
+            log_buffer.pending_alternative = result.get("alternative")
+            log_buffer.add({"type": "route_planned", **primary})
 
         def _route_reply(text=reply):
             yield f"data: {json.dumps({'text': text})}\n\n"
