@@ -345,6 +345,7 @@ async def test_poll_connected_assemblies_updates_profile():
     assert "profile" in saved
     assemblies = saved["profile"].connected_assemblies
     assert len(assemblies) == 1
+    # Real on-chain struct name is "Gate" → mapped to "Smart Gate"
     assert assemblies[0]["type_name"] == "Smart Gate"
     assert assemblies[0]["status"] == "ONLINE"
 
@@ -383,6 +384,19 @@ async def test_poll_connected_assemblies_swallows_per_assembly_errors():
     # Only the good one resolved
     assert len(assemblies) == 1
     assert assemblies[0]["type_name"] == "Smart Turret"
+
+
+@pytest.mark.asyncio
+async def test_poll_connected_assemblies_real_struct_names():
+    """Real on-chain struct names (Gate, Turret, StorageUnit) map to human labels."""
+    cases = [
+        ("0xpkg::gate::Gate", "Smart Gate"),
+        ("0xpkg::turret::Turret", "Smart Turret"),
+        ("0xpkg::storage_unit::StorageUnit", "SSU"),
+    ]
+    for type_str, expected_label in cases:
+        assert poller_mod._assembly_type_label(type_str) == expected_label, \
+            f"Expected {expected_label!r} for type {type_str!r}"
 
 
 @pytest.mark.asyncio

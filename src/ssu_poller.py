@@ -154,6 +154,12 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
 
 
 _TYPE_LABELS = {
+    # Real on-chain struct names (confirmed from sui_getObject 2026-03-16)
+    "StorageUnit": "SSU",
+    "Turret": "Smart Turret",
+    "Gate": "Smart Gate",
+    "MiningLaser": "Mining Laser",
+    # Legacy names kept for compatibility
     "SmartTurret": "Smart Turret",
     "SmartGate": "Smart Gate",
     "SmartStorageUnit": "SSU",
@@ -345,7 +351,9 @@ async def _ssu_loop(ssu_object_id: str, structure_id: str, system_id: int):
         await poll_sui_events(ssu_object_id, structure_id, system_id)
         profile = load_profile(structure_id)
         if profile and profile.connected_assembly_ids:
-            await poll_connected_assemblies(structure_id, profile.connected_assembly_ids)
+            # Exclude the SSU itself — it appears in its own NetworkNode connected list
+            other_ids = [i for i in profile.connected_assembly_ids if i != ssu_object_id]
+            await poll_connected_assemblies(structure_id, other_ids)
         await asyncio.sleep(SSU_POLL_INTERVAL)
 
 
