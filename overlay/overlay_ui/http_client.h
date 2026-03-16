@@ -27,4 +27,12 @@ namespace http {
     bool postEmpty(
         const std::string& path,
         std::string& errorOut);
+
+    // POST with JSON body; returns full response body in bodyOut.
+    // Runs synchronously — call from a background thread.
+    bool postJson(
+        const std::string& path,
+        const std::string& jsonBody,
+        std::string& bodyOut,
+        std::string& errorOut);
 }

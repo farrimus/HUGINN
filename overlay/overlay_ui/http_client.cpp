@@ -281,4 +281,47 @@ bool postEmpty(const std::string& path, std::string& errorOut)
     return true;
 }
 
+bool postJson(const std::string& path, const std::string& jsonBody,
+              std::string& bodyOut, std::string& errorOut)
+{
+    HINTERNET hSession = nullptr, hConnect = nullptr, hRequest = nullptr;
+    if (!_openHandles("POST", path, hSession, hConnect, hRequest, errorOut))
+        return false;
+
+    WinHttpAddRequestHeaders(hRequest,
+        L"Content-Type: application/json\r\nAccept: application/json\r\n",
+        (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD);
+
+    DWORD bodyLen = static_cast<DWORD>(jsonBody.size());
+    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+            WINHTTP_NO_REQUEST_DATA, 0, bodyLen, 0)) {
+        errorOut = "WinHttpSendRequest failed";
+        _closeHandles(hRequest, hConnect, hSession);
+        return false;
+    }
+    DWORD written = 0;
+    WinHttpWriteData(hRequest, jsonBody.c_str(), bodyLen, &written);
+
+    if (!WinHttpReceiveResponse(hRequest, nullptr)) {
+        errorOut = "WinHttpReceiveResponse failed";
+        _closeHandles(hRequest, hConnect, hSession);
+        return false;
+    }
+
+    bodyOut.clear();
+    while (true) {
+        DWORD available = 0;
+        if (!WinHttpQueryDataAvailable(hRequest, &available) || available == 0)
+            break;
+        std::string chunk(available, '\0');
+        DWORD read = 0;
+        if (!WinHttpReadData(hRequest, chunk.data(), available, &read) || read == 0)
+            break;
+        chunk.resize(read);
+        bodyOut += chunk;
+    }
+    _closeHandles(hRequest, hConnect, hSession);
+    return true;
+}
+
 }  // namespace http
