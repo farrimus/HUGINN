@@ -559,3 +559,63 @@ async def test_poll_ssu_inventory_no_dynamic_fields_does_nothing():
         poller_mod.save_profile = orig_save
 
     assert "profile" not in saved
+
+
+# ---------------------------------------------------------------------------
+# poll_player_structure
+# ---------------------------------------------------------------------------
+
+PLAYER_ASM_ID = "0xPLAYER00000000000000000000000000000000000000000000000000000000000"
+PLAYER_NODE_ID = "0xPLAYERNODE000000000000000000000000000000000000000000000000000000"
+
+
+@pytest.mark.asyncio
+async def test_poll_player_structure_populates_cache():
+    """Player structure fuel and status are cached after successful poll."""
+    mock_nova = MagicMock()
+    mock_nova._rpc = AsyncMock(side_effect=[
+        _ssu_response(energy_source_id=PLAYER_NODE_ID, status_variant="ONLINE"),
+        _node_response(quantity=800, max_capacity=1000, connected_count=2),
+    ])
+
+    orig_nova = poller_mod.nova_client
+    orig_cache = dict(poller_mod._player_structure_cache)
+    poller_mod.nova_client = mock_nova
+    poller_mod._player_structure_cache.clear()
+    try:
+        await poller_mod.poll_player_structure(PLAYER_ASM_ID)
+        assert PLAYER_ASM_ID in poller_mod._player_structure_cache
+        cached = poller_mod._player_structure_cache[PLAYER_ASM_ID]
+        assert cached["status"] == "ONLINE"
+        assert cached["fuel_pct"] == 80.0
+    finally:
+        poller_mod.nova_client = orig_nova
+        poller_mod._player_structure_cache.clear()
+        poller_mod._player_structure_cache.update(orig_cache)
+
+
+@pytest.mark.asyncio
+async def test_poll_player_structure_rpc_failure_does_not_raise():
+    """RPC error is swallowed; no exception propagates."""
+    mock_nova = MagicMock()
+    mock_nova._rpc = AsyncMock(side_effect=RuntimeError("RPC down"))
+    orig_nova = poller_mod.nova_client
+    poller_mod.nova_client = mock_nova
+    try:
+        await poller_mod.poll_player_structure(PLAYER_ASM_ID)  # must not raise
+    finally:
+        poller_mod.nova_client = orig_nova
+
+
+def test_get_player_structures_returns_all():
+    """get_player_structures_in_system returns all cached structures (no system filter)."""
+    orig = dict(poller_mod._player_structure_cache)
+    poller_mod._player_structure_cache.clear()
+    poller_mod._player_structure_cache["0xA"] = {"type_name": "SSU", "status": "ONLINE", "fuel_pct": 50.0}
+    poller_mod._player_structure_cache["0xB"] = {"type_name": "SSU", "status": "OFFLINE", "fuel_pct": 5.0}
+    try:
+        result = poller_mod.get_player_structures_in_system("ANY-SYSTEM")
+        assert len(result) == 2
+    finally:
+        poller_mod._player_structure_cache.clear()
+        poller_mod._player_structure_cache.update(orig)

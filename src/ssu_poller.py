@@ -446,45 +446,78 @@ async def _inventory_loop(structure_id: str, ssu_object_id: str) -> None:
         await asyncio.sleep(INVENTORY_POLL_INTERVAL)
 
 
-def _parse_assembly_summary(data: dict, assembly_id: str) -> dict:
-    """Extract summary fields from a blockchain gateway assembly response."""
-    status = data.get("status") or data.get("assemblyStatus") or "UNKNOWN"
-    if isinstance(status, dict):
-        status = status.get("variant") or status.get("name") or str(status)
-    type_name = data.get("assemblyType") or data.get("typeName") or data.get("type", "Structure")
+async def poll_player_structure(assembly_id: str) -> None:
+    """Poll a single player-owned structure via two-hop Sui RPC.
+
+    Same pattern as poll_ssu_state:
+      Hop 1: sui_getObject(assembly_id) → status, energy_source_id
+      Hop 2: sui_getObject(energy_source_id) → fuel quantity/capacity
+
+    system_name is NOT available on-chain (location is a hashed game mechanic).
+    Results stored in _player_structure_cache keyed by assembly_id.
+    """
+    try:
+        resp = await nova_client._rpc("sui_getObject", [
+            assembly_id, {"showContent": True, "showType": True}
+        ])
+    except Exception as e:
+        log.warning("poll_player_structure: hop 1 RPC failed for %s: %s", assembly_id, e)
+        return
+
+    data = resp.get("result", {}).get("data", {})
+    fields = data.get("content", {}).get("fields", {})
+    if not fields:
+        return
+
+    # Status
+    status_val = fields.get("status", {})
+    status_str = "UNKNOWN"
+    if isinstance(status_val, dict):
+        inner = status_val.get("fields", {}).get("status")
+        if isinstance(inner, dict):
+            status_str = inner.get("variant") or inner.get("name") or "UNKNOWN"
+
+    # Type name from Sui Move type string
+    type_str = data.get("type", "")
+    type_name = _assembly_type_label(type_str)
+
+    # Hop 2: fuel
     fuel_pct = None
-    fuel = data.get("fuel") or {}
-    if isinstance(fuel, dict):
-        qty = fuel.get("quantity")
-        cap = fuel.get("max_capacity") or fuel.get("maxCapacity")
-        if qty is not None and cap is not None and int(cap) > 0:
-            fuel_pct = round(int(qty) * 100 / int(cap), 1)
-    services_online = data.get("servicesOnline") or data.get("services_online")
-    system_name = (
-        data.get("systemName") or data.get("system_name") or
-        (data.get("location") or {}).get("systemName", "")
-    )
-    return {
+    energy_source_id = fields.get("energy_source_id")
+    if isinstance(energy_source_id, dict):
+        energy_source_id = (
+            energy_source_id.get("fields", {}).get("id")
+            or energy_source_id.get("id")
+            or energy_source_id.get("Some")
+        )
+    if energy_source_id:
+        try:
+            node_resp = await nova_client._rpc("sui_getObject", [
+                energy_source_id, {"showContent": True}
+            ])
+            node_fields = (
+                node_resp.get("result", {})
+                .get("data", {})
+                .get("content", {})
+                .get("fields", {})
+            )
+            fuel = node_fields.get("fuel", {})
+            if isinstance(fuel, dict):
+                fuel = fuel.get("fields", fuel)
+            qty = fuel.get("quantity")
+            cap = fuel.get("max_capacity")
+            if qty is not None and cap is not None and int(cap) > 0:
+                fuel_pct = round(int(qty) * 100 / int(cap), 1)
+        except Exception as e:
+            log.warning("poll_player_structure: hop 2 RPC failed for %s: %s", assembly_id, e)
+
+    _player_structure_cache[assembly_id] = {
         "assembly_id": assembly_id,
         "type_name": type_name,
-        "status": str(status).upper(),
+        "status": status_str.upper(),
         "fuel_pct": fuel_pct,
-        "services_online": services_online,
-        "system_name": system_name,
     }
-
-
-async def poll_player_structure(assembly_id: str) -> None:
-    """Poll a single player-owned structure from blockchain gateway."""
-    try:
-        from src.blockchain_client import blockchain_client
-    except Exception as e:  # pragma: no cover
-        log.warning("poll_player_structure: blockchain_client unavailable: %s", e)
-        return
-    data = await blockchain_client.get_assembly(assembly_id)
-    if data:
-        _player_structure_cache[assembly_id] = _parse_assembly_summary(data, assembly_id)
-        log.debug("poll_player_structure: cached %s", assembly_id[:12])
+    log.debug("poll_player_structure: cached %s status=%s fuel=%s", assembly_id[:12], status_str, fuel_pct)
 
 
 async def _player_structure_loop(assembly_ids: list) -> None:
@@ -496,10 +529,12 @@ async def _player_structure_loop(assembly_ids: list) -> None:
 
 
 def get_player_structures_in_system(system_name: str) -> list:
-    """Return cached player structure summaries for the given system."""
-    name_upper = system_name.upper()
-    return [s for s in _player_structure_cache.values()
-            if s.get("system_name", "").upper() == name_upper]
+    """Return all cached player structure summaries.
+
+    system_name parameter retained for API compatibility but not used for filtering —
+    location is a hashed game mechanic and system_name is not available on-chain.
+    """
+    return list(_player_structure_cache.values())
 
 
 def start_background_tasks(structure_id: str, ssu_object_id: str, system_id: int):
