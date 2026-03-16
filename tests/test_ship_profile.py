@@ -40,10 +40,6 @@ def test_fuel_for_distance_roundtrip():
                     extra_cargo_kg=0)
     ly = 50.0
     fuel = p.fuel_for_distance(ly)
-    # fuel_for_distance(ly) * quality / (FUEL_CONSTANT * current_mass) should == ly
-    quality = FUEL_QUALITY["D1"]
-    from src.ship_profile import FUEL_CONSTANT
-    recovered = (p.fuel_quantity - fuel) / (p.fuel_quantity / p.fuel_budget())
     # Simpler: just verify fuel_for_distance is inverse of fuel_budget
     budget = p.fuel_budget()
     frac = ly / budget
@@ -55,6 +51,15 @@ def test_adaptive_level_increases_range():
     leveled = ShipProfile(hull_mass=7_200_000, specific_heat=8.5, adaptive_level=5,
                           external_temp=0.0)
     assert leveled.jump_range() > base.jump_range()
+
+def test_jump_range_at_temp():
+    p = ShipProfile(hull_mass=7_200_000, specific_heat=8.5, extra_cargo_kg=0, adaptive_level=0)
+    # At temp=0 same as jump_range() with external_temp=0
+    assert abs(p.jump_range_at_temp(0.0) - 425.0) < 0.01
+    # At temp=89.9 still positive
+    assert p.jump_range_at_temp(89.9) > 0.0
+    # At temp=90.0 should be zero (red zone)
+    assert p.jump_range_at_temp(90.0) == 0.0
 
 def test_ship_type_from_ships_table():
     from src.ship_profile import SHIPS

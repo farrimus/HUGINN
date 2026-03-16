@@ -97,7 +97,9 @@ class ShipProfile:
 
     def fuel_for_distance(self, ly: float) -> float:
         """Fuel units consumed for a given direct-jump distance in light-years."""
-        quality = FUEL_QUALITY.get(self.fuel_type, 1.0)
+        quality = FUEL_QUALITY.get(self.fuel_type, 0.0)
+        if quality == 0.0:
+            return 0.0
         return ly * FUEL_CONSTANT * self._current_mass / quality
 
     def with_overrides(self, **kwargs) -> "ShipProfile":
