@@ -374,6 +374,7 @@ def test_ship_profile_summary_in_context():
     assert "SHIP:" in block
     assert "EU-90" in block
     assert "2400" in block
+    assert "~" in block  # temp unknown → approximate range
 
 
 def test_no_ship_profile_no_ship_line():

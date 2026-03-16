@@ -33,7 +33,7 @@ def build_context_block(
     # --- Ship profile summary ---
     if ship_profile is not None:
         ship_str  = ship_profile.ship_type or "custom"
-        fuel_str  = f"{ship_profile.fuel_type} x {int(ship_profile.fuel_quantity)}u"
+        fuel_str  = f"{ship_profile.fuel_type} x {round(ship_profile.fuel_quantity)}u"
         # safe_jump_temp comes from system_data when available; falls back to 0 (coldest)
         temp = (system_data or {}).get("safe_jump_temp")
         r_ly = ship_profile.jump_range_at_temp(temp or 0.0)
