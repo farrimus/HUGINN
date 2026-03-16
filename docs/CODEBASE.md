@@ -4,7 +4,7 @@
 
 **Hackathon deadline:** March 31, 2026.
 
-**Last updated:** 2026-03-14 (Structure AI end-to-end confirmed working in Chrome + EVE Frontier SSU browser)
+**Last updated:** 2026-03-15 (Context enrichment, memory store, background polling, VETTED lobby routing, pilot profiles)
 
 ---
 
@@ -35,9 +35,12 @@ log_agent.py
                                                          overlay.dll            (DX12 overlay companion panel)
 
                                                        ├── structure_auth.py   (nonce store, Sui ed25519 sig verify, JWT)
-                                                       ├── nova_client.py      (Sui JSON-RPC, AccessRegistry tier resolve)
+                                                       ├── nova_client.py      (Sui JSON-RPC, AccessRegistry tier resolve, _rpc helper)
                                                        ├── structure_profile.py(per-structure JSON profiles)
-                                                       └── structure_client.py (Structure AI Claude streaming)
+                                                       ├── structure_client.py (Structure AI Claude streaming + LobbyClient)
+                                                       ├── galaxy_db.py        (SQLite wrapper for eve_universe.db — 24k systems, planets, moons)
+                                                       ├── memory_store.py     (file-backed event log + pilot profiles per structure)
+                                                       └── ssu_poller.py       (async background tasks: SSU state, killmails, Sui events, turrets)
                                                                ↑ JWT auth (Sui wallet, EVEVault)
                                                          static/structure.html  (SSU in-game browser UI — pending)
                                                          SSU Browser (EVE Frontier Smart Storage Unit)
@@ -57,7 +60,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 
 ---
 
-## Status — 2026-03-14
+## Status — 2026-03-15
 
 | Component | Status |
 |---|---|
@@ -78,6 +81,14 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | AccessRegistry `keep-7a` (owner `0x442f`) | ✓ Object `0x89e9...dc0` |
 | AccessRegistry `keep-7a` (owner `0xff09`) | ✓ Object `0xf5ce...708` |
 | EVEVault wallet injection in SSU browser | ✓ Working — Chrome + SSU browser confirmed, URL truncation fix applied |
+| `src/galaxy_db.py` | ✓ SQLite wrapper for `eve_universe.db` (24k systems, 83k+ planets, moons, stations, Lagrange points) |
+| `src/memory_store.py` | ✓ File-backed event log (`events.jsonl`) + pilot profiles per structure |
+| `src/ssu_poller.py` | ✓ Background tasks: SSU state (60s), killmails (5min), Sui events (60s), turrets (60s) |
+| Context enrichment | ✓ STAR/PLANETS/LAGRANGE from galaxy_db, GATES from gate_graph, `[STRUCTURE MEMORY]` block |
+| VETTED routing → LobbyClient | ✓ VETTED tier gets restricted lobby Claude (no internal structure data) |
+| Pilot profiles | ✓ Every auth creates/updates pilot profile in `data/memory/{id}/pilots/` |
+| Auth backfill | ✓ On auth, existing profiles with missing `system_id`/`region_name` are resolved via galaxy_db |
+| `build_types.py` | ✓ One-shot script: fetches `/v2/types` from World API → `data/types.json` |
 | Ship stat auto-extraction | Future — manual input required for now (see Future Thinking below) |
 | ImGui navigation panel | Planned — pending ship params UX decision |
 
@@ -92,20 +103,25 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 ├── pytest.ini                      # asyncio_mode=auto
 ├── .env / .env.example             # Server environment config
 ├── start.sh                        # Server startup script
+├── build_universe.py               # ResFiles → systems.json + gates.json
+├── build_types.py                  # One-shot: World API /v2/types → data/types.json
 │
 ├── src/
 │   ├── __init__.py
 │   ├── log_buffer.py               # Ring buffer + live session store + current_route
 │   ├── context_builder.py          # Formats context block for Claude (2000 char cap)
 │   ├── claude_client.py            # Claude API streaming client
-│   ├── world_api.py                # EVE World API client + system index builder
+│   ├── world_api.py                # EVE World API client + system index builder; utopia default
 │   ├── route_engine.py             # BFS (gate-only) + A* hybrid router + spatial index
 │   ├── ship_profile.py             # ShipProfile dataclass + persistence + fuel formulas
 │   ├── auth.py                     # X-Server-Token header validation
 │   ├── structure_auth.py           # NonceStore, Sui ed25519 sig verify, JWT issue/decode, character lookup
-│   ├── nova_client.py              # Sui JSON-RPC client, AccessRegistry, tier resolver
+│   ├── nova_client.py              # Sui JSON-RPC client, AccessRegistry, tier resolver, _rpc() helper
 │   ├── structure_profile.py        # StructureProfile dataclass + tier-filtered view + persistence
-│   └── structure_client.py         # Structure AI Claude streaming client + context builder + alert detection
+│   ├── structure_client.py         # Structure AI Claude streaming + LobbyClient (VETTED) + enriched context
+│   ├── galaxy_db.py                # Read-only SQLite wrapper for eve_universe.db; module-level singleton
+│   ├── memory_store.py             # File-backed event log + pilot profiles per structure
+│   └── ssu_poller.py               # Async background tasks: SSU state, killmails, Sui events, turrets
 │
 ├── log-agent/                      # Runs on Windows gaming PC
 │   ├── log_agent.py                # File watcher + bootstrap + heartbeat loop
@@ -125,13 +141,16 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   ├── test_log_buffer.py          # Ring buffer + live store
 │   ├── test_context_builder.py     # Context formatting (all event types)
 │   ├── test_claude_client.py       # Message building + windowing
-│   ├── test_world_api.py           # Index, caching, lookups
+│   ├── test_world_api.py           # 16 tests — index, caching, lookups, get_killmails
 │   ├── test_auth.py                # Token accept/reject
-│   ├── test_integration.py        # system_change triggers world_api warm
+│   ├── test_integration.py         # system_change triggers world_api warm
 │   ├── test_structure_auth.py      # 9 tests — nonce lifecycle, Sui sig verification, JWT
 │   ├── test_nova_client.py         # 6 tests — AccessRegistry fetch + tier resolution
-│   ├── test_structure_profile.py   # 7 tests — profile CRUD, tier filtering, path traversal guard
-│   └── test_structure_client.py    # 9 tests — context building, alert detection, stream messages
+│   ├── test_structure_profile.py   # Profile CRUD, tier filtering, path traversal, region_name/system_id fields
+│   ├── test_structure_client.py    # 17 tests — enriched context, alert detection, LobbyClient
+│   ├── test_galaxy_db.py           # 15 tests — real DB data (system, region, planet, celestials, jumps)
+│   ├── test_memory_store.py        # 12 tests — event append, search, summary, pilot profiles
+│   └── test_main_auth.py           # auth_verify backfill + pilot upsert integration test
 │
 ├── static/
 │   ├── index.html                  # In-game browser chat UI (Tailwind, SSE, auto-reconnect)
@@ -143,10 +162,18 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   ├── gates.json                  # 3,438 unique undirected gate pairs
 │   ├── starmapcache.json           # Raw ResFiles dump (source for systems.json — not served)
 │   ├── type_names_all.json         # Type ID → name map (source for star type names — not served)
+│   ├── types.json                  # [generated] World API /v2/types catalog (build_types.py)
+│   ├── eve_universe.db             # SQLite DB: Regions, Constellations, SolarSystems, Planets, Moons, Stations, Lagrange, Jumps, Types
 │   ├── ship_profile.json           # [generated] Persisted ship profile (created on first POST /ship-profile)
 │   ├── gate_graph.json             # Legacy — world API gate data (empty gateLinks, superseded by systems.json)
-│   └── structures/                 # [generated] Per-structure JSON profiles (created on first OWNER auth)
-│       └── {structure_id}.json
+│   ├── structures/                 # [generated] Per-structure JSON profiles (created on first OWNER auth)
+│   │   └── {structure_id}.json
+│   └── memory/                     # [generated] Per-structure memory (created on first OWNER auth)
+│       └── {structure_id}/
+│           ├── events.jsonl        # Append-only event log (system changes, combat, mining, etc.)
+│           ├── summary.json        # Claude-condensed memory summary (≤300 chars)
+│           └── pilots/
+│               └── {safe_address}.json  # Pilot profile: address, name, character_id, tier, last_seen
 │
 ├── move/
 │   └── access_registry/            # Sui Move package — deployed to testnet
@@ -162,7 +189,9 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
     └── superpowers/
         ├── plans/
         │   ├── 2026-03-11-ship-ai-companion.md
-        │   └── 2026-03-13-structure-ai.md
+        │   ├── 2026-03-13-structure-ai.md
+        │   ├── 2026-03-14-context-enrichment.md    # Context enrichment plan (original)
+        │   └── 2026-03-15-structure-ai-context-enrichment.md  # Implementation plan (10 tasks, completed)
         └── specs/
             ├── 2026-03-11-ship-ai-companion-design.md
             ├── 2026-03-11-blockchain-research.md
@@ -245,7 +274,24 @@ Binds all modules together. Runs on port 8745.
 - `Cache-Control: public, max-age=3600`
 - Returns HTTP 503 if the file hasn't been built yet (trigger rebuild first)
 
-**Lifespan:** On startup, launches `world_api.load_or_build_index()` as a background task (non-blocking).
+**`/structure-chat` flow (updated 2026-03-15):**
+1. Fetch `mem_store = get_memory_store(structure_id)`; `memory_text = mem_store.get_summary()`
+2. Fetch `kills_nearby` via `world_api.get_killmails(profile.system_id)` — filtered to last 2h
+3. `build_structure_context(profile, tier, memory_text=memory_text, kills_nearby=kills_nearby)`
+4. VETTED tier → routes to `lobby_client.stream()` (restricted, no internal structure data)
+5. OWNER/TRIBE → `structure_client.stream(...)` as before
+6. `event_stream()` finally block: yields `[DONE]`, calls `mem_store.rebuild_summary()`
+
+**Lifespan (updated 2026-03-15):**
+1. Launches `world_api.load_or_build_index()` as a background task (non-blocking)
+2. Bootstraps memory store for `STRUCTURE_ID` env var
+3. Reads `SSU_OBJECT_ID` env var; loads profile to get `system_id`
+4. Calls `start_background_tasks(structure_id, ssu_object_id, system_id)` from `ssu_poller`
+
+**`auth_verify` (updated 2026-03-15):**
+- On first OWNER profile creation: reads `STRUCTURE_SYSTEM_NAME` env var, resolves `system_id` and `region_name` via `galaxy_db`, writes them to the new profile
+- Backfills existing profiles where `system_id == 0` or `region_name == ""` using the same lookup
+- After JWT decode: calls `mem.upsert_pilot(address, name, character_id, tier)` to create/update the pilot profile
 
 ---
 
@@ -367,7 +413,16 @@ claude = ClaudeClient()
 
 ### `src/world_api.py` — EVE Universe Cache + Gate Graph Builder
 
-**API base:** `https://world-api-stillness.live.tech.evefrontier.com`
+**API base (2026-03-15):** Defaults to `utopia` (`https://world-api-utopia.live.tech.evefrontier.com`). Override via `WORLD_API_BASE_URL` env var (highest priority), or set `WORLD_API_ENV=stillness` to switch to the Stillness endpoint.
+
+```python
+_WORLD_API_URL_MAP = {
+    "utopia":   "https://world-api-utopia.live.tech.evefrontier.com",
+    "stillness": "https://world-api-stillness.live.tech.evefrontier.com",
+}
+```
+
+Priority order: `base_url` constructor param > `WORLD_API_BASE_URL` env var > `WORLD_API_ENV` (default `utopia`).
 
 **Key methods:**
 
@@ -379,6 +434,7 @@ claude = ClaudeClient()
 | `resolve_system_id(name)` | Case-insensitive name → ID lookup. |
 | `get_system(system_name)` | Fetch `/v2/solarsystems/{id}` with 30s cache TTL. Returns `None` on failure. |
 | `get_system_by_id(system_id)` | Fetch by ID directly. **Currently unused (dead code).** |
+| `get_killmails(system_id: int) → list` | Fetch recent killmails for a system. Returns `[]` on error. Handles both list and `{"data": [...]}` response shapes. Used by `/structure-chat` to populate `kills_nearby`. |
 
 **System index (`data/system_index.json`):**
 ```json
@@ -479,6 +535,7 @@ Reads `AccessRegistry` shared objects on the Nova chain (EVE Frontier builder sa
 |--------|----------|
 | `get_access_registry(object_id) → Optional[AccessRegistry]` | Calls `sui_getObject` JSON-RPC with `showContent: True`. Parses `result.data.content.fields`. Returns `None` on any RPC error. |
 | `resolve_tier(address, registry) → str` | Returns `OWNER`, `TRIBE`, `VETTED`, or `NONE`. Case-insensitive address comparison. |
+| `_rpc(method: str, params: list) → dict` | Generic async JSON-RPC helper. POSTs to `self._rpc_url` (from `NOVA_RPC_URL` env var). Returns the full JSON response dict. Used internally by `ssu_poller.py` for `suix_queryEvents`. |
 
 **Tier semantics:** OWNER and TRIBE see all structure vitals. VETTED sees identity only. NONE is rejected by all protected endpoints.
 
@@ -506,6 +563,8 @@ Reads `AccessRegistry` shared objects on the Nova chain (EVE Frontier builder sa
 | `services_total` | `int` | |
 | `docked_count` | `int` | |
 | `routine_alerts` | `list` | Queued maintenance items |
+| `region_name` | `str` | Default `""` — resolved via `galaxy_db` on first OWNER auth; backfilled if missing |
+| `system_id` | `int` | Default `0` — resolved via `galaxy_db` on first OWNER auth; backfilled if missing |
 
 **`as_dict_for_tier(tier) → dict`:** Filters fields by access tier before returning to caller.
 - `OWNER` / `TRIBE`: full dict
@@ -515,6 +574,7 @@ Reads `AccessRegistry` shared objects on the Nova chain (EVE Frontier builder sa
 **Persistence functions:** `load_profile(structure_id)`, `save_profile(profile)`, `profile_path(structure_id)`.
 - Files stored in `data/structures/{id}.json`; directory auto-created on first save.
 - `profile_path()` validates `structure_id` against the safe-ID regex — raises `ValueError` on path-traversal attempts.
+- `load_profile()` filters unknown JSON keys before constructing `StructureProfile` — forward/backward compatible with field additions.
 
 ---
 
@@ -522,11 +582,16 @@ Reads `AccessRegistry` shared objects on the Nova chain (EVE Frontier builder sa
 
 Separate from `claude_client.py` — different system prompt and context format.
 
-**`build_structure_context(profile, tier, local_kills, local_pilots) → str`**
+**`build_structure_context(profile, tier, memory_text="", kills_nearby=0) → str`** (updated 2026-03-15)
 
-Builds the `[STRUCTURE SENSORS]` block (1500 char cap). Lines included:
-- Always: `STRUCTURE: name | type | system`, `LOCAL: N pilots | kills last 1h`
+Builds the `[STRUCTURE SENSORS]` block (`CONTEXT_CAP = 2000` chars). Lines included:
+- Always: `STRUCTURE: name | type | system, region`, `KILLS NEARBY: N (last 2h)` if > 0
 - OWNER / TRIBE only: `STATUS: shield | fuel | services`, `DOCKED: N ship(s)`, up to 3 `PENDING:` routine alerts
+- Enriched (from `galaxy_db`, all tiers): `STAR: K7 (Orange)`, `PLANETS: 2× Gas, 3× Barren`, `LAGRANGE: N points`
+- Enriched (from `gate_graph.json`, all tiers): `GATES: PERIMETER, NEW CALDARI (2 connections)`
+- Memory (OWNER/TRIBE only): `[STRUCTURE MEMORY]\n{memory_text}` — injected after vitals
+
+Removed from context: `LOCAL: N pilots` and `local_kills` (always 0, never available from API).
 
 **`detect_alerts(profile) → list`**
 
@@ -540,13 +605,150 @@ Urgent alerts from this function are routed to `log_buffer.add_structure_alert()
 
 | Method | Purpose |
 |--------|---------|
-| `build_system_prompt(profile, tier, character_name, character_id) → str` | Formats `STRUCTURE_SYSTEM_PROMPT` template with structure identity and session info. |
+| `build_system_prompt(profile, tier, character_name, character_id) → str` | Formats `STRUCTURE_SYSTEM_PROMPT` template. First line: `"You are the intelligence of {structure_name}, a {structure_type} in {system_name}, {region_name}."` |
 | `stream(message, history, context_block, profile, tier, character_name, character_id)` | Yields text chunks. Same streaming pattern as `claude_client.py` — `messages.stream()`, `max_tokens=1024`, `claude-sonnet-4-6`. |
 | `_build_messages(user_message, history, context_block)` | Windowed to last 40 history entries. Prepends `[STRUCTURE SENSORS]\n{context}\n\n[PILOT]\n{message}`. |
 
 **System prompt identity:** The structure AI knows the structure intimately. Loyal to owner, functional to tribe, terse with vetted. No pleasantries. References itself as "{structure_name} systems."
 
-**Global:** `structure_client = StructureClient()`
+**`LobbyClient`** — restricted Claude client for VETTED tier (added 2026-03-15):
+- Uses `LOBBY_SYSTEM_PROMPT` — mentions the structure by name and type but reveals no fuel/shield/docked data
+- `stream(message, history, context_block) → AsyncIterator[str]` — same yield pattern as `StructureClient.stream`
+- VETTED users get helpful public-facing responses without exposure to owner vitals
+
+**Globals:** `structure_client = StructureClient()`, `lobby_client = LobbyClient()`
+
+---
+
+### `src/galaxy_db.py` — SQLite Universe DB Wrapper
+
+Read-only wrapper for `data/eve_universe.db` (SQLite, ~100 MB). Populated from EVE Frontier ResFiles via the `PROGRAMMER_GUIDE.md` schema. Used by `structure_client.py` to enrich structure context with star type, planet counts, Lagrange points; and by `main.py` `auth_verify` to resolve `system_id` / `region_name`.
+
+**DB path:** `os.path.join(os.path.dirname(__file__), "..", "data", "eve_universe.db")`
+
+**Schema (key tables):**
+
+| Table | Key columns |
+|-------|-------------|
+| `Regions` | `regionId`, `name`, `centerX/Y/Z` |
+| `Constellations` | `constellationId`, `name`, `regionId` |
+| `SolarSystems` | `solarSystemId`, `name`, `regionId`, `constellationId`, `star_spectral_class`, `star_temperature`, `star_age`, … |
+| `Planets` | `planetId`, `name`, `solarSystemId`, `typeId`, `typeDescription`, `radius`, `density`, … |
+| `Moons` | `moonId`, `name`, `planetId`, `solarSystemId`, `typeId`, … |
+| `NpcStations` | `stationId`, `name`, `solarSystemId`, `planetId`, `typeId`, … |
+| `LagrangePoints` | `id`, `solarSystemId`, `planetId`, `pointType` (L1–L5), `centerX/Y/Z` |
+| `Jumps` | `fromSystemId`, `toSystemId`, `jumpType` |
+| `Types` | `typeId`, `typeName`, `groupId`, `mass`, `volume`, … |
+
+**`GalaxyDB` methods:**
+
+| Method | Returns |
+|--------|---------|
+| `get_system(name_or_id)` | `dict` with full system row + `regionName`, `constellationName`. Returns `None` on miss. |
+| `get_region(region_id)` | `dict` or `None` |
+| `get_constellation(constellation_id)` | `dict` or `None` |
+| `get_planet(planet_id)` | `dict` or `None` |
+| `get_moon(moon_id)` | `dict` or `None` |
+| `get_station(station_id)` | `dict` or `None` |
+| `get_celestials_in_system(system_id)` | `{"planets": [...], "moons": [...], "stations": [...], "lagrange_points": [...]}` |
+| `search_systems(pattern)` | `list[dict]` — LIKE search on name |
+| `get_jumps_from_system(system_id)` | `list[dict]` — all jump rows where `fromSystemId` or `toSystemId` matches |
+| `run_sql(sql, params)` | `list[dict]` — raw SQL passthrough |
+
+**Error handling:** All errors are caught, logged via Python `logging`, and return `None` / empty list / empty dict. Never re-raises. This prevents a missing or corrupt DB from crashing the server.
+
+**Module-level singleton:**
+```python
+galaxy_db = GalaxyDB()
+```
+
+**Tests:** `tests/test_galaxy_db.py` — 15 tests using real DB data (`REAL_SYSTEM_ID=30000004`, `REAL_SYSTEM_NAME="O3H-1FN"`, `REAL_REGION_NAME="653-Y-21"`, `REAL_PLANET_ID=40000005`).
+
+---
+
+### `src/memory_store.py` — Event Log + Pilot Profiles
+
+File-backed persistent memory per structure. Stores game events for context and AI summary; also tracks every pilot who has authenticated.
+
+**Storage layout:** `data/memory/{structure_id}/`
+- `events.jsonl` — append-only JSONL, one event per line: `{"ts": "...", "type": "...", "system_id": ..., "data": {...}}`
+- `summary.json` — Claude-condensed summary: `{"last_updated": "...", "text": "..."}`
+- `pilots/{safe_address}.json` — pilot profile: `{"address": "...", "name": "...", "character_id": ..., "tier": "...", "last_seen": "..."}`
+
+**`MemoryStore` class:**
+
+| Method | Behavior |
+|--------|----------|
+| `bootstrap()` | Creates all required directories and files if missing. Safe to call multiple times. |
+| `append_event(type, system_id, data)` | Appends one event to `events.jsonl`. |
+| `search_events(keyword, days=7)` | Returns up to 20 matching events (newest-first) from the last N days. |
+| `rebuild_summary()` | Reads recent events, calls Claude to condense into ≤`SUMMARY_CAP` (300) chars, writes `summary.json`. Called in `event_stream()` finally block after every `/structure-chat` response. |
+| `get_summary() → str` | Returns `summary.json` text, or `""` if missing. |
+| `upsert_pilot(address, name, character_id, tier)` | Creates or updates pilot profile JSON. Called by `auth_verify` on every successful auth. |
+| `get_pilot(address) → dict` | Returns pilot profile dict, or `{}` if not found. |
+| `format_pilot_line(address) → str` | Returns `"name (tier)"` for context injection. |
+
+**Constants:** `SUMMARY_CAP = 300`
+
+**Factory:**
+```python
+def get_memory_store(structure_id: str) -> MemoryStore:
+    store = MemoryStore(structure_id)
+    store.bootstrap()
+    return store
+```
+
+**Tests:** `tests/test_memory_store.py` — 12 tests covering event append, search, summary, pilot upsert/get.
+
+---
+
+### `src/ssu_poller.py` — Async Background Tasks
+
+Long-running asyncio tasks started at server startup (via FastAPI lifespan). Polls external sources and writes updates to the structure profile and memory store.
+
+**Constants:**
+
+| Name | Value | Purpose |
+|------|-------|---------|
+| `SSU_POLL_INTERVAL` | 60s | SSU state polling |
+| `KILLMAIL_POLL_INTERVAL` | 300s | Killmail polling |
+| `TURRET_POLL_INTERVAL` | 60s | Turret state polling |
+
+**Poll functions:**
+
+| Function | Source | Updates |
+|----------|--------|---------|
+| `poll_ssu_state(structure_id, ssu_object_id)` | `nova_client._rpc("sui_getObject", ...)` | `profile.shield_pct`, `profile.fuel_pct`, `profile.services_online`, `profile.services_total` via `_extract_fuel_pct()` |
+| `poll_killmails(structure_id, system_id)` | `world_api.get_killmails(system_id)` | Appends new kills to `memory_store.append_event("killmail", ...)` |
+| `poll_sui_events(structure_id, ssu_object_id)` | `nova_client._rpc("suix_queryEvents", ...)` with ascending order, cursor-tracked | Appends new on-chain events to memory store |
+| `poll_turret(structure_id, turret_object_id)` | `nova_client._rpc("sui_getObject", ...)` | Appends turret state events to memory store |
+
+**Loop functions:** `_ssu_loop`, `_killmail_loop`, `_sui_event_loop`, `_turret_loop` — each wraps its poll function in an infinite loop with `asyncio.sleep`.
+
+**`start_background_tasks(structure_id, ssu_object_id, system_id)`:**
+- Skips all tasks if `structure_id` is empty
+- Starts `_killmail_loop` only if `system_id > 0`
+- Starts `_ssu_loop` only if `ssu_object_id` is set
+- Reads `TURRET_OBJECT_IDS` env var (comma-separated); starts one `_turret_loop` per ID
+- Called from `main.py` lifespan
+
+**WatchTower webhook:** Not implemented (deferred post-hackathon). Would send shield/fuel alerts to a Discord/Slack webhook.
+
+---
+
+### `build_types.py` — World API Type Catalog Fetcher
+
+One-shot CLI script. Fetches all pages of `/v2/types` from the World API and writes `data/types.json`.
+
+**Usage:**
+```bash
+python build_types.py
+# Output: data/types.json
+```
+
+**API base:** Same environment switching as `world_api.py` — `WORLD_API_BASE_URL` > `WORLD_API_ENV` > `utopia`.
+
+**Output format:** JSON array of type objects from the World API `/v2/types` endpoint.
 
 ---
 
@@ -998,14 +1200,19 @@ Chat request: POST /chat {"message": "What's the situation?", "history": [...]}
 | `tests/test_log_buffer.py` | 9 | Ring buffer cap, FIFO, system tracking, live store TTL |
 | `tests/test_context_builder.py` | 21 | All context lines, live override, 2000-char cap, transitions cap |
 | `tests/test_claude_client.py` | 6 | System prompt, message windowing, context prepend |
-| `tests/test_world_api.py` | 9 | Pagination, case-insensitive lookup, caching, TTL, error handling |
+| `tests/test_world_api.py` | 16 | Pagination, case-insensitive lookup, caching, TTL, error handling, `get_killmails` |
 | `tests/test_auth.py` | 4 | Valid/missing/wrong token; no-token dev mode |
 | `tests/test_main.py` | 1 | Health endpoint |
 | `tests/test_integration.py` | 2 | system_change triggers world_api warm; others do not |
 | `tests/test_structure_auth.py` | 9 | Nonce issue/consume/expiry/double-consume, unsupported sig flag, JWT round-trip |
 | `tests/test_nova_client.py` | 6 | AccessRegistry fetch (happy path, RPC error, missing fields), tier resolution (OWNER/TRIBE/VETTED/NONE) |
-| `tests/test_structure_profile.py` | 7 | Profile save/load, tier-filtered dict, VETTED/NONE field hiding, path traversal rejection |
-| `tests/test_structure_client.py` | 9 | Context lines by tier, alert detection thresholds, message building |
+| `tests/test_structure_profile.py` | — | Profile save/load, tier-filtered dict, VETTED/NONE field hiding, path traversal, `region_name`/`system_id` fields, unknown-key filtering |
+| `tests/test_structure_client.py` | 17 | Enriched context (STAR/PLANETS/LAGRANGE/GATES/memory), alert detection, LobbyClient prompt |
+| `tests/test_galaxy_db.py` | 15 | `get_system` (by ID, by name, JOIN region name), `get_region`, `get_planet`, `get_celestials_in_system`, `get_jumps_from_system`, miss cases |
+| `tests/test_memory_store.py` | 12 | `append_event`, `search_events`, `get_summary`, `rebuild_summary`, `upsert_pilot`, `get_pilot` |
+| `tests/test_main_auth.py` | — | `auth_verify` backfills `system_id`/`region_name` on existing profiles, calls `upsert_pilot` |
+
+**Total server-side tests (2026-03-15): 138 passing, 0 failures.**
 
 **Note:** `test_context_builder.py` does not yet cover the `current_route` / ROUTE PLANNED line. Add tests when `route_planned` event handling is verified end-to-end.
 
@@ -1022,9 +1229,20 @@ cd /opt/eve-frontier
 ### Server `.env`
 ```
 ANTHROPIC_API_KEY=sk-ant-...
-WORLD_API_BASE_URL=https://world-api-stillness.live.tech.evefrontier.com
+# World API: WORLD_API_BASE_URL overrides WORLD_API_ENV. Default env is "utopia".
+WORLD_API_BASE_URL=https://world-api-utopia.live.tech.evefrontier.com
+WORLD_API_ENV=utopia
 SERVER_TOKEN=<random secret — must match overlay config.h and log-agent .env>
 PORT=8745
+JWT_SECRET=<random secret for structure JWT signing>
+# Structure AI identity
+STRUCTURE_ID=keep-7a
+STRUCTURE_SYSTEM_NAME=JITA
+NOVA_REGISTRY_OBJECT_ID=0x89e9b9b90acc3b7b576c7fe81015e0a6d333d9ae3e69133c8b1786c826f05dc0
+NOVA_RPC_URL=https://fullnode.testnet.sui.io
+# Background polling
+SSU_OBJECT_ID=<Sui object ID of the deployed SSU — leave blank to disable SSU state polling>
+TURRET_OBJECT_IDS=<comma-separated Sui object IDs of turrets — leave blank to disable>
 ```
 
 ### Log Agent `log-agent/.env` (Windows)
@@ -1082,16 +1300,16 @@ python diagnose.py
 
 | Area | Gap | Priority |
 |------|-----|----------|
-| `static/structure.html` | Structure AI browser frontend not built — backend complete, UI deferred | **High** |
-| Nova RPC URL | `NOVA_RPC_URL` defaults to `fullnode.devnet.sui.io` placeholder — real Nova/Stillness endpoint needed for live tier resolution | **High** |
-| Sui signature test vector | `verify_sui_personal_message` lacks a real EVEVault `signPersonalMessage` output for validation — format unconfirmed | **High** |
 | Client-side RouteCalculator | Not built — server-side engine exists as reference but must not run in production (VPS too small) | **High** |
 | Ship stat auto-extraction | Manual profile input required — see Future Thinking in Routing section | **High** |
 | ImGui navigation panel | Not started — "Route to:" input in overlay, triggers client-side route then POST /log/ingest | High |
 | Route engine calibration | Default `ShipProfile` values are placeholder — needs real in-game stats to verify formulas | **High** |
+| `ssu_poller.poll_ssu_state` | SSU Sui object field mapping unverified — `_extract_fuel_pct()` may need adjustment for real on-chain layout | **High** |
+| WatchTower webhook | Not implemented — deferred post-hackathon. Would POST shield/fuel alerts to Discord/Slack. | Medium |
 | `GET /data/systems` endpoint | Not yet added — client-side RouteCalculator needs to download `systems.json` from server | Medium |
 | `test_context_builder.py` | Missing coverage for `current_route` / ROUTE PLANNED context line | Medium |
 | Route engine tests | No tests for `route_engine.py` or `ship_profile.py` | Medium |
+| `memory_store.rebuild_summary()` | Claude summarization call not yet tested end-to-end — mock used in unit tests | Medium |
 | SSE keep-alive | Server does not send `: keep-alive` comments. Add to `event_stream()` if drops appear. | Low |
 | `world_api.get_system_by_id()` | Defined but never called — dead code | Low |
 | `/debug`, `/health` endpoints | No test coverage | Low |
@@ -1126,5 +1344,10 @@ python diagnose.py
 | `docs/superpowers/specs/2026-03-11-blockchain-research.md` | World API + blockchain research |
 | `docs/superpowers/specs/2026-03-13-structure-ai-design.md` | Structure AI product spec — auth, tier model, UI design |
 | `docs/superpowers/plans/2026-03-13-structure-ai.md` | Structure AI implementation plan — what's built, what's next |
+| `docs/superpowers/plans/2026-03-14-context-enrichment.md` | Data catalog — what's available from ResFiles, World API, blockchain, and live logs |
+| `docs/superpowers/plans/2026-03-15-structure-ai-context-enrichment.md` | 10-task implementation plan — galaxy_db, memory_store, ssu_poller, LobbyClient, context enrichment |
+| `data/PROGRAMMER_GUIDE.md` | SQLite schema reference for `eve_universe.db` (tables, columns, query patterns) |
 | `log-agent/tests/` | Best examples of how parsers and tracker behave |
 | `tests/test_context_builder.py` | Best examples of context block output format |
+| `tests/test_galaxy_db.py` | Best examples of galaxy_db query patterns |
+| `tests/test_memory_store.py` | Best examples of memory store usage |
