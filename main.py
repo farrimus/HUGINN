@@ -124,9 +124,8 @@ async def get_ship_profile():
     from dataclasses import asdict
     return {
         **asdict(p),
-        "jump_range_m":  p.jump_range(),
-        "jump_range_ly": p.jump_range() / 9_460_000_000_000_000.0,
-        "fuel_budget_m": p.fuel_budget(),
+        "jump_range_ly": p.jump_range(),
+        "fuel_budget_ly": p.fuel_budget(),
         "fuel_types":    FUEL_QUALITY,
     }
 
@@ -140,7 +139,7 @@ async def set_ship_profile(req: ShipProfileRequest):
         })
     save_profile(updated)
     from dataclasses import asdict
-    return {**asdict(updated), "jump_range_m": updated.jump_range(), "fuel_budget_m": updated.fuel_budget()}
+    return {**asdict(updated), "jump_range_ly": updated.jump_range(), "fuel_budget_ly": updated.fuel_budget()}
 
 
 class RouteRequest(BaseModel):
