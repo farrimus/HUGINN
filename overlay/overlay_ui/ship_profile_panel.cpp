@@ -56,7 +56,6 @@ static std::atomic<float> s_cur_temp{-1.0f};  // -1 = unknown
 
 // Save feedback
 static std::atomic<int> s_save_state{0};  // 0=idle 1=saving 2=saved 3=error
-static std::mutex s_save_mutex;
 
 static float _computeRange(int ship_idx, int adaptive, int extra_cargo, float temp) {
     if (ship_idx < 0 || ship_idx >= SHIP_COUNT) return 0.0f;
