@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Structure AI — Dev Console</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #080700; color: #c8b890; font-family: 'Courier New', monospace; font-size: 13px; height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── toolbar ── */
+    #toolbar { padding: 8px 12px; border-bottom: 1px solid #2a1f00; display: flex; gap: 12px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+    .label { color: #6b5a20; font-size: 11px; letter-spacing: 1px; }
+    #status { font-size: 11px; }
+    .ok   { color: #f59e0b; }
+    .err  { color: #c0392b; }
+    .warn { color: #d4a017; }
+    button { background: #0d0b00; border: 1px solid #3a2a00; color: #c8b890; padding: 4px 10px; cursor: pointer; font-family: inherit; font-size: 11px; }
+    button:hover { background: #1a1400; }
+
+    /* ── three-column layout ── */
+    #main { display: flex; flex: 1; overflow: hidden; }
+    .pane { display: flex; flex-direction: column; border-right: 1px solid #2a1f00; min-width: 0; }
+    .pane:last-child { border-right: none; }
+    .pane-header { padding: 6px 10px; border-bottom: 1px solid #2a1f00; font-size: 11px; color: #6b5a20; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+
+    /* col 1: log stream */
+    #log-pane { flex: 1; }
+    #log-out  { flex: 1; overflow-y: auto; padding: 8px; line-height: 1.5; }
+    .log-line { white-space: pre-wrap; word-break: break-all; padding: 1px 0; }
+    .log-line.ERROR, .log-line.CRITICAL { color: #e74c3c; }
+    .log-line.WARNING { color: #d4a017; }
+    .log-line.DEBUG   { color: #3a2e00; }
+
+    /* col 2 */
+    #struct-pane   { width: 380px; flex-shrink: 0; overflow-y: auto; }
+    #struct-body   { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+
+    .section { border: 1px solid #2a1f00; padding: 8px; }
+    .section-title { font-size: 10px; letter-spacing: 1px; color: #6b5a20; margin-bottom: 6px; }
+    .field { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .field label { font-size: 11px; color: #9a8050; min-width: 120px; }
+    .field input, .field select { flex: 1; background: #0d0b00; border: 1px solid #3a2a00; color: #c8b890; padding: 3px 6px; font-family: inherit; font-size: 12px; min-width: 0; }
+    .field input:focus, .field select:focus { outline: none; border-color: #f59e0b; }
+    .field input[readonly] { color: #6b5a20; }
+    select option { background: #0d0b00; }
+
+    .btn-row { display: flex; gap: 6px; }
+    .btn-primary   { flex: 1; background: #0d0b00; border: 1px solid #6b4a00; color: #f59e0b; padding: 6px; cursor: pointer; font-family: inherit; font-size: 11px; letter-spacing: 1px; }
+    .btn-primary:hover   { background: #1a1400; }
+    .btn-secondary { background: #0d0b00; border: 1px solid #2a1f00; color: #6b5a20; padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 11px; }
+    .btn-secondary:hover { background: #110e00; color: #c8b890; }
+
+    /* list items */
+    .list-item { font-size: 11px; color: #9a8050; padding: 2px 0; border-bottom: 1px solid #1a1400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-empty { font-size: 11px; color: #3a2e00; font-style: italic; }
+    .alert-item { font-size: 11px; padding: 2px 4px; margin-bottom: 2px; }
+    .alert-item.routine { color: #d4a017; }
+    .alert-item.urgent  { color: #e74c3c; }
+
+    /* chat */
+    .chat-section { border: 1px solid #2a1f00; display: flex; flex-direction: column; min-height: 220px; }
+    #chat-messages { flex: 1; overflow-y: auto; padding: 8px; line-height: 1.5; font-size: 12px; max-height: 300px; }
+    .chat-msg       { margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
+    .chat-msg.user   { color: #9a8050; }
+    .chat-msg.ai     { color: #f59e0b; }
+    .chat-msg.system { color: #6b5a20; font-size: 11px; }
+    #chat-input-row { display: flex; gap: 6px; padding: 6px 8px; border-top: 1px solid #2a1f00; flex-shrink: 0; }
+    #chat-input { flex: 1; background: #0d0b00; border: 1px solid #3a2a00; color: #c8b890; padding: 4px 7px; font-family: inherit; font-size: 12px; }
+    #chat-input:focus { outline: none; border-color: #f59e0b; }
+    #chat-send { background: #0d0b00; border: 1px solid #6b4a00; color: #f59e0b; padding: 4px 10px; cursor: pointer; font-family: inherit; font-size: 11px; }
+    #chat-send:hover { background: #1a1400; }
+
+    /* col 3: pipeline state */
+    #pipeline-pane { width: 400px; flex-shrink: 0; display: flex; flex-direction: column; }
+    #pipeline-top  { flex: 1; overflow-y: auto; padding: 8px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; color: #9a8050; font-size: 12px; }
+    #alerts-section { border-top: 1px solid #2a1f00; flex-shrink: 0; max-height: 220px; display: flex; flex-direction: column; }
+    #alerts-header  { padding: 6px 10px; font-size: 11px; color: #6b5a20; letter-spacing: 1px; border-bottom: 1px solid #2a1f00; flex-shrink: 0; }
+    #alerts-out     { overflow-y: auto; padding: 8px; flex: 1; }
+  </style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="label">STRUCTURE AI // DEV CONSOLE</span>
+  <span id="status" class="ok">connecting...</span>
+  <button onclick="clearLog()">CLEAR LOG</button>
+  <label style="color:#6b5a20;font-size:11px;">
+    <input type="checkbox" id="autoscroll" checked> autoscroll
+  </label>
+  <label style="color:#6b5a20;font-size:11px;">
+    <input type="checkbox" id="filter-debug"> hide debug
+  </label>
+</div>
+
+<div id="main">
+
+  <!-- ── col 1: live log ── -->
+  <div id="log-pane" class="pane" style="display:flex;flex-direction:column;">
+    <div class="pane-header">
+      <span>LIVE LOG STREAM</span>
+      <span id="log-count">0 lines</span>
+    </div>
+    <div id="log-out"></div>
+  </div>
+
+  <!-- ── col 2: structure profile + chat ── -->
+  <div id="struct-pane" class="pane">
+    <div class="pane-header">
+      <span>STRUCTURE PROFILE</span>
+      <span id="profile-status" style="color:#6b5a20">—</span>
+    </div>
+    <div id="struct-body">
+
+      <!-- selector -->
+      <div class="section">
+        <div class="section-title">STRUCTURE SELECTOR</div>
+        <div class="field">
+          <label>Structure ID</label>
+          <input type="text" id="struct-id" placeholder="e.g. keep-7a">
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary" onclick="loadStructure()">LOAD</button>
+        </div>
+      </div>
+
+      <!-- identity (read-only) -->
+      <div class="section" id="identity-section" style="display:none;">
+        <div class="section-title">IDENTITY</div>
+        <div class="field"><label>Name</label><input type="text" id="p-name" readonly></div>
+        <div class="field"><label>Type</label><input type="text" id="p-type" readonly></div>
+        <div class="field"><label>System</label><input type="text" id="p-system" readonly></div>
+        <div class="field"><label>Region</label><input type="text" id="p-region" readonly></div>
+        <div class="field"><label>Owner</label><input type="text" id="p-owner" readonly></div>
+        <div class="field"><label>Created</label><input type="text" id="p-created" readonly></div>
+      </div>
+
+      <!-- live status (editable) -->
+      <div class="section" id="status-section" style="display:none;">
+        <div class="section-title">LIVE STATUS (EDITABLE)</div>
+        <div class="field"><label>Shield %</label><input type="number" id="p-shield" min="0" max="100" step="0.1"></div>
+        <div class="field"><label>Fuel %</label><input type="number" id="p-fuel" min="0" max="100" step="0.1"></div>
+        <div class="field"><label>Services online</label><input type="number" id="p-svc-online" min="0" step="1"></div>
+        <div class="field"><label>Services total</label><input type="number" id="p-svc-total" min="0" step="1"></div>
+        <div class="field"><label>Docked count</label><input type="number" id="p-docked" min="0" step="1"></div>
+        <div class="btn-row" style="margin-top:4px;">
+          <button class="btn-primary" onclick="saveStructure()">SAVE PROFILE</button>
+          <button class="btn-secondary" onclick="loadStructure()">RELOAD</button>
+        </div>
+      </div>
+
+      <!-- assemblies -->
+      <div class="section" id="assemblies-section" style="display:none;">
+        <div class="section-title">CONNECTED ASSEMBLIES</div>
+        <div id="assemblies-list"><span class="list-empty">none</span></div>
+      </div>
+
+      <!-- inventory -->
+      <div class="section" id="inventory-section" style="display:none;">
+        <div class="section-title">SSU INVENTORY</div>
+        <div id="inventory-list"><span class="list-empty">empty</span></div>
+      </div>
+
+      <!-- routine alerts -->
+      <div class="section" id="routine-alerts-section" style="display:none;">
+        <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>ROUTINE ALERTS QUEUE</span>
+          <button class="btn-secondary" style="padding:2px 6px;font-size:10px;" onclick="clearRoutineAlerts()">CLEAR</button>
+        </div>
+        <div id="routine-alerts-list"><span class="list-empty">none</span></div>
+      </div>
+
+      <!-- structure chat -->
+      <div class="chat-section">
+        <div class="section-title" style="padding:6px 8px 0;display:flex;justify-content:space-between;">
+          <span>STRUCTURE AI CHAT</span>
+          <span id="chat-status" style="color:#6b5a20;font-size:10px;">—</span>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-row">
+          <input type="text" id="chat-input" placeholder="Message structure AI..." onkeydown="if(event.key==='Enter')sendChat()">
+          <button id="chat-send" onclick="sendChat()">SEND</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── col 3: pipeline state + structure alerts ── -->
+  <div id="pipeline-pane" class="pane">
+    <div class="pane-header">
+      <span>PIPELINE STATE (/debug)</span>
+      <span style="display:flex;gap:8px;align-items:center;">
+        <span id="debug-age" style="color:#6b5a20"></span>
+        <button onclick="fetchDebug()" style="padding:2px 8px;font-size:10px;">REFRESH</button>
+      </span>
+    </div>
+    <div id="pipeline-top">loading...</div>
+    <div id="alerts-section">
+      <div id="alerts-header">PENDING STRUCTURE ALERTS</div>
+      <div id="alerts-out"><span class="list-empty">none</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const TOKEN = "5740edb0fb25a051db4a932c3622bd69ce47d487bc501f2bde4cb7e19907c454";
+let lineCount   = 0;
+let chatHistory = [];
+let chatBusy    = false;
+let currentStructureId = null;
+
+// ═══════════════════════════════════════
+// LOG STREAM
+// ═══════════════════════════════════════
+
+function levelOf(line) {
+  if (/\bERROR\b|\bCRITICAL\b/.test(line)) return "ERROR";
+  if (/\bWARNING\b|\bWARN\b/.test(line))   return "WARNING";
+  if (/\bDEBUG\b/.test(line))              return "DEBUG";
+  return "INFO";
+}
+
+function appendLine(text) {
+  const lvl = levelOf(text);
+  if (lvl === "DEBUG" && document.getElementById('filter-debug').checked) return;
+  const out = document.getElementById('log-out');
+  const div = document.createElement('div');
+  div.className = 'log-line ' + lvl;
+  div.textContent = text;
+  out.appendChild(div);
+  lineCount++;
+  document.getElementById('log-count').textContent = lineCount + ' lines';
+  if (document.getElementById('autoscroll').checked) div.scrollIntoView();
+}
+
+function clearLog() {
+  document.getElementById('log-out').innerHTML = '';
+  lineCount = 0;
+  document.getElementById('log-count').textContent = '0 lines';
+}
+
+function setStatus(msg, ok) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = ok ? 'ok' : 'err';
+}
+
+function fetchSSE() {
+  fetch('/logs/stream', { headers: { 'X-Server-Token': TOKEN } })
+    .then(res => {
+      if (!res.ok) { setStatus('log error: HTTP ' + res.status, false); return; }
+      setStatus('connected', true);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      function read() {
+        reader.read().then(({ done, value }) => {
+          if (done) { setStatus('disconnected — reconnecting...', false); setTimeout(fetchSSE, 2000); return; }
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n');
+          buf = parts.pop();
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data: ')) continue;
+            try { const obj = JSON.parse(line.slice(6)); if (obj.line) appendLine(obj.line); } catch(e) {}
+          }
+          read();
+        }).catch(() => { setStatus('disconnected — reconnecting...', false); setTimeout(fetchSSE, 2000); });
+      }
+      read();
+    })
+    .catch(() => { setStatus('disconnected — reconnecting...', false); setTimeout(fetchSSE, 2000); });
+}
+
+// ═══════════════════════════════════════
+// PIPELINE STATE
+// ═══════════════════════════════════════
+
+async function fetchDebug() {
+  try {
+    const res  = await fetch('/debug', { headers: { 'X-Server-Token': TOKEN } });
+    const data = await res.json();
+
+    // Render pipeline state (without the alerts field to keep it readable)
+    const { pending_structure_alerts, ...rest } = data;
+    document.getElementById('pipeline-top').textContent = JSON.stringify(rest, null, 2);
+    document.getElementById('debug-age').textContent = new Date().toLocaleTimeString();
+
+    // Render structure alerts
+    const alertsOut = document.getElementById('alerts-out');
+    const alerts = pending_structure_alerts || [];
+    if (!alerts.length) {
+      alertsOut.innerHTML = '<span class="list-empty">none</span>';
+    } else {
+      alertsOut.innerHTML = alerts.map(a =>
+        `<div class="alert-item ${escHtml(a.severity || 'routine')}">${escHtml(JSON.stringify(a))}</div>`
+      ).join('');
+    }
+  } catch(e) {
+    document.getElementById('pipeline-top').textContent = 'error: ' + e.message;
+  }
+}
+
+setInterval(fetchDebug, 5000);
+
+// ═══════════════════════════════════════
+// STRUCTURE PROFILE
+// ═══════════════════════════════════════
+
+async function loadStructure() {
+  const id = document.getElementById('struct-id').value.trim();
+  if (!id) { setProfileStatus('enter a structure ID'); return; }
+  try {
+    const res = await fetch(`/structure-debug/${encodeURIComponent(id)}`,
+      { headers: { 'X-Server-Token': TOKEN } });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      setProfileStatus('error: ' + (e.detail || res.status));
+      return;
+    }
+    const p = await res.json();
+    currentStructureId = id;
+    populateProfile(p);
+    setProfileStatus(p.structure_name || id);
+    chatHistory = [];
+  } catch(e) {
+    setProfileStatus('load failed: ' + e.message);
+  }
+}
+
+function populateProfile(p) {
+  // Identity (read-only)
+  document.getElementById('p-name').value    = p.structure_name    || '';
+  document.getElementById('p-type').value    = p.structure_type    || '';
+  document.getElementById('p-system').value  = p.system_name       || '';
+  document.getElementById('p-region').value  = p.region_name       || '';
+  document.getElementById('p-owner').value   = p.owner_address     || '';
+  document.getElementById('p-created').value = p.created_at        || '';
+
+  // Editable status
+  document.getElementById('p-shield').value     = p.shield_pct       ?? '';
+  document.getElementById('p-fuel').value       = p.fuel_pct         ?? '';
+  document.getElementById('p-svc-online').value = p.services_online  ?? '';
+  document.getElementById('p-svc-total').value  = p.services_total   ?? '';
+  document.getElementById('p-docked').value     = p.docked_count     ?? '';
+
+  // Assemblies
+  const aList = document.getElementById('assemblies-list');
+  const assemblies = p.connected_assemblies || [];
+  aList.innerHTML = assemblies.length
+    ? assemblies.map(a => `<div class="list-item">${escHtml(a.type_name || a.object_id || JSON.stringify(a))}</div>`).join('')
+    : '<span class="list-empty">none</span>';
+
+  // Inventory
+  const iList = document.getElementById('inventory-list');
+  const inv = p.ssu_inventory || [];
+  iList.innerHTML = inv.length
+    ? inv.map(i => `<div class="list-item">${escHtml(i.type_name || '')} × ${escHtml(String(i.quantity ?? ''))}</div>`).join('')
+    : '<span class="list-empty">empty</span>';
+
+  // Routine alerts
+  renderRoutineAlerts(p.routine_alerts || []);
+
+  // Show all sections
+  ['identity-section','status-section','assemblies-section','inventory-section','routine-alerts-section']
+    .forEach(id => document.getElementById(id).style.display = '');
+}
+
+function renderRoutineAlerts(alerts) {
+  const el = document.getElementById('routine-alerts-list');
+  el.innerHTML = alerts.length
+    ? alerts.map(a => `<div class="alert-item routine">${escHtml(typeof a === 'string' ? a : JSON.stringify(a))}</div>`).join('')
+    : '<span class="list-empty">none</span>';
+}
+
+async function saveStructure() {
+  if (!currentStructureId) { setProfileStatus('load a profile first'); return; }
+  const body = {
+    shield_pct:      parseFloat(document.getElementById('p-shield').value),
+    fuel_pct:        parseFloat(document.getElementById('p-fuel').value),
+    services_online: parseInt(document.getElementById('p-svc-online').value),
+    services_total:  parseInt(document.getElementById('p-svc-total').value),
+    docked_count:    parseInt(document.getElementById('p-docked').value),
+  };
+  // Remove NaN values
+  for (const k of Object.keys(body)) { if (isNaN(body[k])) delete body[k]; }
+  try {
+    const res = await fetch(`/structure-debug/${encodeURIComponent(currentStructureId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Server-Token': TOKEN },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      setProfileStatus('save error: ' + (e.detail || res.status));
+      return;
+    }
+    const p = await res.json();
+    populateProfile(p);
+    setProfileStatus((p.structure_name || currentStructureId) + ' saved');
+  } catch(e) {
+    setProfileStatus('save failed: ' + e.message);
+  }
+}
+
+async function clearRoutineAlerts() {
+  if (!currentStructureId) return;
+  try {
+    const res = await fetch(`/structure-debug/${encodeURIComponent(currentStructureId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Server-Token': TOKEN },
+      body: JSON.stringify({ routine_alerts: [] }),
+    });
+    if (res.ok) {
+      renderRoutineAlerts([]);
+      setProfileStatus('alerts cleared');
+    }
+  } catch(e) {}
+}
+
+function setProfileStatus(msg) {
+  document.getElementById('profile-status').textContent = msg;
+}
+
+// ═══════════════════════════════════════
+// STRUCTURE CHAT
+// ═══════════════════════════════════════
+
+function appendChat(text, role) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + (role || 'system');
+  div.textContent = (role === 'user' ? '> ' : '  ') + text;
+  const msgs = document.getElementById('chat-messages');
+  msgs.appendChild(div);
+  div.scrollIntoView();
+  return div;
+}
+
+function setChatStatus(msg) {
+  document.getElementById('chat-status').textContent = msg;
+}
+
+async function sendChat() {
+  if (chatBusy) return;
+  if (!currentStructureId) { appendChat('load a structure profile first', 'system'); return; }
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  appendChat(msg, 'user');
+  chatHistory.push({ role: 'user', content: msg });
+  chatBusy = true;
+  setChatStatus('sending...');
+  document.getElementById('chat-send').disabled = true;
+
+  try {
+    const res = await fetch('/structure-debug/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Server-Token': TOKEN },
+      body: JSON.stringify({ structure_id: currentStructureId, message: msg, history: chatHistory.slice(-10) }),
+    });
+    if (!res.ok) {
+      appendChat('request failed: HTTP ' + res.status, 'system');
+      setChatStatus('error');
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let aiDiv = null;
+    let aiText = '';
+
+    setChatStatus('streaming...');
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        if (payload === '[DONE]') break;
+        try {
+          const obj = JSON.parse(payload);
+          if (obj.text) {
+            if (!aiDiv) {
+              aiDiv = appendChat('', 'ai');
+              aiText = '';
+              // prefix on first chunk
+              aiDiv.textContent = '  > STRUCTURE AI // ';
+            }
+            aiText += obj.text;
+            aiDiv.textContent = '  > STRUCTURE AI // ' + aiText;
+            aiDiv.scrollIntoView();
+          }
+          if (obj.error) appendChat('error: ' + obj.error, 'system');
+        } catch(e) {}
+      }
+    }
+
+    if (aiText) chatHistory.push({ role: 'assistant', content: aiText });
+    setChatStatus('ready');
+  } catch(e) {
+    appendChat('stream error: ' + e.message, 'system');
+    setChatStatus('error');
+  } finally {
+    chatBusy = false;
+    document.getElementById('chat-send').disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════
+// UTIL
+// ═══════════════════════════════════════
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+
+fetchSSE();
+fetchDebug();
+
+document.getElementById('struct-id').addEventListener('keydown', e => { if (e.key === 'Enter') loadStructure(); });
+</script>
+</body>
+</html>

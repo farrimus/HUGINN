@@ -40,7 +40,8 @@ log_agent.py
                                                        ├── galaxy_db.py        (SQLite wrapper for eve_universe.db)
                                                        ├── memory_store.py     (file-backed event log + pilot profiles)
                                                        ├── ssu_poller.py       (async background tasks: SSU state, killmails, Sui events, turrets, inventory, player structures)
-                                                       └── blockchain_client.py(REST wrapper: blockchain gateway — assembly data, inventory)
+                                                       ├── type_names.py       (type_id → name resolver, loaded from data/type_names_all.json)
+                                                       └── ssu_poller.py       (inventory + player structures via Sui dynamic fields RPC)
                                                                ↑ JWT auth (Sui wallet, EVEVault)
                                                          static/structure.html  (SSU in-game browser UI)
                                                          SSU Browser (EVE Frontier Smart Storage Unit)
@@ -92,7 +93,8 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | `src/galaxy_db.py` | ✓ SQLite wrapper for `eve_universe.db` (24k systems, 83k+ planets, moons, stations, Lagrange points) |
 | `src/memory_store.py` | ✓ File-backed event log (`events.jsonl`) + pilot profiles per structure |
 | `src/ssu_poller.py` | ✓ Background tasks: SSU state (60s), killmails (5min), Sui events (60s), turrets (60s), connected assembly resolution (60s), SSU inventory (5min), player structures (2min) |
-| `src/blockchain_client.py` | ✓ REST wrapper for blockchain gateway — `get_assembly`, `get_assemblies_in_system`, `_parse_inventory`; 120s TTL cache |
+| `src/type_names.py` | ✓ Type ID → name resolver — loaded once from `data/type_names_all.json` at import |
+| `src/ssu_poller.py` — inventory + player structures | ✓ Now on Sui dynamic fields RPC (`suix_getDynamicFields` + `sui_getObject`). No gateway needed. |
 | Context enrichment | ✓ STAR/PLANETS/LAGRANGE from galaxy_db, GATES from gate_graph, `[STRUCTURE MEMORY]` block, ASSEMBLIES + INVENTORY (Structure AI), PLAYER STRUCTURE (Ship AI) |
 | VETTED routing → LobbyClient | ✓ VETTED tier gets restricted lobby Claude (no internal structure data) |
 | Pilot profiles | ✓ Every auth creates/updates pilot profile in `data/memory/{id}/pilots/` |
@@ -131,7 +133,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   ├── galaxy_db.py                # Read-only SQLite wrapper for eve_universe.db; module-level singleton
 │   ├── memory_store.py             # File-backed event log + pilot profiles per structure
 │   ├── ssu_poller.py               # Async background tasks: SSU state, killmails, Sui events, turrets, assembly resolution, inventory, player structures
-│   └── blockchain_client.py        # REST wrapper: blockchain gateway assembly data + inventory; 120s TTL cache
+│   └── type_names.py               # Type ID → name resolver; loaded once from data/type_names_all.json
 │
 ├── log-agent/                      # Runs on Windows gaming PC
 │   ├── log_agent.py                # File watcher + bootstrap + heartbeat loop
@@ -159,14 +161,14 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   ├── test_nova_client.py         # 6 tests — AccessRegistry fetch + tier resolution
 │   ├── test_structure_profile.py   # Profile CRUD, tier filtering, path traversal, region_name/system_id fields
 │   ├── test_structure_client.py    # 24 tests — enriched context, alert detection, LobbyClient, ASSEMBLIES/INVENTORY lines
-│   ├── test_blockchain_client.py   # 9 tests — network errors, caching, _parse_inventory
+│   ├── test_type_names.py          # 4 tests — known IDs, string key, unknown, None
 │   ├── test_galaxy_db.py           # 15 tests — real DB data (system, region, planet, celestials, jumps)
 │   ├── test_memory_store.py        # 12 tests — event append, search, summary, pilot profiles
 │   ├── test_main_auth.py           # auth_verify backfill + pilot upsert integration test
 │   ├── test_ship_profile.py        # 9 tests — SHIPS table, range/budget formulas, cargo, adaptive, red zone
 │   ├── test_route_engine.py        # 6 tests — A* correctness, alternative route, hot-system detection
 │   ├── test_ef_map_comparison.py   # Golden dataset framework vs ef-map.com
-│   └── test_ssu_poller.py          # 13 tests — two-hop fuel, services, connected_assembly_ids, poll_connected_assemblies
+│   └── test_ssu_poller.py          # 20 tests — two-hop fuel, services, connected_assembly_ids, poll_connected_assemblies, inventory dynamic fields, poll_player_structure
 │
 ├── static/
 │   ├── index.html                  # In-game browser chat UI (Tailwind, SSE, auto-reconnect)
