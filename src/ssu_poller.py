@@ -124,9 +124,10 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
                 fuel_pct = round(int(qty) * 100 / int(cap), 1)
 
             # connected_assembly_ids length → proxy for services_online
+            # Filter SSU's own object_id (it lists itself in the NetworkNode)
             connected = node_fields.get("connected_assembly_ids") or []
-            services_online = len(connected)
-            connected_ids = [str(c) for c in connected if c]
+            connected_ids = [str(c) for c in connected if c and str(c) != ssu_object_id]
+            services_online = len(connected_ids)
     else:
         log.debug("poll_ssu_state: no energy_source_id on SSU %s, skipping hop 2", ssu_object_id)
         connected_ids = []
@@ -373,19 +374,69 @@ async def _turret_loop(turret_ids: list[str], structure_id: str, system_id: int)
 
 
 async def poll_ssu_inventory(structure_id: str, ssu_object_id: str) -> None:
-    """Fetch SSU inventory from blockchain gateway and store on profile."""
+    """Fetch SSU inventory from Sui dynamic fields and store on profile.
+
+    Three-step process:
+      1. suix_getDynamicFields(ssu_object_id) → list of inventory::Inventory field objects
+      2. sui_getObject(objectId) for each → parse items (type_id, quantity)
+      3. Resolve type_id → name via type_names.get_type_name; store on profile
+    """
+    from src.type_names import get_type_name
+
     try:
-        from src.blockchain_client import blockchain_client
-    except Exception as e:  # pragma: no cover
-        log.warning("poll_ssu_inventory: blockchain_client unavailable: %s", e)
+        df_resp = await nova_client._rpc("suix_getDynamicFields", [ssu_object_id])
+    except Exception as e:
+        log.warning("poll_ssu_inventory: getDynamicFields failed for %s: %s", ssu_object_id, e)
         return
-    data = await blockchain_client.get_assembly(ssu_object_id)
-    inventory = blockchain_client._parse_inventory(data or {})
+
+    inv_fields = [
+        f for f in (df_resp.get("result", {}).get("data") or [])
+        if "inventory" in f.get("objectType", "").lower()
+    ]
+    if not inv_fields:
+        return
+
+    all_items: list = []
+    for field in inv_fields:
+        obj_id = field.get("objectId")
+        if not obj_id:
+            continue
+        try:
+            obj = await nova_client._rpc("sui_getObject", [obj_id, {"showContent": True}])
+        except Exception as e:
+            log.warning("poll_ssu_inventory: getObject failed for %s: %s", obj_id, e)
+            continue
+        contents = (
+            obj.get("result", {})
+            .get("data", {})
+            .get("content", {})
+            .get("fields", {})
+            .get("value", {})
+            .get("fields", {})
+            .get("items", {})
+            .get("fields", {})
+            .get("contents") or []
+        )
+        for entry in contents:
+            ef = entry.get("fields", {})
+            type_id = ef.get("key") or (ef.get("value", {}).get("fields") or {}).get("type_id")
+            qty_raw = (ef.get("value", {}).get("fields") or {}).get("quantity")
+            if type_id is None or qty_raw is None:
+                continue
+            try:
+                qty = int(qty_raw)
+            except (TypeError, ValueError):
+                continue
+            all_items.append({
+                "type_name": get_type_name(type_id),
+                "quantity": qty,
+            })
+
     profile = load_profile(structure_id)
-    if profile and inventory != profile.ssu_inventory:
-        profile.ssu_inventory = inventory
+    if profile and all_items != profile.ssu_inventory:
+        profile.ssu_inventory = all_items
         save_profile(profile)
-        log.info("poll_ssu_inventory: updated %d items for %s", len(inventory), structure_id)
+        log.info("poll_ssu_inventory: updated %d items for %s", len(all_items), structure_id)
 
 
 async def _inventory_loop(structure_id: str, ssu_object_id: str) -> None:

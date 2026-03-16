@@ -414,3 +414,148 @@ async def test_poll_connected_assemblies_empty_list_does_nothing():
         poller_mod.nova_client = orig_nova
 
     assert "called" not in rpc_called, "No RPC calls should be made for empty assembly list"
+
+
+# ---------------------------------------------------------------------------
+# poll_ssu_inventory
+# ---------------------------------------------------------------------------
+
+def _dynamic_fields_response(inv_object_ids: list):
+    """Simulate suix_getDynamicFields response with inventory dynamic fields."""
+    return {
+        "result": {
+            "data": [
+                {
+                    "objectType": "0xpkg::inventory::Inventory",
+                    "objectId": oid,
+                }
+                for oid in inv_object_ids
+            ],
+            "hasNextPage": False,
+        }
+    }
+
+
+def _inventory_object_response(contents: list):
+    """Simulate sui_getObject response for an Inventory dynamic field."""
+    return {
+        "result": {
+            "data": {
+                "content": {
+                    "fields": {
+                        "value": {
+                            "fields": {
+                                "items": {
+                                    "fields": {
+                                        "contents": [
+                                            {
+                                                "fields": {
+                                                    "key": str(item["type_id"]),
+                                                    "value": {
+                                                        "fields": {
+                                                            "type_id": str(item["type_id"]),
+                                                            "quantity": item["quantity"],
+                                                        }
+                                                    },
+                                                }
+                                            }
+                                            for item in contents
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_poll_ssu_inventory_populates_profile():
+    """Items from Sui dynamic fields are stored on profile with resolved names."""
+    inv_id = "0xINV0000000000000000000000000000000000000000000000000000000000000000"
+    profile = _profile()
+    saved = {}
+
+    mock_nova = MagicMock()
+    mock_nova._rpc = AsyncMock(side_effect=[
+        _dynamic_fields_response([inv_id]),
+        _inventory_object_response([
+            {"type_id": 88561, "quantity": 34},
+        ]),
+    ])
+
+    orig_nova = poller_mod.nova_client
+    orig_load = poller_mod.load_profile
+    orig_save = poller_mod.save_profile
+    poller_mod.nova_client = mock_nova
+    poller_mod.load_profile = lambda sid, base_dir=None: profile
+    poller_mod.save_profile = lambda p, base_dir=None: saved.update({"profile": p})
+    try:
+        await poller_mod.poll_ssu_inventory(STRUCT_ID, SSU_OBJ_ID)
+    finally:
+        poller_mod.nova_client = orig_nova
+        poller_mod.load_profile = orig_load
+        poller_mod.save_profile = orig_save
+
+    assert "profile" in saved
+    inv = saved["profile"].ssu_inventory
+    assert len(inv) == 1
+    assert inv[0]["type_name"] == "Thermal Composites"
+    assert inv[0]["quantity"] == 34
+
+
+@pytest.mark.asyncio
+async def test_poll_ssu_inventory_skips_empty_inventories():
+    """Dynamic fields with empty contents are ignored; profile not saved."""
+    inv_id = "0xINV0000000000000000000000000000000000000000000000000000000000000000"
+    profile = _profile()
+    saved = {}
+
+    mock_nova = MagicMock()
+    mock_nova._rpc = AsyncMock(side_effect=[
+        _dynamic_fields_response([inv_id]),
+        _inventory_object_response([]),   # empty
+    ])
+
+    orig_nova = poller_mod.nova_client
+    orig_load = poller_mod.load_profile
+    orig_save = poller_mod.save_profile
+    poller_mod.nova_client = mock_nova
+    poller_mod.load_profile = lambda sid, base_dir=None: profile
+    poller_mod.save_profile = lambda p, base_dir=None: saved.update({"profile": p})
+    try:
+        await poller_mod.poll_ssu_inventory(STRUCT_ID, SSU_OBJ_ID)
+    finally:
+        poller_mod.nova_client = orig_nova
+        poller_mod.load_profile = orig_load
+        poller_mod.save_profile = orig_save
+
+    assert "profile" not in saved
+
+
+@pytest.mark.asyncio
+async def test_poll_ssu_inventory_no_dynamic_fields_does_nothing():
+    """If getDynamicFields returns empty list, nothing is stored."""
+    profile = _profile()
+    saved = {}
+
+    mock_nova = MagicMock()
+    mock_nova._rpc = AsyncMock(return_value=_dynamic_fields_response([]))
+
+    orig_nova = poller_mod.nova_client
+    orig_load = poller_mod.load_profile
+    orig_save = poller_mod.save_profile
+    poller_mod.nova_client = mock_nova
+    poller_mod.load_profile = lambda sid, base_dir=None: profile
+    poller_mod.save_profile = lambda p, base_dir=None: saved.update({"profile": p})
+    try:
+        await poller_mod.poll_ssu_inventory(STRUCT_ID, SSU_OBJ_ID)
+    finally:
+        poller_mod.nova_client = orig_nova
+        poller_mod.load_profile = orig_load
+        poller_mod.save_profile = orig_save
+
+    assert "profile" not in saved
