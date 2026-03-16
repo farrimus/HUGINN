@@ -316,7 +316,18 @@ _player_structure_cache: dict[str, dict]
 
 **Accessor:** `get_player_structures_in_system(system_name: str) → list[dict]` — returns entries matching the given system name (case-insensitive). Called by `main.py` `/chat` handler.
 
-**Assembly type labels** (`_TYPE_LABELS`): `SmartTurret` → `Smart Turret`, `SmartGate` → `Smart Gate`, `SmartStorageUnit` → `SSU`, `SmartMiningLaser` → `Mining Laser`. Unknown struct names pass through as-is.
+**Assembly type labels** (`_TYPE_LABELS`): Confirmed real on-chain struct names (verified 2026-03-16 against live Sui testnet):
+
+| On-chain struct | Human label |
+|-----------------|-------------|
+| `Gate` | `Smart Gate` |
+| `Turret` | `Smart Turret` |
+| `StorageUnit` | `SSU` |
+| `MiningLaser` | `Mining Laser` |
+
+Legacy `SmartX` keys retained for compatibility. Unknown struct names pass through as-is (e.g. `NetworkNode` → `"NetworkNode"`).
+
+**Self-reference:** The SSU's own object ID appears in the NetworkNode's `connected_assembly_ids` list. `_ssu_loop` filters it out before calling `poll_connected_assemblies` so the ASSEMBLIES context line doesn't show the SSU listed among its own connected assemblies.
 
 **`start_background_tasks(structure_id, ssu_object_id, system_id)`:**
 - Skips all tasks if `structure_id` is empty
@@ -327,7 +338,7 @@ _player_structure_cache: dict[str, dict]
 - Reads `PLAYER_STRUCTURE_IDS` env var (comma-separated); starts `_player_structure_loop` if set (2min interval)
 - Called from `main.py` lifespan
 
-**`_ssu_loop` sequence per cycle:** `poll_ssu_state` → `poll_sui_events` → reload profile → `poll_connected_assemblies` if IDs present → sleep.
+**`_ssu_loop` sequence per cycle:** `poll_ssu_state` → `poll_sui_events` → reload profile → `poll_connected_assemblies` (IDs minus ssu_object_id) if IDs present → sleep.
 
 **WatchTower webhook:** Not implemented (deferred post-hackathon). Would send shield/fuel alerts to Discord/Slack.
 
@@ -349,14 +360,46 @@ Thin httpx wrapper over the EVE Frontier Blockchain Gateway (`blockchain-gateway
 
 **Error handling:** `ConnectError` (DNS failure) and `HTTPStatusError` are both caught, logged at WARNING, and return `None`/`[]`. Cache prevents duplicate network hits within TTL.
 
-**DNS caveat:** Gateway DNS was not resolving from VPS as of 2026-03-11. Verify before relying on Phase 2/3 features:
+**DNS caveat:** Gateway DNS confirmed still not resolving from VPS as of 2026-03-16 (`Could not resolve host`). Phase 2 (INVENTORY) and Phase 3 (PLAYER STRUCTURE in Ship AI) are wired and gracefully degraded — no data will appear until DNS resolves. Re-verify periodically:
 ```bash
 curl -sv --max-time 10 \
-  "https://blockchain-gateway-stillness.live.tech.evefrontier.com/smartassemblies/0x0000000000000000000000000000000000000000000000000000000000000001"
+  "https://blockchain-gateway-stillness.live.tech.evefrontier.com/smartassemblies/0x51b84ccdccb017c75520efe1f3ca95821523faa33c24ce2eb59c718ae45a2a2c"
 ```
-HTTP 404 JSON → DNS works. `Could not resolve host` → still broken.
+HTTP 200/404 JSON → DNS works, proceed. `Could not resolve host` → still broken.
 
 **Global singleton:** `blockchain_client = BlockchainClient()`
+
+---
+
+## Live Chain Field Paths (Verified 2026-03-16)
+
+Verified against SSU object `0x51b84c...` on Sui testnet. Use as ground truth for field parsing.
+
+**StorageUnit (hop 1):**
+```
+result.data.type        → "0x...::storage_unit::StorageUnit"
+result.data.content.fields.energy_source_id  → bare string "0x..."  (NOT nested)
+result.data.content.fields.status.fields.status.variant → "ONLINE" | "OFFLINE"
+result.data.content.fields.inventory_keys    → [object_id, ...]  (owner cap + others; NOT inventory items)
+```
+
+**NetworkNode (hop 2, via energy_source_id):**
+```
+result.data.content.fields.fuel.fields.quantity      → string, e.g. "932"
+result.data.content.fields.fuel.fields.max_capacity  → string, e.g. "100000"
+result.data.content.fields.connected_assembly_ids    → ["0x...", ...]  (plain string array)
+  NOTE: includes the SSU's own object ID — filter before passing to poll_connected_assemblies
+```
+
+**Connected assemblies (each individual sui_getObject call):**
+```
+result.data.type  → "0x...::gate::Gate" | "0x...::turret::Turret" | "0x...::storage_unit::StorageUnit"
+result.data.content.fields.status.fields.status.variant → "ONLINE" | "OFFLINE"
+```
+
+**Known live values (testnet, 2026-03-16):**
+- SSU: OFFLINE, fuel 0.9% (932/100000) → triggers urgent fuel alert immediately
+- Connected to: 1× Turret (OFFLINE), 2× Gate (OFFLINE) [after filtering SSU self-reference]
 
 ---
 
@@ -385,5 +428,5 @@ python build_types.py
 | `tests/test_galaxy_db.py` | 15 | `get_system` (by ID, by name, JOIN region name), `get_region`, `get_planet`, `get_celestials_in_system`, `get_jumps_from_system`, miss cases |
 | `tests/test_memory_store.py` | 12 | `append_event`, `search_events`, `get_summary`, `rebuild_summary`, `upsert_pilot`, `get_pilot` |
 | `tests/test_blockchain_client.py` | 9 | Network errors → None/[], caching on second call, `_parse_inventory` (unknown structure, inventory key, items key) |
-| `tests/test_ssu_poller.py` | 13 | Two-hop fuel, services, `connected_assembly_ids` written, `poll_connected_assemblies` type/status extraction, per-assembly error swallowed, empty list no-ops |
+| `tests/test_ssu_poller.py` | 14 | Two-hop fuel, services, `connected_assembly_ids` written, `poll_connected_assemblies` type/status extraction, per-assembly error swallowed, empty list no-ops, real struct name mapping (`Gate`/`Turret`/`StorageUnit`) |
 | `tests/test_main_auth.py` | — | `auth_verify` backfills `system_id`/`region_name` on existing profiles, calls `upsert_pilot` |

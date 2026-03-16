@@ -103,9 +103,11 @@ python diagnose.py
 | Route engine calibration | Formulas verified against spec; real in-game testing needed to confirm edge cases | Medium |
 | ef-map golden tests | `tests/test_ef_map_comparison.py` has 1 confirmed system (UR8-K7K=36.9°). Use `scripts/check_temps.py` to add more from ef-map.com. | Medium |
 | Blend / time-optimized routing | Deferred future feature. Design doc: `docs/future-features/blend-routing.md`. Shows fewest-jump + least-fuel side by side; time model needs ship jump cooldown formula from ef-map. | Medium |
-| `ssu_poller.poll_ssu_state` | Two-hop RPC confirmed working; `_extract_fuel_pct()` is deprecated (retained for compatibility). `connected_assembly_ids` written each cycle. | Resolved |
-| `blockchain_client._parse_inventory` | Field path (`inventory`, `items`, `storageItems`) not confirmed — depends on real gateway response. Must curl-verify before relying on INVENTORY line. | **High** |
-| Blockchain gateway DNS | DNS was not resolving from VPS as of 2026-03-11. Re-verify before Phase 2/3 data flows live. | **High** |
+| `ssu_poller.poll_ssu_state` | Two-hop RPC field paths verified live 2026-03-16 — `energy_source_id` bare string, `fuel.fields.quantity/max_capacity`, `connected_assembly_ids` plain array. All handled correctly. | Resolved |
+| Assembly type labels | Real struct names confirmed: `Gate`, `Turret`, `StorageUnit`. `_TYPE_LABELS` updated. | Resolved |
+| SSU self-reference in connected list | SSU lists itself in NetworkNode `connected_assembly_ids`. Filtered in `_ssu_loop` before resolving. | Resolved |
+| `blockchain_client._parse_inventory` | Field path not confirmed — gateway DNS dead, can't curl-verify. Blocked on DNS fix. | Blocked |
+| Blockchain gateway DNS | Still `Could not resolve host` from VPS as of 2026-03-16. Phase 2 (INVENTORY) and Phase 3 (PLAYER STRUCTURE) gracefully degraded until resolved. | **High** |
 | WatchTower webhook | Not implemented — deferred post-hackathon. Would POST shield/fuel alerts to Discord/Slack. | Medium |
 | A* memory usage | Path stored as full list per heap entry (quadratic). Acceptable for dev/debug server; optimize before client-side port. | Medium |
 | `memory_store.rebuild_summary()` | Claude summarization call not yet tested end-to-end — mock used in unit tests | Medium |
