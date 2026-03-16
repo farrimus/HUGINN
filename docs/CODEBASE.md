@@ -95,7 +95,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | Auth backfill | ✓ On auth, existing profiles with missing `system_id`/`region_name` are resolved via galaxy_db |
 | `build_types.py` | ✓ One-shot script: fetches `/v2/types` from World API → `data/types.json` |
 | Ship stat auto-extraction | Future — manual input via F7 panel for now (see Future Thinking below) |
-| Client-side RouteCalculator | Planned — server-side engine exists as reference; client build deferred post-nav-panel |
+| Client-side RouteCalculator (`log-agent/route_calculator.py`) | ✓ Built — BFS, ETag-cached `systems.json` download, warnings + highlights, wired into log agent |
 
 ---
 
@@ -1369,12 +1369,12 @@ python diagnose.py
 
 | Area | Gap | Priority |
 |------|-----|----------|
-| Client-side RouteCalculator | Not built — server-side engine exists as reference but must not run in production (VPS too small) | **High** |
+| Client-side RouteCalculator | ✓ Done — `log-agent/route_calculator.py` | — |
 | Ship stat auto-extraction | Manual input via F7 panel — SHIPS table covers all 13 ships; fuel qty + adaptive still manual | Medium |
 | Route engine calibration | Formulas verified against spec; real in-game testing needed to confirm edge cases | Medium |
 | `ssu_poller.poll_ssu_state` | SSU Sui object field mapping unverified — `_extract_fuel_pct()` may need adjustment for real on-chain layout | **High** |
 | WatchTower webhook | Not implemented — deferred post-hackathon. Would POST shield/fuel alerts to Discord/Slack. | Medium |
-| `GET /data/systems` endpoint | Not yet added — client-side RouteCalculator needs to download `systems.json` from server | Medium |
+| `GET /data/systems` endpoint | ✓ Done — ETag/304, FileResponse, token-gated | — |
 | A* memory usage | Path stored as full list per heap entry (quadratic). Acceptable for dev/debug server; optimize before client-side port. | Medium |
 | `memory_store.rebuild_summary()` | Claude summarization call not yet tested end-to-end — mock used in unit tests | Medium |
 | SSE keep-alive | Server does not send `: keep-alive` comments. Add to `event_stream()` if drops appear. | Low |
