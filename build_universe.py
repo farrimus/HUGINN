@@ -190,7 +190,7 @@ if db_path.exists():
 
     # Constants for safe_jump_temp formula
     _L_SUN = 3.828e26
-    _K     = 100
+    _K     = 100          # game-canonical scaling constant (higher K = more sensitivity to luminosity vs distance)
 
     enriched = 0
     for sys_id, s in systems.items():
@@ -214,11 +214,12 @@ if db_path.exists():
         if max_orbit_m == 0.0:
             max_orbit_m = star_rad  # star-only system → hot
 
+        s["star_radius"]     = star_rad
         s["star_luminosity"] = star_lum
         s["max_orbit_m"]     = max_orbit_m
 
         if star_lum > 0.0 and max_orbit_m > 0.0:
-            _D = max_orbit_m / 299_792_458.0
+            _D = max_orbit_m / 299_792_458.0          # light-seconds
             s["safe_jump_temp"] = 100.0 * (2.0 / math.pi) * math.atan(
                 _K * 2.0 * math.pi * math.sqrt(star_lum / _L_SUN) / _D
             )
