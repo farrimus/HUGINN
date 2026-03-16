@@ -25,11 +25,17 @@ except Exception:  # pragma: no cover
     load_profile = None  # type: ignore[assignment]
     save_profile = None  # type: ignore[assignment]
 
-SSU_POLL_INTERVAL = 60      # seconds
-KILLMAIL_POLL_INTERVAL = 300  # 5 minutes
-TURRET_POLL_INTERVAL = 60    # seconds (same as SSU poll — spec §background-tasks)
+SSU_POLL_INTERVAL = 60           # seconds
+KILLMAIL_POLL_INTERVAL = 300     # 5 minutes
+TURRET_POLL_INTERVAL = 60        # seconds
+INVENTORY_POLL_INTERVAL = 300    # 5 minutes
+PLAYER_STRUCTURE_POLL_INTERVAL = 120  # 2 minutes
 
 _running = False
+
+# Cache of player-owned structure summaries keyed by assembly_id.
+# Populated by poll_player_structure; read by get_player_structures_in_system.
+_player_structure_cache: dict = {}  # {assembly_id: {type_name, status, fuel_pct, services_online, system_name}}
 
 
 async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
@@ -120,8 +126,10 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
             # connected_assembly_ids length → proxy for services_online
             connected = node_fields.get("connected_assembly_ids") or []
             services_online = len(connected)
+            connected_ids = [str(c) for c in connected if c]
     else:
         log.debug("poll_ssu_state: no energy_source_id on SSU %s, skipping hop 2", ssu_object_id)
+        connected_ids = []
 
     changed = False
     if fuel_pct is not None and profile.fuel_pct != fuel_pct:
@@ -129,6 +137,9 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
         changed = True
     if services_online is not None and profile.services_online != services_online:
         profile.services_online = services_online
+        changed = True
+    if profile.connected_assembly_ids != connected_ids:
+        profile.connected_assembly_ids = connected_ids
         changed = True
     # shield_pct NOT polled — SSUs have no on-chain shield field
     # docked_count NOT polled — no on-chain field; manual-override only
@@ -140,6 +151,60 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
     if changed:
         save_profile(profile)
         log.info("poll_ssu_state: updated profile for %s", structure_id)
+
+
+_TYPE_LABELS = {
+    "SmartTurret": "Smart Turret",
+    "SmartGate": "Smart Gate",
+    "SmartStorageUnit": "SSU",
+    "SmartMiningLaser": "Mining Laser",
+}
+
+
+def _assembly_type_label(type_str: str) -> str:
+    """Extract struct name from 'package::module::StructName' and map to human label."""
+    struct_name = type_str.split("::")[-1] if "::" in type_str else type_str
+    return _TYPE_LABELS.get(struct_name, struct_name)
+
+
+async def poll_connected_assemblies(structure_id: str, assembly_ids: list) -> None:
+    """Resolve each connected assembly ID via sui_getObject and store type+status."""
+    if not assembly_ids:
+        return
+    profile = load_profile(structure_id)
+    if not profile:
+        log.warning("poll_connected_assemblies: no profile for %s", structure_id)
+        return
+
+    resolved = []
+    for obj_id in assembly_ids[:10]:
+        try:
+            result = await nova_client._rpc("sui_getObject", [
+                obj_id,
+                {"showContent": True, "showType": True}
+            ])
+            data = result.get("result", {}).get("data", {})
+            type_str = data.get("type", "")
+            type_name = _assembly_type_label(type_str)
+            content_fields = data.get("content", {}).get("fields", {})
+            status_val = content_fields.get("status", {})
+            if isinstance(status_val, dict):
+                inner = status_val.get("fields", {}).get("status")
+                if isinstance(inner, dict):
+                    status = inner.get("variant") or inner.get("name") or "UNKNOWN"
+                else:
+                    status = str(inner) if inner is not None else "UNKNOWN"
+            else:
+                status = str(status_val) if status_val else "UNKNOWN"
+            resolved.append({"object_id": obj_id, "type_name": type_name, "status": status})
+        except Exception as e:
+            log.warning("poll_connected_assemblies: failed for %s: %s", obj_id[:12], e)
+
+    if resolved != profile.connected_assemblies:
+        profile.connected_assemblies = resolved
+        save_profile(profile)
+        log.info("poll_connected_assemblies: updated %d assemblies for %s",
+                 len(resolved), structure_id)
 
 
 def _extract_fuel_pct(fields: dict) -> float:
@@ -278,6 +343,9 @@ async def _ssu_loop(ssu_object_id: str, structure_id: str, system_id: int):
     while True:
         await poll_ssu_state(structure_id, ssu_object_id)
         await poll_sui_events(ssu_object_id, structure_id, system_id)
+        profile = load_profile(structure_id)
+        if profile and profile.connected_assembly_ids:
+            await poll_connected_assemblies(structure_id, profile.connected_assembly_ids)
         await asyncio.sleep(SSU_POLL_INTERVAL)
 
 
@@ -294,6 +362,85 @@ async def _turret_loop(turret_ids: list[str], structure_id: str, system_id: int)
         for tid in turret_ids:
             await poll_turret(tid, structure_id, system_id)
         await asyncio.sleep(TURRET_POLL_INTERVAL)
+
+
+async def poll_ssu_inventory(structure_id: str, ssu_object_id: str) -> None:
+    """Fetch SSU inventory from blockchain gateway and store on profile."""
+    try:
+        from src.blockchain_client import blockchain_client
+    except Exception as e:  # pragma: no cover
+        log.warning("poll_ssu_inventory: blockchain_client unavailable: %s", e)
+        return
+    data = await blockchain_client.get_assembly(ssu_object_id)
+    inventory = blockchain_client._parse_inventory(data or {})
+    profile = load_profile(structure_id)
+    if profile and inventory != profile.ssu_inventory:
+        profile.ssu_inventory = inventory
+        save_profile(profile)
+        log.info("poll_ssu_inventory: updated %d items for %s", len(inventory), structure_id)
+
+
+async def _inventory_loop(structure_id: str, ssu_object_id: str) -> None:
+    """Poll SSU inventory every 5 minutes."""
+    while True:
+        await poll_ssu_inventory(structure_id, ssu_object_id)
+        await asyncio.sleep(INVENTORY_POLL_INTERVAL)
+
+
+def _parse_assembly_summary(data: dict, assembly_id: str) -> dict:
+    """Extract summary fields from a blockchain gateway assembly response."""
+    status = data.get("status") or data.get("assemblyStatus") or "UNKNOWN"
+    if isinstance(status, dict):
+        status = status.get("variant") or status.get("name") or str(status)
+    type_name = data.get("assemblyType") or data.get("typeName") or data.get("type", "Structure")
+    fuel_pct = None
+    fuel = data.get("fuel") or {}
+    if isinstance(fuel, dict):
+        qty = fuel.get("quantity")
+        cap = fuel.get("max_capacity") or fuel.get("maxCapacity")
+        if qty is not None and cap is not None and int(cap) > 0:
+            fuel_pct = round(int(qty) * 100 / int(cap), 1)
+    services_online = data.get("servicesOnline") or data.get("services_online")
+    system_name = (
+        data.get("systemName") or data.get("system_name") or
+        (data.get("location") or {}).get("systemName", "")
+    )
+    return {
+        "assembly_id": assembly_id,
+        "type_name": type_name,
+        "status": str(status).upper(),
+        "fuel_pct": fuel_pct,
+        "services_online": services_online,
+        "system_name": system_name,
+    }
+
+
+async def poll_player_structure(assembly_id: str) -> None:
+    """Poll a single player-owned structure from blockchain gateway."""
+    try:
+        from src.blockchain_client import blockchain_client
+    except Exception as e:  # pragma: no cover
+        log.warning("poll_player_structure: blockchain_client unavailable: %s", e)
+        return
+    data = await blockchain_client.get_assembly(assembly_id)
+    if data:
+        _player_structure_cache[assembly_id] = _parse_assembly_summary(data, assembly_id)
+        log.debug("poll_player_structure: cached %s", assembly_id[:12])
+
+
+async def _player_structure_loop(assembly_ids: list) -> None:
+    """Poll all player structures every 2 minutes."""
+    while True:
+        for aid in assembly_ids:
+            await poll_player_structure(aid)
+        await asyncio.sleep(PLAYER_STRUCTURE_POLL_INTERVAL)
+
+
+def get_player_structures_in_system(system_name: str) -> list:
+    """Return cached player structure summaries for the given system."""
+    name_upper = system_name.upper()
+    return [s for s in _player_structure_cache.values()
+            if s.get("system_name", "").upper() == name_upper]
 
 
 def start_background_tasks(structure_id: str, ssu_object_id: str, system_id: int):
@@ -334,3 +481,16 @@ def start_background_tasks(structure_id: str, ssu_object_id: str, system_id: int
                  len(turret_ids), TURRET_POLL_INTERVAL)
     else:
         log.info("SSU poller: TURRET_OBJECT_IDS not set, turret polling disabled")
+
+    if ssu_object_id:
+        asyncio.create_task(_inventory_loop(structure_id, ssu_object_id))
+        log.info("Inventory poller started (interval=%ds)", INVENTORY_POLL_INTERVAL)
+
+    player_ids_raw = os.environ.get("PLAYER_STRUCTURE_IDS", "")
+    player_ids = [p.strip() for p in player_ids_raw.split(",") if p.strip()]
+    if player_ids:
+        asyncio.create_task(_player_structure_loop(player_ids))
+        log.info("Player structure poller started (%d structures, interval=%ds)",
+                 len(player_ids), PLAYER_STRUCTURE_POLL_INTERVAL)
+    else:
+        log.info("SSU poller: PLAYER_STRUCTURE_IDS not set, player structure polling disabled")

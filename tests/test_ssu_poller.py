@@ -72,13 +72,16 @@ def _node_response(quantity=500, max_capacity=1000, connected_count=3):
     }
 
 
-def _profile(fuel_pct=100.0, services_online=0, shield_pct=85.0):
+def _profile(fuel_pct=100.0, services_online=0, shield_pct=85.0, connected_assembly_ids=None,
+             connected_assemblies=None):
     return StructureProfile(
         structure_id=STRUCT_ID,
         owner_address="0xOWNER",
         fuel_pct=fuel_pct,
         services_online=services_online,
         shield_pct=shield_pct,
+        connected_assembly_ids=connected_assembly_ids or [],
+        connected_assemblies=connected_assemblies or [],
     )
 
 
@@ -181,8 +184,9 @@ async def test_profile_saved_when_values_change():
 @pytest.mark.asyncio
 async def test_profile_not_saved_when_values_unchanged():
     """save_profile is NOT called when polled values already match the profile."""
-    # Profile already matches what the RPC will return
-    profile = _profile(fuel_pct=40.0, services_online=2)
+    # Pre-populate connected_assembly_ids to match what the RPC will return
+    expected_ids = [f"0xASSEM{i:04d}" for i in range(2)]
+    profile = _profile(fuel_pct=40.0, services_online=2, connected_assembly_ids=expected_ids)
     with _PollHarness(
         [_ssu_response(), _node_response(quantity=400, max_capacity=1000, connected_count=2)],
         profile,
@@ -269,3 +273,130 @@ async def test_fuel_pct_rounding_to_one_decimal():
         await poller_mod.poll_ssu_state(STRUCT_ID, SSU_OBJ_ID)
 
     assert h.saved["profile"].fuel_pct == 33.3
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: connected_assembly_ids stored on profile
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_connected_assembly_ids_stored_on_profile():
+    """connected_assembly_ids are written to the profile after a successful hop 2."""
+    profile = _profile(fuel_pct=100.0, services_online=0)
+    with _PollHarness(
+        [_ssu_response(), _node_response(quantity=400, max_capacity=1000, connected_count=2)],
+        profile,
+    ) as h:
+        await poller_mod.poll_ssu_state(STRUCT_ID, SSU_OBJ_ID)
+
+    assert "profile" in h.saved
+    ids = h.saved["profile"].connected_assembly_ids
+    assert len(ids) == 2
+    assert all(isinstance(i, str) for i in ids)
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: poll_connected_assemblies
+# ---------------------------------------------------------------------------
+
+def _assembly_obj_response(type_str: str, status_variant: str = "ONLINE"):
+    return {
+        "result": {
+            "data": {
+                "type": type_str,
+                "content": {
+                    "fields": {
+                        "status": {
+                            "fields": {
+                                "status": {"variant": status_variant}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_poll_connected_assemblies_updates_profile():
+    """type_name and status extracted and stored on profile.connected_assemblies."""
+    asm_id = "0xGATE0000000000000000000000000000000000000000000000000000000000000"
+    profile = _profile()
+    saved = {}
+
+    mock_nova = MagicMock()
+    mock_nova._rpc = AsyncMock(return_value=_assembly_obj_response(
+        "0xpkg::smart_gate::SmartGate", "ONLINE"
+    ))
+    orig_nova = poller_mod.nova_client
+    orig_load = poller_mod.load_profile
+    orig_save = poller_mod.save_profile
+    poller_mod.nova_client = mock_nova
+    poller_mod.load_profile = lambda sid, base_dir=None: profile
+    poller_mod.save_profile = lambda p, base_dir=None: saved.update({"profile": p})
+    try:
+        await poller_mod.poll_connected_assemblies(STRUCT_ID, [asm_id])
+    finally:
+        poller_mod.nova_client = orig_nova
+        poller_mod.load_profile = orig_load
+        poller_mod.save_profile = orig_save
+
+    assert "profile" in saved
+    assemblies = saved["profile"].connected_assemblies
+    assert len(assemblies) == 1
+    assert assemblies[0]["type_name"] == "Smart Gate"
+    assert assemblies[0]["status"] == "ONLINE"
+
+
+@pytest.mark.asyncio
+async def test_poll_connected_assemblies_swallows_per_assembly_errors():
+    """One failing RPC does not abort the whole call; other assemblies still resolve."""
+    good_id = "0xGOOD000000000000000000000000000000000000000000000000000000000000"
+    bad_id  = "0xBAD0000000000000000000000000000000000000000000000000000000000000"
+    profile = _profile()
+    saved = {}
+
+    async def rpc_side(method, params):
+        obj_id = params[0]
+        if obj_id == bad_id:
+            raise RuntimeError("simulated RPC failure")
+        return _assembly_obj_response("0xpkg::smart_turret::SmartTurret", "ONLINE")
+
+    mock_nova = MagicMock()
+    mock_nova._rpc = rpc_side
+    orig_nova = poller_mod.nova_client
+    orig_load = poller_mod.load_profile
+    orig_save = poller_mod.save_profile
+    poller_mod.nova_client = mock_nova
+    poller_mod.load_profile = lambda sid, base_dir=None: profile
+    poller_mod.save_profile = lambda p, base_dir=None: saved.update({"profile": p})
+    try:
+        await poller_mod.poll_connected_assemblies(STRUCT_ID, [bad_id, good_id])
+    finally:
+        poller_mod.nova_client = orig_nova
+        poller_mod.load_profile = orig_load
+        poller_mod.save_profile = orig_save
+
+    assert "profile" in saved
+    assemblies = saved["profile"].connected_assemblies
+    # Only the good one resolved
+    assert len(assemblies) == 1
+    assert assemblies[0]["type_name"] == "Smart Turret"
+
+
+@pytest.mark.asyncio
+async def test_poll_connected_assemblies_empty_list_does_nothing():
+    """Empty assembly_ids list must make no RPC calls."""
+    rpc_called = {}
+
+    mock_nova = MagicMock()
+    mock_nova._rpc = AsyncMock(side_effect=lambda *a: rpc_called.update({"called": True}))
+    orig_nova = poller_mod.nova_client
+    poller_mod.nova_client = mock_nova
+    try:
+        await poller_mod.poll_connected_assemblies(STRUCT_ID, [])
+    finally:
+        poller_mod.nova_client = orig_nova
+
+    assert "called" not in rpc_called, "No RPC calls should be made for empty assembly list"

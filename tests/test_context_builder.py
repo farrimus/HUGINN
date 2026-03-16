@@ -385,3 +385,48 @@ def test_no_ship_profile_no_ship_line():
         ship_profile=None,
     )
     assert "SHIP:" not in block
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: nearby_structures (PLAYER STRUCTURE lines)
+# ---------------------------------------------------------------------------
+
+_STRUCT = {"type_name": "SSU", "status": "ONLINE", "fuel_pct": 64.0, "services_online": 2, "system_name": "UTR-SN4"}
+
+
+def test_player_structure_line_present_when_provided():
+    block = build_context_block(None, [], "UTR-SN4", nearby_structures=[_STRUCT])
+    assert "PLAYER STRUCTURE" in block
+    assert "SSU" in block
+    assert "ONLINE" in block
+
+
+def test_player_structure_absent_when_empty_list():
+    block = build_context_block(None, [], "UTR-SN4", nearby_structures=[])
+    assert "PLAYER STRUCTURE" not in block
+
+
+def test_player_structure_absent_when_none():
+    block = build_context_block(None, [], "UTR-SN4", nearby_structures=None)
+    assert "PLAYER STRUCTURE" not in block
+
+
+def test_player_structure_capped_at_three():
+    structs = [
+        {"type_name": f"SSU{i}", "status": "ONLINE", "fuel_pct": 50.0, "services_online": 1, "system_name": "S"}
+        for i in range(5)
+    ]
+    block = build_context_block(None, [], "S", nearby_structures=structs)
+    assert block.count("PLAYER STRUCTURE") == 3
+
+
+def test_player_structure_fuel_and_svc_shown():
+    block = build_context_block(None, [], "UTR-SN4", nearby_structures=[_STRUCT])
+    assert "fuel:64%" in block
+    assert "2 svc" in block
+
+
+def test_total_block_with_structures_under_2000():
+    structs = [_STRUCT] * 3
+    block = build_context_block(None, [], "UTR-SN4", nearby_structures=structs)
+    assert len(block) <= 2000

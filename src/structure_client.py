@@ -128,6 +128,32 @@ def build_structure_context(
         if kills_nearby > 0:
             lines.append(f"KILLS NEARBY: {kills_nearby} in system (2h)")
 
+    # Connected assemblies (OWNER/TRIBE only)
+    if tier in ("OWNER", "TRIBE") and profile.connected_assemblies:
+        # Group by type_name; count ONLINE vs total
+        groups: dict = {}
+        for asm in profile.connected_assemblies:
+            tname = asm.get("type_name", "Unknown")
+            if tname not in groups:
+                groups[tname] = {"total": 0, "online": 0}
+            groups[tname]["total"] += 1
+            if asm.get("status", "").upper() == "ONLINE":
+                groups[tname]["online"] += 1
+        parts = []
+        for tname, counts in groups.items():
+            total = counts["total"]
+            online = counts["online"]
+            count_str = f" \u00d7{total}" if total > 1 else ""
+            status_str = "ONLINE" if online == total else f"{online} ONLINE"
+            parts.append(f"{tname}{count_str} ({status_str})")
+        lines.append(f"ASSEMBLIES: {' | '.join(parts)}")
+
+    # SSU inventory (OWNER/TRIBE only)
+    if tier in ("OWNER", "TRIBE") and profile.ssu_inventory:
+        inv_parts = [f"{item.get('quantity', 0)}\u00d7 {item.get('type_name', '?')}"
+                     for item in profile.ssu_inventory[:6]]
+        lines.append(f"INVENTORY: {' | '.join(inv_parts)}")
+
     # Pending alerts (OWNER/TRIBE only)
     if tier in ("OWNER", "TRIBE") and profile.routine_alerts:
         for alert in profile.routine_alerts[-3:]:

@@ -616,6 +616,8 @@ async def chat(req: ChatRequest):
                 log_buffer.add({"type": "route_planned", **result})
 
     system_data = await world_api.get_system(log_buffer.current_system) if log_buffer.current_system else None
+    from src.ssu_poller import get_player_structures_in_system
+    _nearby = get_player_structures_in_system(log_buffer.current_system) if log_buffer.current_system else []
     context = build_context_block(
         system_data=system_data,
         log_events=log_buffer.get_recent(10),
@@ -624,6 +626,7 @@ async def chat(req: ChatRequest):
         current_route=log_buffer.current_route,
         structure_alerts=log_buffer.pop_structure_alerts(),
         ship_profile=load_profile(),
+        nearby_structures=_nearby,
     )
 
     def event_stream():

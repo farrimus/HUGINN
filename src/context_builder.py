@@ -10,6 +10,7 @@ def build_context_block(
     current_route: Optional[dict] = None,
     structure_alerts: Optional[list] = None,
     ship_profile=None,  # ShipProfile instance; import avoided to prevent circular dep
+    nearby_structures: Optional[list] = None,  # [{type_name, status, fuel_pct, services_online, system_name}]
 ) -> str:
     lines = []
 
@@ -29,6 +30,16 @@ def build_context_block(
         if kills:
             location_line += f" | {len(kills)} recent kill(s) in system"
     lines.append(location_line)
+
+    # --- Player-owned structures in current system ---
+    for struct in (nearby_structures or [])[:3]:
+        name = struct.get("type_name", "Structure")
+        status = struct.get("status", "UNKNOWN")
+        fuel_pct = struct.get("fuel_pct")
+        svc = struct.get("services_online")
+        fuel_str = f" | fuel:{fuel_pct:.0f}%" if fuel_pct is not None else ""
+        svc_str = f" | {svc} svc" if svc is not None else ""
+        lines.append(f"PLAYER STRUCTURE: {name} ({status}){fuel_str}{svc_str}")
 
     # --- Ship profile summary ---
     if ship_profile is not None:

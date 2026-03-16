@@ -121,3 +121,81 @@ def test_context_with_memory_block(tmp_path):
     summary = store.get_summary()
     ctx = build_structure_context(make_profile_with_system(), "OWNER", memory_text=summary["text"])
     assert "[STRUCTURE MEMORY]" in ctx  # must be injected as named block
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: ASSEMBLIES line
+# ---------------------------------------------------------------------------
+
+def make_profile_with_assemblies(**kwargs):
+    base = dict(structure_id="keep-7a", owner_address="0xabc",
+                structure_name="Keep-7A", structure_type="Smart Storage Unit",
+                system_name="UTR-SN4", region_name="Deep Space", system_id=30000001,
+                shield_pct=97.0, fuel_pct=84.0,
+                services_online=2, services_total=2, docked_count=0,
+                connected_assemblies=[
+                    {"object_id": "0xGATE01", "type_name": "Smart Gate", "status": "ONLINE"},
+                    {"object_id": "0xTURRET01", "type_name": "Smart Turret", "status": "ONLINE"},
+                    {"object_id": "0xTURRET02", "type_name": "Smart Turret", "status": "OFFLINE"},
+                ])
+    base.update(kwargs)
+    return StructureProfile(**base)
+
+
+def test_assemblies_line_present_for_owner():
+    ctx = build_structure_context(make_profile_with_assemblies(), "OWNER")
+    assert "ASSEMBLIES:" in ctx
+    assert "Smart Gate" in ctx
+    assert "Smart Turret" in ctx
+
+
+def test_assemblies_line_absent_for_vetted():
+    ctx = build_structure_context(make_profile_with_assemblies(), "VETTED")
+    assert "ASSEMBLIES:" not in ctx
+
+
+def test_assemblies_line_absent_when_empty():
+    profile = make_profile_with_assemblies(connected_assemblies=[])
+    ctx = build_structure_context(profile, "OWNER")
+    assert "ASSEMBLIES:" not in ctx
+
+
+def test_assemblies_counts_online_vs_total():
+    ctx = build_structure_context(make_profile_with_assemblies(), "OWNER")
+    # Smart Turret has 2 total, 1 online
+    assert "1 ONLINE" in ctx
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: INVENTORY line
+# ---------------------------------------------------------------------------
+
+def make_profile_with_inventory(**kwargs):
+    base = dict(structure_id="keep-7a", owner_address="0xabc",
+                structure_name="Keep-7A", structure_type="Smart Storage Unit",
+                system_name="UTR-SN4", shield_pct=97.0, fuel_pct=84.0,
+                services_online=1, services_total=1, docked_count=0,
+                ssu_inventory=[
+                    {"type_name": "Tritanium", "quantity": 500},
+                    {"type_name": "Fuel Block", "quantity": 10},
+                ])
+    base.update(kwargs)
+    return StructureProfile(**base)
+
+
+def test_inventory_line_present_for_owner():
+    ctx = build_structure_context(make_profile_with_inventory(), "OWNER")
+    assert "INVENTORY:" in ctx
+    assert "Tritanium" in ctx
+    assert "500" in ctx
+
+
+def test_inventory_line_absent_for_vetted():
+    ctx = build_structure_context(make_profile_with_inventory(), "VETTED")
+    assert "INVENTORY:" not in ctx
+
+
+def test_inventory_line_absent_when_empty():
+    profile = make_profile_with_inventory(ssu_inventory=[])
+    ctx = build_structure_context(profile, "OWNER")
+    assert "INVENTORY:" not in ctx

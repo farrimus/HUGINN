@@ -11,11 +11,13 @@ log = logging.getLogger(__name__)
 _DEFAULT_BASE_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "structures"))
 
 OWNER_FIELDS = {"shield_pct", "fuel_pct", "services_online", "services_total", "docked_count",
-                "nova_registry_object_id", "routine_alerts", "owner_character_id", "owner_address"}
+                "nova_registry_object_id", "routine_alerts", "owner_character_id", "owner_address",
+                "connected_assembly_ids", "connected_assemblies", "ssu_inventory"}
 TRIBE_FIELDS = OWNER_FIELDS  # tribe sees everything owner sees except management
 VETTED_HIDDEN = {"shield_pct", "fuel_pct", "services_online", "services_total",
                  "docked_count", "nova_registry_object_id", "routine_alerts",
-                 "owner_character_id", "owner_address"}
+                 "owner_character_id", "owner_address",
+                 "connected_assembly_ids", "connected_assemblies", "ssu_inventory"}
 
 
 @dataclass
@@ -36,6 +38,10 @@ class StructureProfile:
     docked_count:           int             = 0
     # Routine alerts (queued for browser display)
     routine_alerts:         list            = field(default_factory=list)
+    # Connected assemblies (populated by poll_connected_assemblies)
+    connected_assembly_ids: list            = field(default_factory=list)  # raw Sui IDs from NetworkNode
+    connected_assemblies:   list            = field(default_factory=list)  # [{object_id, type_name, status}]
+    ssu_inventory:          list            = field(default_factory=list)  # [{type_name, quantity}]
     # Universe data (set at profile creation from STRUCTURE_SYSTEM_NAME + galaxy_db)
     region_name:            str             = ""
     system_id:              int             = 0
