@@ -66,3 +66,58 @@ def test_invalid_structure_id_raises():
         profile_path("../../../etc/passwd")
     with pytest.raises(ValueError):
         profile_path("valid; rm -rf /")
+
+def test_new_fields_have_defaults():
+    p = StructureProfile(structure_id="test-1", owner_address="0xabc")
+    assert p.region_name == ""
+    assert p.system_id == 0
+
+def test_new_fields_survive_roundtrip(tmp_path):
+    p = StructureProfile(
+        structure_id="test-2",
+        owner_address="0xabc",
+        region_name="The Forge",
+        system_id=30000142,
+    )
+    save_profile(p, base_dir=str(tmp_path))
+    loaded = load_profile("test-2", base_dir=str(tmp_path))
+    assert loaded.region_name == "The Forge"
+    assert loaded.system_id == 30000142
+
+def test_old_profile_json_missing_new_fields_gets_defaults(tmp_path):
+    """Profiles created before this change load fine — new fields default to empty/0."""
+    import json, os
+    old_data = {"structure_id": "old-1", "owner_address": "0xdef",
+                "structure_name": "Old", "structure_type": "Smart Storage Unit",
+                "system_name": "", "owner_character_id": 0,
+                "nova_registry_object_id": "", "created_at": "",
+                "shield_pct": 100.0, "fuel_pct": 100.0,
+                "services_online": 0, "services_total": 0,
+                "docked_count": 0, "routine_alerts": []}
+    os.makedirs(str(tmp_path), exist_ok=True)
+    with open(os.path.join(str(tmp_path), "old-1.json"), "w") as f:
+        json.dump(old_data, f)
+    loaded = load_profile("old-1", base_dir=str(tmp_path))
+    assert loaded is not None
+    assert loaded.region_name == ""
+    assert loaded.system_id == 0
+
+def test_profile_json_with_extra_unknown_field_loads_without_error(tmp_path):
+    """Future profile versions with extra keys must not crash load_profile."""
+    import json, os
+    data = {"structure_id": "future-1", "owner_address": "0xdef",
+            "structure_name": "Future", "structure_type": "Smart Storage Unit",
+            "system_name": "", "owner_character_id": 0,
+            "nova_registry_object_id": "", "created_at": "",
+            "shield_pct": 100.0, "fuel_pct": 100.0,
+            "services_online": 0, "services_total": 0,
+            "docked_count": 0, "routine_alerts": [],
+            "region_name": "Test Region", "system_id": 42,
+            "unknown_future_field": "ignored"}
+    os.makedirs(str(tmp_path), exist_ok=True)
+    with open(os.path.join(str(tmp_path), "future-1.json"), "w") as f:
+        json.dump(data, f)
+    loaded = load_profile("future-1", base_dir=str(tmp_path))
+    assert loaded is not None
+    assert loaded.region_name == "Test Region"
+    assert not hasattr(loaded, "unknown_future_field")

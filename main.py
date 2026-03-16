@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse, JSONResponse, Response
+from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
@@ -19,24 +19,52 @@ from src.context_builder import build_context_block
 from src.world_api import world_api
 from src.route_engine import route_engine
 from src.ship_profile import (
-    ShipProfile, FUEL_QUALITY, load_profile, save_profile
+    ShipProfile, FUEL_QUALITY, FUEL_CATEGORY, SHIPS, load_profile, save_profile
 )
 from src.structure_auth import nonce_store, verify_sui_personal_message, issue_jwt, decode_jwt, lookup_character
 from src.structure_profile import StructureProfile, load_profile as load_structure_profile, save_profile as save_structure_profile
-from src.structure_client import structure_client, build_structure_context, detect_alerts
+from src.structure_client import structure_client, lobby_client, build_structure_context, detect_alerts
 from src.nova_client import nova_client
 
 log = logging.getLogger(__name__)
 
 load_dotenv()
 
+# Server-side registry map: structure_id -> Nova AccessRegistry object ID.
+# This avoids passing the full 66-char hex ID through the in-game browser URL bar,
+# which truncates it. The client sends nova_registry_object_id as a hint (or omits it);
+# the server always prefers its own configured value.
+_STRUCTURE_REGISTRY_MAP: dict[str, str] = {}
+_registry_env = os.environ.get("NOVA_REGISTRY_OBJECT_ID", "")
+_registry_structure = os.environ.get("NOVA_REGISTRY_STRUCTURE_ID", "keep-7a")
+if _registry_env:
+    _STRUCTURE_REGISTRY_MAP[_registry_structure] = _registry_env
+
+def _registry_for(structure_id: str, client_hint: Optional[str] = None) -> Optional[str]:
+    """Return the best registry object ID for a structure. Server map takes priority."""
+    return _STRUCTURE_REGISTRY_MAP.get(structure_id) or client_hint
+
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app):
-    # Run index build in background — don't block startup
-    # The index loads from disk instantly if cached; API fetch retries on DNS failure
+    # World API index (existing)
     asyncio.create_task(world_api.load_or_build_index())
+
+    # Bootstrap memory store
+    _structure_id = os.environ.get("NOVA_REGISTRY_STRUCTURE_ID", "keep-7a")
+    from src.memory_store import get_memory_store
+    get_memory_store(_structure_id)  # creates dirs if missing
+
+    # Start SSU background polling
+    _ssu_object_id = os.environ.get("SSU_OBJECT_ID", "")
+    from src.structure_profile import load_profile as load_structure_profile_fn
+    _profile = load_structure_profile_fn(_structure_id)
+    _system_id = _profile.system_id if _profile else 0
+
+    from src.ssu_poller import start_background_tasks
+    start_background_tasks(_structure_id, _ssu_object_id, _system_id)
+
     yield
 
 app = FastAPI(title="Ship AI Companion", lifespan=lifespan)
@@ -50,6 +78,23 @@ async def health():
 async def rebuild_index():
     count = await world_api.rebuild_index()
     return {"systems_indexed": count}
+
+@app.get("/data/systems", dependencies=[Depends(require_token)])
+async def get_systems(request: Request):
+    """Serve systems.json for client-side RouteCalculator. ~7 MB; ETag + 304 supported."""
+    path = os.path.join(os.path.dirname(__file__), "data", "systems.json")
+    if not os.path.exists(path):
+        return JSONResponse(status_code=503, content={"detail": "systems.json not found. Run build_universe.py."})
+    # Read only built_at for ETag — avoids loading 7 MB into memory just for the tag.
+    with open(path) as f:
+        head = f.read(128)
+    import re as _re
+    m = _re.search(r'"built_at"\s*:\s*"([^"]+)"', head)
+    etag = f'"{m.group(1)}"' if m else '"unknown"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304)
+    return FileResponse(path, media_type="application/json",
+                        headers={"ETag": etag, "Cache-Control": "public, max-age=86400"})
 
 @app.get("/data/gate-graph", dependencies=[Depends(require_token)])
 async def gate_graph(request: Request):
@@ -72,6 +117,8 @@ class ShipProfileRequest(BaseModel):
     fuel_type:      Optional[str]   = None
     fuel_quantity:  Optional[float] = None
     external_temp:  Optional[float] = None
+    ship_type:      Optional[str]   = None
+    extra_cargo_kg: Optional[float] = None
 
 @app.get("/ship-profile", dependencies=[Depends(require_token)])
 async def get_ship_profile():
@@ -79,23 +126,59 @@ async def get_ship_profile():
     from dataclasses import asdict
     return {
         **asdict(p),
-        "jump_range_m":  p.jump_range(),
-        "jump_range_ly": p.jump_range() / 9_460_000_000_000_000.0,
-        "fuel_budget_m": p.fuel_budget(),
+        "jump_range_ly": p.jump_range(),
+        "fuel_budget_ly": p.fuel_budget(),
         "fuel_types":    FUEL_QUALITY,
+        "ships":         {name: {"mass": s["mass"], "specific_heat": s["specific_heat"],
+                                 "fuel_category": s["fuel_category"]}
+                          for name, s in SHIPS.items()},
     }
 
 @app.post("/ship-profile", dependencies=[Depends(require_token)])
 async def set_ship_profile(req: ShipProfileRequest):
-    current = load_profile()
-    updated = current.with_overrides(**req.model_dump())
-    if req.fuel_type and req.fuel_type not in FUEL_QUALITY:
-        return JSONResponse(status_code=400, content={
+    # Validate ship_type
+    if req.ship_type is not None and req.ship_type not in SHIPS:
+        return JSONResponse(status_code=422, content={
+            "detail": f"Unknown ship type '{req.ship_type}'. Valid: {sorted(SHIPS)}"
+        })
+    # Validate fuel_type
+    if req.fuel_type is not None and req.fuel_type not in FUEL_QUALITY:
+        return JSONResponse(status_code=422, content={
             "detail": f"Unknown fuel type '{req.fuel_type}'. Valid: {list(FUEL_QUALITY)}"
         })
+    # Validate fuel_type vs ship fuel_category
+    current = load_profile()
+    effective_ship = req.ship_type or current.ship_type
+    if req.fuel_type is not None and effective_ship is not None:
+        ship_cat = SHIPS[effective_ship]["fuel_category"]
+        fuel_cat = FUEL_CATEGORY.get(req.fuel_type, "")
+        if fuel_cat != ship_cat:
+            return JSONResponse(status_code=422, content={
+                "detail": f"Fuel type '{req.fuel_type}' ({fuel_cat}) incompatible "
+                          f"with ship '{effective_ship}' ({ship_cat} only)"
+            })
+    # Validate extra_cargo_kg
+    if req.extra_cargo_kg is not None and req.extra_cargo_kg < 0:
+        return JSONResponse(status_code=422, content={"detail": "extra_cargo_kg must be >= 0"})
+
+    overrides = req.model_dump()
+    # If ship_type provided, auto-fill hull_mass and specific_heat
+    if req.ship_type is not None:
+        ship = SHIPS[req.ship_type]
+        overrides["hull_mass"]     = ship["mass"]
+        overrides["specific_heat"] = ship["specific_heat"]
+        # If no fuel_type provided, reset to default for this ship's category
+        if req.fuel_type is None:
+            default_fuel = "D1" if ship["fuel_category"] == "basic" else "SOF-40"
+            overrides["fuel_type"] = current.fuel_type if (
+                FUEL_CATEGORY.get(current.fuel_type) == ship["fuel_category"]
+            ) else default_fuel
+
+    updated = current.with_overrides(**overrides)
     save_profile(updated)
     from dataclasses import asdict
-    return {**asdict(updated), "jump_range_m": updated.jump_range(), "fuel_budget_m": updated.fuel_budget()}
+    return {**asdict(updated), "jump_range_ly": updated.jump_range(),
+            "fuel_budget_ly": updated.fuel_budget()}
 
 
 class RouteRequest(BaseModel):
@@ -122,6 +205,12 @@ async def plan_route(req: RouteRequest):
 
     if req.gate_only:
         result = route_engine.bfs(origin, req.destination)
+        if result is None:
+            log_buffer.current_route = None
+            log_buffer.pending_alternative = None
+            return JSONResponse(status_code=404, content={
+                "detail": f"No route found from '{origin}' to '{req.destination}'."
+            })
     else:
         profile = load_profile().with_overrides(
             hull_mass=req.hull_mass,
@@ -133,15 +222,27 @@ async def plan_route(req: RouteRequest):
             external_temp=req.external_temp,
         )
         result = route_engine.route(origin, req.destination, profile)
-        if result is None:
-            # fall back to gate-only
-            result = route_engine.bfs(origin, req.destination)
+        if result["type"] == "no_route" and not req.gate_only:
+            bfs_result = route_engine.bfs(origin, req.destination)
+            if bfs_result:
+                result = bfs_result
+                result["type"] = "route_planned"
 
-    if result is None:
-        return JSONResponse(status_code=404, content={
-            "detail": f"No route found from '{origin}' to '{req.destination}'."
-        })
-    log_buffer.add({"type": "route_planned", **result})
+        if result["type"] == "no_route":
+            log_buffer.current_route = result
+            log_buffer.pending_alternative = None
+            return JSONResponse(status_code=404, content={
+                "detail": f"No route found from '{origin}' to '{req.destination}'."
+            })
+
+    # Store both primary and alternative atomically
+    primary = {k: v for k, v in result.items() if k != "alternative"}
+    primary["alternative"] = None  # standalone copy has no nested alternative
+    alternative = result.get("alternative")
+
+    log_buffer.current_route      = primary
+    log_buffer.pending_alternative = alternative
+    log_buffer.add({"type": "route_planned", **primary})
     return result
 
 @app.get("/debug", dependencies=[Depends(require_token)])
@@ -208,11 +309,13 @@ class StructureChatRequest(BaseModel):
 
 class StructureProfileUpdate(BaseModel):
     structure_name: Optional[str] = None
-    fuel_pct: Optional[float] = None
-    shield_pct: Optional[float] = None
+    structure_type: Optional[str] = None
+    system_name:    Optional[str] = None
+    fuel_pct:       Optional[float] = None
+    shield_pct:     Optional[float] = None
     services_online: Optional[int] = None
-    services_total: Optional[int] = None
-    docked_count: Optional[int] = None
+    services_total:  Optional[int] = None
+    docked_count:   Optional[int] = None
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -232,13 +335,224 @@ _ROUTE_RE = re.compile(
     r"(?:a\s+)?(?:route|course|path)?\s*(?:to|toward(?:s)?)\s+([\w][\w\-]*[\w])",
     re.IGNORECASE,
 )
+_SLASH_ROUTE_RE = re.compile(r'^/route\s+(.+)$', re.IGNORECASE)
+_SLASH_PROFILE_RE = re.compile(
+    r'^/profile(?:\s+(?P<sub>ship|fuel|level|cargo)\s+(?P<args>.+))?$',
+    re.IGNORECASE,
+)
 
 def _extract_route_destination(message: str) -> Optional[str]:
     m = _ROUTE_RE.search(message)
     return m.group(1) if m else None
 
+@app.get("/current-route", dependencies=[Depends(require_token)])
+async def get_current_route():
+    """Return the active route and alternative stored in log_buffer."""
+    current_temp = None
+    if log_buffer.current_system:
+        sys_info = route_engine.system_info(log_buffer.current_system)
+        if sys_info:
+            current_temp = sys_info.get("safe_jump_temp")
+    return {
+        "route":               log_buffer.current_route,
+        "alternative":         log_buffer.pending_alternative,
+        "current_system_temp": current_temp,
+    }
+
+@app.post("/route/clear", dependencies=[Depends(require_token)])
+async def clear_route():
+    """Clear the active route."""
+    log_buffer.current_route = None
+    return {"cleared": True}
+
+class RouteActivateRequest(BaseModel):
+    variant: str  # "primary" or "alternative"
+
+@app.post("/route/activate", dependencies=[Depends(require_token)])
+async def activate_route(req: RouteActivateRequest):
+    """Swap the active route to primary or alternative variant."""
+    if req.variant not in ("primary", "alternative"):
+        return JSONResponse(status_code=422, content={
+            "detail": "variant must be 'primary' or 'alternative'"
+        })
+    if log_buffer.current_route is None:
+        return JSONResponse(status_code=404, content={"detail": "no active route"})
+    if req.variant == "alternative":
+        if log_buffer.pending_alternative is None:
+            return JSONResponse(status_code=404, content={
+                "detail": "no alternative route available"
+            })
+        # Swap: primary becomes what was alternative, alternative becomes what was primary
+        old_primary = log_buffer.current_route
+        log_buffer.current_route      = log_buffer.pending_alternative
+        log_buffer.pending_alternative = old_primary
+    # "primary" — current_route is already primary; no-op
+    log_buffer.add({"type": "route_planned", **{k: v for k, v in log_buffer.current_route.items() if k != "alternative"}})
+    return log_buffer.current_route
+
 @app.post("/chat", dependencies=[Depends(require_token)])
 async def chat(req: ChatRequest):
+    # Handle /profile command directly — no Claude needed
+    pm = _SLASH_PROFILE_RE.match(req.message.strip())
+    if pm:
+        sub  = pm.group("sub")
+        args = (pm.group("args") or "").strip()
+        current = load_profile()
+        overrides = {}
+        reply_text = ""
+
+        if sub is None:
+            # /profile — print current
+            r_ly = current.jump_range()
+            b_ly = current.fuel_budget()
+            ship_str = current.ship_type or "custom"
+            reply_text = (
+                f"SHIP: {ship_str} | {current.fuel_type} x {int(current.fuel_quantity)}u"
+                f" | range {r_ly:.0f} LY | budget {b_ly:.0f} LY"
+            )
+        elif sub.lower() == "ship":
+            if args not in SHIPS:
+                reply_text = f"Unknown ship '{args}'. Valid: {', '.join(sorted(SHIPS))}"
+            else:
+                ship = SHIPS[args]
+                overrides = {
+                    "ship_type":    args,
+                    "hull_mass":    ship["mass"],
+                    "specific_heat": ship["specific_heat"],
+                }
+                # Reset fuel to category default if current fuel incompatible
+                if FUEL_CATEGORY.get(current.fuel_type) != ship["fuel_category"]:
+                    overrides["fuel_type"] = "D1" if ship["fuel_category"] == "basic" else "SOF-40"
+                reply_text = f"Ship set to {args}. Mass: {ship['mass']:,} kg, C_heat: {ship['specific_heat']}"
+        elif sub.lower() == "fuel":
+            parts = args.split()
+            if len(parts) < 2:
+                reply_text = "Usage: /profile fuel <quantity> <type>  e.g. /profile fuel 2400 EU-90"
+            elif parts[1] not in FUEL_QUALITY:
+                reply_text = f"Unknown fuel type '{parts[1]}'. Valid: {list(FUEL_QUALITY)}"
+            elif (current.ship_type is not None
+                  and FUEL_CATEGORY.get(parts[1]) != SHIPS[current.ship_type]["fuel_category"]):
+                ship_cat = SHIPS[current.ship_type]["fuel_category"]
+                reply_text = (
+                    f"Fuel type '{parts[1]}' incompatible with "
+                    f"{current.ship_type} ({ship_cat} only)"
+                )
+            else:
+                try:
+                    qty = float(parts[0])
+                    overrides = {"fuel_quantity": qty, "fuel_type": parts[1]}
+                    reply_text = f"Fuel set: {qty:.0f}u {parts[1]} (quality {FUEL_QUALITY[parts[1]]})"
+                except ValueError:
+                    reply_text = f"Invalid quantity '{parts[0]}'"
+        elif sub.lower() == "level":
+            try:
+                lvl = int(args)
+                lvl = max(0, min(10, lvl))
+                overrides = {"adaptive_level": lvl}
+                reply_text = f"Adaptive level set to {lvl}"
+            except ValueError:
+                reply_text = f"Invalid level '{args}' — must be integer 0-10"
+        elif sub.lower() == "cargo":
+            try:
+                kg = float(args)
+                if kg < 0:
+                    reply_text = "Extra cargo cannot be negative"
+                else:
+                    overrides = {"extra_cargo_kg": kg}
+                    reply_text = f"Extra cargo set to {kg:,.0f} kg"
+            except ValueError:
+                reply_text = f"Invalid cargo mass '{args}'"
+
+        if overrides:
+            updated = current.with_overrides(**overrides)
+            save_profile(updated)
+
+        def _profile_reply(text=reply_text):
+            yield f"data: {json.dumps({'text': text})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(_profile_reply(), media_type="text/event-stream")
+
+    # Handle /route DEST command directly — no Claude needed
+    m = _SLASH_ROUTE_RE.match(req.message.strip())
+    if m:
+        dest = m.group(1).strip()
+        origin = log_buffer.current_system or ""
+        if not origin:
+            def _no_origin():
+                yield f"data: {json.dumps({'text': 'SYSTEM UNKNOWN — jump to a system first.'})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(_no_origin(), media_type="text/event-stream")
+        if not route_engine.ready():
+            def _not_ready():
+                yield f"data: {json.dumps({'text': 'Route engine offline — systems.json not loaded.'})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(_not_ready(), media_type="text/event-stream")
+
+        # Try hybrid A* (gates + direct jumps with fuel calc) then fall back to gate-only BFS
+        profile = load_profile()
+        result = route_engine.route(origin, dest, profile)
+        if result["type"] == "no_route":
+            bfs_result = route_engine.bfs(origin, dest)
+            if bfs_result:
+                result = bfs_result
+
+        if result is None or result.get("type") == "no_route":
+            reply = f"NO ROUTE: {origin.upper()} -> {dest.upper()} — systems unreachable within fuel range."
+        else:
+            path       = result.get("path", [])
+            jumps      = result.get("jumps", 0)
+            jump_types = result.get("jump_types", [])
+            total_ly   = result.get("total_ly", 0.0)
+            fuel_used  = result.get("fuel_used")
+            fuel_left  = result.get("fuel_remaining")
+
+            if len(path) > 1:
+                path_str = f"{path[0].upper()} -> {path[-1].upper()}"
+            else:
+                path_str = path[0].upper() if path else dest.upper()
+
+            jump_label = f"{jumps} jump{'s' if jumps != 1 else ''}"
+
+            # Per-hop breakdown
+            hop_lines = []
+            for i, (system, jtype) in enumerate(zip(path[:-1], jump_types), 1):
+                next_sys = path[i]
+                if jtype == "direct":
+                    sid_a = route_engine.resolve(system)
+                    sid_b = route_engine.resolve(next_sys)
+                    d = route_engine._dist_ly(sid_a, sid_b) if sid_a and sid_b else 0.0
+                    hop_lines.append(f"  {i}. {system.upper()} -> {next_sys.upper()}  direct  {d:.1f} LY")
+                else:
+                    hop_lines.append(f"  {i}. {system.upper()} -> {next_sys.upper()}  gate")
+
+            fuel_str = ""
+            if fuel_used is not None and fuel_used > 0:
+                fuel_str = f"  FUEL: {fuel_used:.1f}u"
+                if fuel_left is not None:
+                    fuel_str += f" | {fuel_left:.1f}u remaining"
+
+            ly_str = f" · {total_ly:.1f} LY" if total_ly > 0 else ""
+
+            reply = f"ROUTE: {path_str}  {jumps} jumps{ly_str}"
+            if fuel_str:
+                reply += f"\n{fuel_str}"
+            if hop_lines:
+                reply += "\n" + "\n".join(hop_lines)
+            for w in result.get("warnings", [])[:2]:
+                reply += f"\nWARN: {w}"
+
+            # Store in log_buffer
+            primary = {k: v for k, v in result.items() if k != "alternative"}
+            primary["alternative"] = None
+            log_buffer.current_route = primary
+            log_buffer.pending_alternative = result.get("alternative")
+            log_buffer.add({"type": "route_planned", **primary})
+
+        def _route_reply(text=reply):
+            yield f"data: {json.dumps({'text': text})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(_route_reply(), media_type="text/event-stream")
+
     # Auto-plot route if message contains a navigation intent
     dest = _extract_route_destination(req.message)
     if dest and route_engine.ready():
@@ -256,6 +570,7 @@ async def chat(req: ChatRequest):
         live_sessions=log_buffer.get_live(),
         current_route=log_buffer.current_route,
         structure_alerts=log_buffer.pop_structure_alerts(),
+        ship_profile=load_profile(),
     )
 
     def event_stream():
@@ -306,18 +621,36 @@ async def auth_verify(req: VerifyRequest):
     # 4. Resolve access tier
     tier = "NONE"
     profile = load_structure_profile(req.structure_id)
+    registry_id = _registry_for(req.structure_id, req.nova_registry_object_id)
+    log.info("auth_verify: address=%s structure=%s registry_id=%r (client_hint=%r)",
+             req.address, req.structure_id, registry_id, req.nova_registry_object_id)
 
     if profile is None:
         # First-ever auth — check if this address is the on-chain owner
-        if req.nova_registry_object_id:
-            registry = await nova_client.get_access_registry(req.nova_registry_object_id)
+        if registry_id:
+            registry = await nova_client.get_access_registry(registry_id)
             if registry and nova_client.resolve_tier(req.address, registry) == "OWNER":
                 # Auto-create profile
+                # Resolve system info at creation
+                _sys_name = os.environ.get("STRUCTURE_SYSTEM_NAME", "")
+                _system_id = 0
+                _region_name = ""
+                if _sys_name:
+                    from src.galaxy_db import galaxy_db as _gdb
+                    _sys_row = _gdb.get_system(_sys_name)
+                    if _sys_row:
+                        _system_id = _sys_row.get("solarSystemId") or 0
+                        _region_name = _sys_row.get("regionName") or ""
+                        _sys_name = _sys_row.get("name") or _sys_name
+
                 profile = StructureProfile(
                     structure_id=req.structure_id,
                     owner_address=req.address,
                     owner_character_id=character_id,
-                    nova_registry_object_id=req.nova_registry_object_id,
+                    nova_registry_object_id=registry_id,
+                    system_name=_sys_name,
+                    system_id=_system_id,
+                    region_name=_region_name,
                 )
                 try:
                     save_structure_profile(profile)
@@ -329,8 +662,8 @@ async def auth_verify(req: VerifyRequest):
     else:
         if req.address.lower() == profile.owner_address.lower():
             tier = "OWNER"
-        elif profile.nova_registry_object_id:
-            registry = await nova_client.get_access_registry(profile.nova_registry_object_id)
+        elif registry_id or profile.nova_registry_object_id:
+            registry = await nova_client.get_access_registry(registry_id or profile.nova_registry_object_id)
             if registry:
                 tier = nova_client.resolve_tier(req.address, registry)
 
@@ -342,6 +675,43 @@ async def auth_verify(req: VerifyRequest):
         "tier": tier,
         "structure_id": req.structure_id,
     })
+
+    # 6. Upsert pilot profile in memory store
+    _sid = req.structure_id
+    from src.memory_store import get_memory_store
+    mem = get_memory_store(_sid)
+    mem.upsert_pilot(
+        address=req.address,
+        character_name=character_name,
+        character_id=character_id,
+        tier=tier,
+    )
+
+    # 7. Backfill system_id / region_name on profile if missing
+    if profile and (profile.system_id == 0 or not profile.region_name):
+        _sys_name = os.environ.get("STRUCTURE_SYSTEM_NAME", profile.system_name or "")
+        if _sys_name:
+            from src.galaxy_db import galaxy_db
+            sys_row = galaxy_db.get_system(_sys_name)
+            if sys_row:
+                changed = False
+                if profile.system_id == 0:
+                    profile.system_id = sys_row.get("solarSystemId") or 0
+                    changed = True
+                if not profile.region_name:
+                    profile.region_name = sys_row.get("regionName") or "Unknown Region"
+                    changed = True
+                if not profile.system_name:
+                    profile.system_name = sys_row.get("name") or _sys_name
+                    changed = True
+                if changed:
+                    try:
+                        save_structure_profile(profile)
+                        log.info("Profile backfilled: system_id=%d region=%s",
+                                 profile.system_id, profile.region_name)
+                    except Exception as e:
+                        log.warning("Profile backfill save failed: %s", e)
+
     return {"token": token, "tier": tier, "character_name": character_name, "character_id": character_id}
 
 
@@ -361,6 +731,25 @@ async def get_structure_profile(structure_id: str, session: dict = Depends(requi
 @app.post("/structure/{structure_id}")
 async def update_structure_profile(structure_id: str, req: StructureProfileUpdate,
                                     session: dict = Depends(require_structure_jwt)):
+    if session["structure_id"] != structure_id:
+        raise HTTPException(status_code=403, detail="Token not valid for this structure")
+    if session["tier"] != "OWNER":
+        raise HTTPException(status_code=403, detail="Only the owner can update the profile")
+    profile = load_structure_profile(structure_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Structure not found")
+    updates = req.model_dump(exclude_none=True)
+    for k, v in updates.items():
+        if hasattr(profile, k):
+            setattr(profile, k, v)
+    save_structure_profile(profile)
+    return profile.as_dict_for_tier("OWNER")
+
+
+@app.patch("/structure/{structure_id}")
+async def patch_structure_profile(structure_id: str, req: StructureProfileUpdate,
+                                   session: dict = Depends(require_structure_jwt)):
+    """Partial update of structure profile fields. OWNER JWT required."""
     if session["structure_id"] != structure_id:
         raise HTTPException(status_code=403, detail="Token not valid for this structure")
     if session["tier"] != "OWNER":
@@ -400,30 +789,65 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
         profile.routine_alerts = (profile.routine_alerts + routine)[-10:]
         save_structure_profile(profile)
 
-    # Fetch local system data for context
-    system_data = None
-    if profile.system_name:
-        system_data = await world_api.get_system(profile.system_name)
-    local_kills = len((system_data or {}).get("kills", []))
-    local_pilots = 0  # world API doesn't expose pilot count directly
+    # Memory
+    from src.memory_store import get_memory_store
+    mem_store = get_memory_store(req.structure_id)
+    summary = mem_store.get_summary()
+    memory_text = summary.get("text", "")
 
-    context = build_structure_context(profile, tier, local_kills=local_kills, local_pilots=local_pilots)
+    # Kills nearby (best-effort)
+    kills_nearby = 0
+    if profile.system_id:
+        try:
+            kills_raw = await world_api.get_killmails(system_id=profile.system_id)
+            from datetime import datetime, timezone, timedelta
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+            for k in kills_raw:
+                t = k.get("time") or k.get("timestamp") or ""
+                try:
+                    kt = datetime.fromisoformat(t.replace("Z", "+00:00"))
+                    if kt >= cutoff:
+                        kills_nearby += 1
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
+    context = build_structure_context(
+        profile, tier,
+        memory_text=memory_text,
+        kills_nearby=kills_nearby,
+    )
 
     def event_stream():
         try:
-            for chunk in structure_client.stream(
-                message=req.message,
-                history=req.history,
-                context_block=context,
-                profile=profile,
-                tier=tier,
-                character_name=session["character_name"],
-                character_id=session["character_id"],
-            ):
+            if tier == "VETTED":
+                gen = lobby_client.stream(
+                    message=req.message,
+                    history=req.history,
+                    profile=profile,
+                    character_name=session["character_name"],
+                )
+            else:
+                gen = structure_client.stream(
+                    message=req.message,
+                    history=req.history,
+                    context_block=context,
+                    profile=profile,
+                    tier=tier,
+                    character_name=session["character_name"],
+                    character_id=session["character_id"],
+                )
+            for chunk in gen:
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
         except Exception as e:
             log.error("Structure chat stream error: %s", e)
             yield f"data: {json.dumps({'error': 'Stream interrupted.'})}\n\n"
-        yield "data: [DONE]\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+            try:
+                mem_store.rebuild_summary()
+            except Exception as e_rebuild:
+                log.warning("Summary rebuild failed: %s", e_rebuild)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

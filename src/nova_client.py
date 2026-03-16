@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 NOVA_RPC_URL = os.environ.get(
     "NOVA_RPC_URL",
-    "https://fullnode.devnet.sui.io"  # placeholder — replace with Nova endpoint
+    "https://fullnode.testnet.sui.io"
 )
 
 
@@ -39,6 +39,7 @@ class NovaClient:
         Sui JSON-RPC method: sui_getObject
         https://docs.sui.io/sui-api-ref#sui_getobject
         """
+        log.info("get_access_registry called: len=%d repr=%r", len(object_id), object_id)
         payload = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -68,6 +69,14 @@ class NovaClient:
         except Exception as e:
             log.warning("Nova RPC error fetching AccessRegistry %s: %s", object_id, e)
             return None
+
+    async def _rpc(self, method: str, params: list) -> dict:
+        """Generic Sui JSON-RPC call. Returns the full response dict."""
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(self._rpc_url, json=payload)
+            r.raise_for_status()
+            return r.json()
 
     def resolve_tier(self, address: str, registry: AccessRegistry) -> str:
         """Resolve access tier for a wallet address against an AccessRegistry."""

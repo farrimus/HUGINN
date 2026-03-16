@@ -9,7 +9,8 @@ class LogBuffer:
     def __init__(self, max_size: int = 50):
         self.events: deque = deque(maxlen=max_size)
         self.current_system: Optional[str] = None
-        self.current_route: Optional[dict] = None
+        self.current_route:       Optional[dict] = None
+        self.pending_alternative: Optional[dict] = None
         self._live: list = []
         self.pending_structure_alerts: list = []
 

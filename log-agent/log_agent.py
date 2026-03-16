@@ -83,6 +83,11 @@ def _decode_raw(raw: bytes, encoding: str, strip_bom: bool) -> str:
     return raw.decode(encoding, errors="ignore")
 
 
+# Route command parser — used only to extract the destination from "/route DEST".
+# Actual routing is delegated to the server's POST /route (hybrid A* + fuel calc).
+from route_calculator import _parse_command as _parse_route_command
+
+
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, parser_fn, tracker: SessionTracker, inject_channel: bool = False,
                  agent_start: float = None):
@@ -180,7 +185,28 @@ class LogFileHandler(FileSystemEventHandler):
                     if channel:
                         parsed["channel"] = channel
                     for out_event in self.tracker.process(parsed):
-                        send_event(out_event)
+                        # Intercept /route commands — delegate to server for hybrid A* routing.
+                        # Server stores the result in log_buffer; no need to POST to /log/ingest.
+                        if (out_event.get("type") == "chat"
+                                and out_event.get("message", "").startswith("/route")):
+                            dest = _parse_route_command(out_event["message"])
+                            origin = self.tracker.current_system
+                            if dest and origin:
+                                headers = {"X-Server-Token": SERVER_TOKEN} if SERVER_TOKEN else {}
+                                try:
+                                    requests.post(
+                                        f"{SERVER_URL}/route",
+                                        json={"origin": origin, "destination": dest},
+                                        headers=headers,
+                                        timeout=30,
+                                    )
+                                    log.info("Route requested: %s → %s", origin, dest)
+                                except Exception as e:
+                                    log.warning("Route request failed: %s", e)
+                            else:
+                                log.warning("Route command ignored: origin=%r dest=%r", origin, dest)
+                        else:
+                            send_event(out_event)
         except Exception as e:
             log.warning("Error reading %s: %s", path, e)
 

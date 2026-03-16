@@ -13,4 +13,26 @@ namespace http {
         std::function<void(const std::string& chunk)> onChunk,
         std::function<void()> onDone,
         std::string& errorOut);
+
+    // GET request — returns full response body in bodyOut.
+    // Runs synchronously — call from a background thread.
+    // Returns false on connection or HTTP error; sets errorOut.
+    bool getJson(
+        const std::string& path,
+        std::string& bodyOut,
+        std::string& errorOut);
+
+    // POST with no body (fire-and-forget style).
+    // Returns false on connection or HTTP error; sets errorOut.
+    bool postEmpty(
+        const std::string& path,
+        std::string& errorOut);
+
+    // POST with JSON body; returns full response body in bodyOut.
+    // Runs synchronously — call from a background thread.
+    bool postJson(
+        const std::string& path,
+        const std::string& jsonBody,
+        std::string& bodyOut,
+        std::string& errorOut);
 }

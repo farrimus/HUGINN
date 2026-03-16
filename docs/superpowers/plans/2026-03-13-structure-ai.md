@@ -49,7 +49,7 @@
 
 ### Task 1: Add `pending_structure_alerts` to LogBuffer
 
-- [ ] **1.1 Write failing tests**
+- [x] **1.1 Write failing tests**
 
 Open `tests/test_log_buffer.py` and add after existing tests:
 
@@ -81,7 +81,7 @@ def test_structure_alerts_do_not_go_in_ring_buffer():
     assert all(e.get("type") != "structure_alert" for e in buf.get_recent(50))
 ```
 
-- [ ] **1.2 Run tests to confirm they fail**
+- [x] **1.2 Run tests to confirm they fail**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_log_buffer.py -k "structure_alert" -v
@@ -89,7 +89,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_log_buffer.py -k "structure_
 
 Expected: `AttributeError: 'LogBuffer' object has no attribute 'add_structure_alert'`
 
-- [ ] **1.3 Implement in `src/log_buffer.py`**
+- [x] **1.3 Implement in `src/log_buffer.py`**
 
 Add after `self._live: list = []` in `__init__`:
 ```python
@@ -109,7 +109,7 @@ def pop_structure_alerts(self) -> list:
     return alerts
 ```
 
-- [ ] **1.4 Run tests — expect pass**
+- [x] **1.4 Run tests — expect pass**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_log_buffer.py -v
@@ -117,7 +117,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_log_buffer.py -v
 
 Expected: all pass including 4 new tests.
 
-- [ ] **1.5 Commit**
+- [x] **1.5 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -129,7 +129,7 @@ git commit -m "feat: add pending_structure_alerts to LogBuffer"
 
 ### Task 2: Structure alerts in context_builder
 
-- [ ] **2.1 Write failing tests**
+- [x] **2.1 Write failing tests**
 
 Open `tests/test_context_builder.py` and add after existing tests:
 
@@ -158,7 +158,7 @@ def test_multiple_structure_alerts_all_shown():
     assert result.count("STRUCTURE ALERT") == 2
 ```
 
-- [ ] **2.2 Run tests to confirm they fail**
+- [x] **2.2 Run tests to confirm they fail**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_context_builder.py -k "structure_alert" -v
@@ -166,7 +166,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_context_builder.py -k "struc
 
 Expected: `TypeError: build_context_block() got an unexpected keyword argument 'structure_alerts'`
 
-- [ ] **2.3 Implement in `src/context_builder.py`**
+- [x] **2.3 Implement in `src/context_builder.py`**
 
 Add `structure_alerts` parameter to `build_context_block` signature:
 ```python
@@ -180,7 +180,7 @@ def build_context_block(
 ) -> str:
 ```
 
-- [ ] **2.3a Remove the existing `lines = []` line** from its current position inside the function body (line ~12). It will be replaced by the block below.
+- [x] **2.3a Remove the existing `lines = []` line** from its current position inside the function body (line ~12). It will be replaced by the block below.
 
 Add the following as the new opening of the function body, replacing the removed `lines = []`:
 ```python
@@ -192,7 +192,7 @@ Add the following as the new opening of the function body, replacing the removed
         lines.append(f"STRUCTURE ALERT [{name}]: {alert.get('message', '')}")
 ```
 
-- [ ] **2.4 Run full context_builder tests**
+- [x] **2.4 Run full context_builder tests**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_context_builder.py -v
@@ -200,7 +200,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_context_builder.py -v
 
 Expected: all pass.
 
-- [ ] **2.5 Update `main.py` `/chat` endpoint** to pass structure alerts from log_buffer
+- [x] **2.5 Update `main.py` `/chat` endpoint** to pass structure alerts from log_buffer
 
 In the `chat()` function in `main.py`, update the `build_context_block` call:
 ```python
@@ -214,7 +214,7 @@ In the `chat()` function in `main.py`, update the `build_context_block` call:
     )
 ```
 
-- [ ] **2.6 Run all server tests**
+- [x] **2.6 Run all server tests**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/ -q
@@ -222,7 +222,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/ -q
 
 Expected: all pass.
 
-- [ ] **2.7 Commit**
+- [x] **2.7 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -241,14 +241,14 @@ git commit -m "feat: include structure alerts in Ship AI context block"
 
 ### Task 3: Dependencies
 
-- [ ] **3.1 Add PyJWT and cryptography to requirements.txt**
+- [x] **3.1 Add PyJWT and cryptography to requirements.txt**
 
 ```
 pyjwt==2.9.0
 cryptography>=42.0.0
 ```
 
-- [ ] **3.2 Install**
+- [x] **3.2 Install**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pip install pyjwt==2.9.0 "cryptography>=42.0.0"
@@ -256,7 +256,7 @@ cd /opt/eve-frontier && .venv/bin/pip install pyjwt==2.9.0 "cryptography>=42.0.0
 
 Expected: `Successfully installed PyJWT-2.9.0 cryptography-...`
 
-- [ ] **3.3 Confirm ed25519 is available**
+- [x] **3.3 Confirm ed25519 is available**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey; print('ok')"
@@ -264,7 +264,7 @@ cd /opt/eve-frontier && .venv/bin/python -c "from cryptography.hazmat.primitives
 
 Expected: `ok`.
 
-- [ ] **3.4 Commit requirements**
+- [x] **3.4 Commit requirements**
 
 ```bash
 cd /opt/eve-frontier
@@ -276,7 +276,7 @@ git commit -m "chore: add pyjwt dependency for structure auth"
 
 ### Task 4: Nonce store
 
-- [ ] **4.1 Write failing tests**
+- [x] **4.1 Write failing tests**
 
 Create `tests/test_structure_auth.py`:
 
@@ -319,7 +319,7 @@ def test_expired_nonce_returns_false():
         assert store.consume(nonce) is False
 ```
 
-- [ ] **4.2 Run to confirm they fail**
+- [x] **4.2 Run to confirm they fail**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -k "nonce" -v
@@ -327,7 +327,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -k "nonce"
 
 Expected: `ModuleNotFoundError: No module named 'src.structure_auth'`
 
-- [ ] **4.3 Implement `NonceStore` in `src/structure_auth.py`**
+- [x] **4.3 Implement `NonceStore` in `src/structure_auth.py`**
 
 ```python
 # src/structure_auth.py
@@ -400,7 +400,7 @@ async def lookup_character(address: str) -> dict:
     return {}
 ```
 
-- [ ] **4.4 Run nonce tests**
+- [x] **4.4 Run nonce tests**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -k "nonce" -v
@@ -412,7 +412,7 @@ Expected: all 5 pass.
 
 ### Task 5: Sui signature verification
 
-- [ ] **5.1 Write failing tests**
+- [x] **5.1 Write failing tests**
 
 Add to `tests/test_structure_auth.py`:
 
@@ -445,7 +445,7 @@ def test_verify_rejects_unsupported_scheme_flag():
         verify_sui_personal_message(b"hello", fake_sig, "0x" + "00" * 32)
 ```
 
-- [ ] **5.2 Implement `verify_sui_personal_message`**
+- [x] **5.2 Implement `verify_sui_personal_message`**
 
 Add to `src/structure_auth.py`:
 
@@ -509,7 +509,7 @@ def verify_sui_personal_message(message_bytes: bytes, signature_b64: str, expect
     return True
 ```
 
-- [ ] **5.3 Run signature tests**
+- [x] **5.3 Run signature tests**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -v
@@ -517,7 +517,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -v
 
 Expected: 3 tests skip (need real vectors), 1 passes (unsupported scheme raises ValueError), 5 nonce tests pass.
 
-- [ ] **5.4 Commit**
+- [x] **5.4 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -529,7 +529,7 @@ git commit -m "feat: Sui signature verification and nonce store for structure au
 
 ### Task 6: JWT issue and verify
 
-- [ ] **6.1 Write failing tests**
+- [x] **6.1 Write failing tests**
 
 Add to `tests/test_structure_auth.py`:
 
@@ -569,7 +569,7 @@ def test_decode_tampered_jwt_raises(monkeypatch):
         sa.decode_jwt(tampered)
 ```
 
-- [ ] **6.2 Run to confirm fail**
+- [x] **6.2 Run to confirm fail**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -k "jwt" -v
@@ -577,7 +577,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -k "jwt" -
 
 Expected: `ImportError: cannot import name 'issue_jwt'`
 
-- [ ] **6.3 Implement JWT functions in `src/structure_auth.py`**
+- [x] **6.3 Implement JWT functions in `src/structure_auth.py`**
 
 Add at the top of `src/structure_auth.py`:
 ```python
@@ -603,7 +603,7 @@ def decode_jwt(token: str) -> dict:
     return pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
 ```
 
-- [ ] **6.4 Run all auth tests**
+- [x] **6.4 Run all auth tests**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -v
@@ -611,7 +611,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_auth.py -v
 
 Expected: nonce tests pass, JWT tests pass, sig tests skip.
 
-- [ ] **6.5 Commit**
+- [x] **6.5 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -629,7 +629,7 @@ git commit -m "feat: JWT issue/verify for structure session tokens"
 
 ### Task 7: StructureProfile dataclass and persistence
 
-- [ ] **7.1 Write failing tests**
+- [x] **7.1 Write failing tests**
 
 Create `tests/test_structure_profile.py`:
 
@@ -696,7 +696,7 @@ def test_as_dict_vetted_tier_hides_sensitive_fields():
     assert d["structure_id"] == "keep-7a"
 ```
 
-- [ ] **7.2 Run to confirm fail**
+- [x] **7.2 Run to confirm fail**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_profile.py -v
@@ -704,7 +704,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_profile.py -v
 
 Expected: `ModuleNotFoundError: No module named 'src.structure_profile'`
 
-- [ ] **7.3 Implement `src/structure_profile.py`**
+- [x] **7.3 Implement `src/structure_profile.py`**
 
 ```python
 # src/structure_profile.py
@@ -790,7 +790,7 @@ def save_profile(profile: StructureProfile, base_dir: str = _DEFAULT_BASE_DIR):
         log.warning("Failed to save structure profile %s: %s", profile.structure_id, e)
 ```
 
-- [ ] **7.4 Run all structure profile tests**
+- [x] **7.4 Run all structure profile tests**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_profile.py -v
@@ -798,7 +798,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_profile.py -v
 
 Expected: all 6 pass.
 
-- [ ] **7.5 Commit**
+- [x] **7.5 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -816,7 +816,7 @@ git commit -m "feat: StructureProfile dataclass with tier-filtered views"
 
 ### Task 8: Sui JSON-RPC wrapper for AccessRegistry
 
-- [ ] **8.1 Write failing tests**
+- [x] **8.1 Write failing tests**
 
 Create `tests/test_nova_client.py`:
 
@@ -899,7 +899,7 @@ async def test_get_access_registry_rpc_error_returns_none(client):
     assert registry is None
 ```
 
-- [ ] **8.2 Run to confirm fail**
+- [x] **8.2 Run to confirm fail**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_nova_client.py -v
@@ -907,7 +907,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_nova_client.py -v
 
 Expected: `ModuleNotFoundError: No module named 'src.nova_client'`
 
-- [ ] **8.3 Implement `src/nova_client.py`**
+- [x] **8.3 Implement `src/nova_client.py`**
 
 ```python
 # src/nova_client.py
@@ -997,7 +997,7 @@ class NovaClient:
 nova_client = NovaClient()
 ```
 
-- [ ] **8.4 Run nova client tests**
+- [x] **8.4 Run nova client tests**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_nova_client.py -v
@@ -1005,7 +1005,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_nova_client.py -v
 
 Expected: all 6 pass.
 
-- [ ] **8.5 Commit**
+- [x] **8.5 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -1023,7 +1023,7 @@ git commit -m "feat: Nova chain Sui JSON-RPC client for AccessRegistry tier look
 
 ### Task 9: Structure AI context builder
 
-- [ ] **9.1 Write failing tests**
+- [x] **9.1 Write failing tests**
 
 Create `tests/test_structure_client.py`:
 
@@ -1088,7 +1088,7 @@ def test_detect_no_duplicate_alerts():
     assert severities.count("routine") == 0  # urgent takes priority
 ```
 
-- [ ] **9.2 Run to confirm fail**
+- [x] **9.2 Run to confirm fail**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_client.py -v
@@ -1096,7 +1096,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_client.py -v
 
 Expected: `ModuleNotFoundError: No module named 'src.structure_client'`
 
-- [ ] **9.3 Implement `src/structure_client.py`**
+- [x] **9.3 Implement `src/structure_client.py`**
 
 ```python
 # src/structure_client.py
@@ -1231,7 +1231,7 @@ class StructureClient:
 structure_client = StructureClient()
 ```
 
-- [ ] **9.4 Run structure client tests**
+- [x] **9.4 Run structure client tests**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_client.py -v
@@ -1239,7 +1239,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/test_structure_client.py -v
 
 Expected: all 9 pass.
 
-- [ ] **9.5 Commit**
+- [x] **9.5 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -1256,7 +1256,7 @@ git commit -m "feat: Structure AI Claude client, context builder, alert detectio
 
 ### Task 10: Auth endpoints
 
-- [ ] **10.1 Add imports and models to `main.py`**
+- [x] **10.1 Add imports and models to `main.py`**
 
 Add to imports at top of `main.py`:
 ```python
@@ -1296,7 +1296,7 @@ class StructureProfileUpdate(BaseModel):
     docked_count: Optional[int] = None
 ```
 
-- [ ] **10.2 Add JWT dependency helper**
+- [x] **10.2 Add JWT dependency helper**
 
 Add after imports:
 ```python
@@ -1314,7 +1314,7 @@ async def require_structure_jwt(credentials: HTTPAuthorizationCredentials = Depe
         raise HTTPException(status_code=401, detail="Invalid session token")
 ```
 
-- [ ] **10.3 Add `/auth/challenge` endpoint**
+- [x] **10.3 Add `/auth/challenge` endpoint**
 
 ```python
 @app.post("/auth/challenge")
@@ -1324,7 +1324,7 @@ async def auth_challenge(req: ChallengeRequest):
     return {"nonce": nonce, "structure_id": req.structure_id, "expires_in_seconds": 300}
 ```
 
-- [ ] **10.4 Add `/auth/verify` endpoint**
+- [x] **10.4 Add `/auth/verify` endpoint**
 
 ```python
 @app.post("/auth/verify")
@@ -1390,7 +1390,7 @@ async def auth_verify(req: VerifyRequest):
     return {"token": token, "tier": tier, "character_name": character_name, "character_id": character_id}
 ```
 
-- [ ] **10.5 Add structure profile endpoints**
+- [x] **10.5 Add structure profile endpoints**
 
 ```python
 @app.get("/structure/{structure_id}")
@@ -1424,7 +1424,7 @@ async def update_structure_profile(structure_id: str, req: StructureProfileUpdat
     return profile.as_dict_for_tier("OWNER")
 ```
 
-- [ ] **10.6 Add `/structure-chat` endpoint**
+- [x] **10.6 Add `/structure-chat` endpoint**
 
 ```python
 @app.post("/structure-chat")
@@ -1480,7 +1480,7 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 ```
 
-- [ ] **10.7 Run full test suite**
+- [x] **10.7 Run full test suite**
 
 ```bash
 cd /opt/eve-frontier && .venv/bin/pytest tests/ -q
@@ -1488,7 +1488,7 @@ cd /opt/eve-frontier && .venv/bin/pytest tests/ -q
 
 Expected: all existing tests pass, no regressions.
 
-- [ ] **10.8 Smoke-test endpoints manually**
+- [x] **10.8 Smoke-test endpoints manually**
 
 ```bash
 # Challenge
@@ -1499,7 +1499,7 @@ curl -s -X POST http://localhost:8745/auth/challenge \
 # Expected: {"nonce": "<64-char hex>", "structure_id": "keep-7a", "expires_in_seconds": 300}
 ```
 
-- [ ] **10.9 Commit**
+- [x] **10.9 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -1516,7 +1516,7 @@ git commit -m "feat: structure auth, profile, and chat endpoints"
 
 ### Task 11: Structure page — auth gate and wallet connect
 
-- [ ] **11.1 Create `static/structure.html` with auth gate only**
+- [x] **11.1 Create `static/structure.html` with auth gate only**
 
 Create the full file. The page has three states: AUTH_GATE → CONNECTING → MAIN_UI. Start with the scaffolding and auth gate; chat and info panel follow in subsequent steps.
 
@@ -2141,7 +2141,7 @@ if (storedHistory) {
 </html>
 ```
 
-- [ ] **11.2 Test in browser — verify static file is served**
+- [x] **11.2 Test in browser — verify static file is served**
 
 ```bash
 curl -I http://localhost:8745/static/structure.html
@@ -2149,7 +2149,7 @@ curl -I http://localhost:8745/static/structure.html
 
 Expected: `HTTP/1.1 200 OK`, `content-type: text/html`
 
-- [ ] **11.3 Load in EVE Frontier SSU browser**
+- [x] **11.3 Load in EVE Frontier SSU browser**
 
 Navigate in-game to the SSU, open the structure browser, set URL to:
 ```
@@ -2158,14 +2158,14 @@ http://YOUR_VPS_IP:8745/static/structure.html?id=keep-7a
 
 Expected: auth gate appears, "KEEP-7A" displayed, "Connect Wallet" button visible.
 
-- [ ] **11.4 Test wallet connect flow end-to-end**
+- [x] **11.4 Test wallet connect flow end-to-end**
 
 Click "Connect Wallet" in the SSU browser. Approve in EVEVault. Watch auth status messages:
 1. "Connecting wallet..." → "Requesting connection..." → "Signing identity challenge..." → "Verifying identity..."
 2. If owner: main UI appears, info panel shows stats
 3. If access denied: denied screen appears
 
-- [ ] **11.5 Commit**
+- [x] **11.5 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -2188,13 +2188,13 @@ git commit -m "feat: structure.html — amber UI with wallet connect, collapsibl
 - Nova chain config available (builder-scaffold at https://github.com/evefrontier/builder-scaffold)
 - Wallet funded on Nova for deployment gas
 
-- [ ] **12.1 Create Move package structure**
+- [x] **12.1 Create Move package structure**
 
 ```bash
 mkdir -p /opt/eve-frontier/move/access_registry/sources
 ```
 
-- [ ] **12.2 Create `Move.toml`**
+- [x] **12.2 Create `Move.toml`**
 
 ```toml
 [package]
@@ -2209,7 +2209,7 @@ Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fram
 access_registry = "0x0"
 ```
 
-- [ ] **12.3 Create `sources/access_registry.move`**
+- [x] **12.3 Create `sources/access_registry.move`**
 
 ```move
 /// AccessRegistry — per-structure access control for EVE Frontier Structure AI
@@ -2308,7 +2308,7 @@ module access_registry::registry {
 }
 ```
 
-- [ ] **12.4 Build the contract**
+- [x] **12.4 Build the contract**
 
 ```bash
 cd /opt/eve-frontier/move/access_registry
@@ -2319,7 +2319,7 @@ Expected: `BUILDING access_registry` ... `Build Successful`
 
 If `sui` not installed: follow https://docs.sui.io/guides/developer/getting-started/sui-install
 
-- [ ] **12.5 Run Move unit tests**
+- [x] **12.5 Run Move unit tests**
 
 ```bash
 cd /opt/eve-frontier/move/access_registry
@@ -2329,7 +2329,7 @@ sui move test
 Expected: `Test result: OK. Total tests: 0; passed: 0; failed: 0`
 (Tests will be added in the next step.)
 
-- [ ] **12.6 Add Move unit tests**
+- [x] **12.6 Add Move unit tests**
 
 Add a `tests/` directory and test file:
 
@@ -2427,7 +2427,7 @@ module access_registry::registry_tests {
 }
 ```
 
-- [ ] **12.7 Run Move tests**
+- [x] **12.7 Run Move tests**
 
 ```bash
 cd /opt/eve-frontier/move/access_registry
@@ -2436,7 +2436,7 @@ sui move test
 
 Expected: `Test result: OK. Total tests: 5; passed: 5; failed: 0`
 
-- [ ] **12.8 Deploy to Nova**
+- [x] **12.8 Deploy to Nova**
 
 First, configure Sui CLI for Nova network. Check the EVE Frontier builder-scaffold for Nova RPC URL and chain ID. Then:
 
@@ -2462,7 +2462,7 @@ Created Objects:
   - PackageID: 0x<PACKAGE_ID>
 ```
 
-- [ ] **12.9 Record deployed package ID**
+- [x] **12.9 Record deployed package ID**
 
 Add to `/opt/eve-frontier/.env`:
 ```
@@ -2470,7 +2470,7 @@ NOVA_ACCESS_REGISTRY_PACKAGE=0x<PACKAGE_ID>
 NOVA_RPC_URL=<NOVA_RPC_URL>
 ```
 
-- [ ] **12.10 Create your first AccessRegistry for testing**
+- [x] **12.10 Create your first AccessRegistry for testing**
 
 ```bash
 # Replace STRUCTURE_ID_BYTES with hex of "keep-7a" = 6b6565702d3761
@@ -2484,14 +2484,14 @@ sui client call \
 
 Note the created shared object ID — this is your `nova_registry_object_id`.
 
-- [ ] **12.11 Update nova_client.py with correct RPC URL**
+- [x] **12.11 Update nova_client.py with correct RPC URL**
 
 In `src/nova_client.py`, update the default:
 ```python
 NOVA_RPC_URL = os.environ.get("NOVA_RPC_URL", "<NOVA_RPC_URL>")
 ```
 
-- [ ] **12.12 Commit**
+- [x] **12.12 Commit**
 
 ```bash
 cd /opt/eve-frontier
@@ -2503,14 +2503,14 @@ git commit -m "feat: AccessRegistry Sui Move contract — deploy on Nova"
 
 ## Final Integration Checklist
 
-- [ ] All server-side tests pass: `.venv/bin/pytest tests/ -q`
-- [ ] Move tests pass: `cd move/access_registry && sui move test`
-- [ ] `structure.html` loads in SSU browser
-- [ ] Wallet connect → auth gate → main UI flow works end-to-end in Utopia
-- [ ] Structure AI chat responds in-character (caretaker persona)
+- [x] All server-side tests pass: `.venv/bin/pytest tests/ -q`
+- [x] Move tests pass: `cd move/access_registry && sui move test`
+- [x] `structure.html` loads in SSU browser
+- [x] Wallet connect → auth gate → main UI flow works end-to-end in Utopia
+- [x] Structure AI chat responds in-character (caretaker persona)
 - [ ] Urgent alert (set `shield_pct=15` in profile, send a chat) → appears in Ship AI overlay on next overlay message
 - [ ] VETTED tier hides shield/fuel/docked stats in browser
-- [ ] localStorage session survives browser reload
+- [x] localStorage session survives browser reload
 
 ## Environment Variables Reference
 

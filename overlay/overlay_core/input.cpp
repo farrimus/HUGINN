@@ -2,6 +2,7 @@
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include "../overlay_ui/render.h"
+#include "../overlay_ui/ship_profile_panel.h"
 
 // Declared extern in imgui_init.cpp; defined here.
 WNDPROC g_originalWndProc = nullptr;
@@ -33,6 +34,10 @@ LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     // F8 toggles overlay visibility before ImGui sees the message
     if (msg == WM_KEYDOWN && wParam == VK_F8) {
         ui::visible = !ui::visible;
+        return 0;
+    }
+    if (msg == WM_KEYDOWN && wParam == VK_F7) {
+        ship_profile_panel::g_visible = !ship_profile_panel::g_visible;
         return 0;
     }
 

@@ -109,3 +109,70 @@ async def test_get_system_returns_none_on_api_error():
     with patch.object(client, "_fetch", new=AsyncMock(side_effect=Exception("timeout"))):
         result = await client.get_system("Jita")
     assert result is None
+
+# ------------------------------------------------------------------
+# WORLD_API_ENV switching tests
+# ------------------------------------------------------------------
+
+import os
+
+def test_utopia_env_sets_base_url():
+    from src.world_api import WorldAPIClient
+    with patch.dict(os.environ, {"WORLD_API_ENV": "utopia", "WORLD_API_BASE_URL": ""}):
+        client = WorldAPIClient()
+        assert "utopia" in client.base_url
+
+def test_stillness_env_sets_base_url():
+    from src.world_api import WorldAPIClient
+    with patch.dict(os.environ, {"WORLD_API_ENV": "stillness", "WORLD_API_BASE_URL": ""}):
+        client = WorldAPIClient()
+        assert "stillness" in client.base_url
+
+def test_world_api_env_default_is_utopia():
+    """When WORLD_API_ENV is unset, default must be utopia (hackathon default)."""
+    from src.world_api import WorldAPIClient
+    env_without_overrides = {k: v for k, v in os.environ.items()
+                             if k not in ("WORLD_API_ENV", "WORLD_API_BASE_URL")}
+    with patch.dict(os.environ, env_without_overrides, clear=True):
+        client = WorldAPIClient()
+        assert "utopia" in client.base_url
+
+def test_base_url_override_takes_precedence():
+    from src.world_api import WorldAPIClient
+    with patch.dict(os.environ, {"WORLD_API_BASE_URL": "http://custom", "WORLD_API_ENV": "utopia"}):
+        client = WorldAPIClient()
+        assert client.base_url == "http://custom"
+
+@pytest.mark.asyncio
+async def test_get_killmails_returns_list():
+    from src.world_api import WorldAPIClient
+    client = WorldAPIClient(base_url="http://fake")
+    with patch.object(client, "_fetch", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = [
+            {"id": 1, "time": "2026-03-15T12:00:00Z", "victimName": "Pilot A",
+             "victimShip": "Frigate", "attackers": [], "totalValue": 1000000}
+        ]
+        result = await client.get_killmails(system_id=30000142)
+        assert isinstance(result, list)
+        mock_fetch.assert_called_once()
+        call_args = mock_fetch.call_args
+        assert "30000142" in str(call_args)
+
+@pytest.mark.asyncio
+async def test_get_killmails_wraps_dict_response():
+    """API may return {"data": [...]} instead of a bare list."""
+    from src.world_api import WorldAPIClient
+    client = WorldAPIClient(base_url="http://fake")
+    with patch.object(client, "_fetch", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = {"data": [{"id": 99}], "total": 1}
+        result = await client.get_killmails(system_id=30000142)
+        assert isinstance(result, list)
+        assert result[0]["id"] == 99
+
+@pytest.mark.asyncio
+async def test_get_killmails_returns_empty_on_error():
+    from src.world_api import WorldAPIClient
+    client = WorldAPIClient(base_url="http://fake")
+    with patch.object(client, "_fetch", new_callable=AsyncMock, side_effect=Exception("timeout")):
+        result = await client.get_killmails(system_id=30000142)
+        assert result == []

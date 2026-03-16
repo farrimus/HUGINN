@@ -3,7 +3,7 @@ import json
 import os
 import re
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -36,6 +36,9 @@ class StructureProfile:
     docked_count:           int             = 0
     # Routine alerts (queued for browser display)
     routine_alerts:         list            = field(default_factory=list)
+    # Universe data (set at profile creation from STRUCTURE_SYSTEM_NAME + galaxy_db)
+    region_name:            str             = ""
+    system_id:              int             = 0
 
     def __post_init__(self):
         if not self.structure_name:
@@ -72,7 +75,9 @@ def load_profile(structure_id: str, base_dir: str = _DEFAULT_BASE_DIR) -> Option
         return None
     try:
         data = json.loads(open(path).read())
-        return StructureProfile(**data)
+        known = {f.name for f in fields(StructureProfile)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return StructureProfile(**filtered)
     except Exception as e:
         log.warning("Failed to load structure profile %s: %s", structure_id, e)
         return None
