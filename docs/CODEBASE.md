@@ -4,7 +4,7 @@
 
 **Hackathon deadline:** March 31, 2026.
 
-**Last updated:** 2026-03-15 (Context enrichment, memory store, background polling, VETTED lobby routing, pilot profiles)
+**Last updated:** 2026-03-16 (Nav computer: heat-aware A*, alternative route, 13-ship SHIPS table, two-route overlay display, F7 ship profile panel)
 
 ---
 
@@ -60,7 +60,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 
 ---
 
-## Status — 2026-03-15
+## Status — 2026-03-16
 
 | Component | Status |
 |---|---|
@@ -69,11 +69,16 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | `static/index.html` | ✓ Updated — Tailwind + clamp() + ResizeObserver + SSE reconnect |
 | DX12 overlay | ✓ Working — injected into EVE Frontier, ImGui running in-game |
 | Companion panel (chat UI in overlay) | ✓ Working — streaming chat confirmed end-to-end with Claude |
-| Universe data (`data/systems.json`) | ✓ Built from ResFiles — 24,426 systems, x/y/z, gate links, star types |
+| Universe data (`data/systems.json`) | ✓ Built from ResFiles — 24,426 systems, x/y/z, gate links, star types, safe_jump_temp |
 | Gate data (`data/gates.json`) | ✓ 3,438 unique gate pairs, 231 disconnected clusters (max 39 systems each) |
-| Route engine (server-side) | ✓ BFS (gate-only) + A* hybrid (gate + direct jump with ship params) |
-| Ship profile (`GET/POST /ship-profile`) | ✓ Persistent profile + per-request overrides for hypothetical routes |
-| Chat intent → auto-route | ✓ Navigation phrases in chat trigger route calculation before Claude responds |
+| Route engine (server-side) | ✓ Heat-aware A* hybrid; alternative route when hot intermediates (≥70°); LY spatial index |
+| Ship profile (`GET/POST /ship-profile`) | ✓ 13-ship SHIPS table; ship_type, extra_cargo_kg; LY range + fuel budget formulas |
+| `/route/activate` | ✓ Swaps current_route ↔ pending_alternative atomically |
+| Chat `/route` command | ✓ A* route; alternative route stored in pending_alternative; per-hop breakdown |
+| Chat `/profile` command | ✓ `/profile ship|fuel|level|cargo` subcommands with validation |
+| Context block SHIP line | ✓ `SHIP: <type> | <fuel> | range <X> LY | budget <Y> LY` appended to context |
+| Overlay route panel | ✓ Two-route display (primary + alternative) with USE buttons → POST /route/activate |
+| Overlay ship profile panel (F7) | ✓ 5 inputs (ship, fuel, units, adaptive, cargo), computed range + budget, SAVE button |
 | Structure AI backend | ✓ Built — auth, tier resolution, profile, Claude streaming, alert bridge |
 | Structure auth endpoints (`/auth/challenge`, `/auth/verify`) | ✓ Working — zkLogin (0x05) passthrough, registry ID server-configured |
 | `static/structure.html` | ✓ Built — amber terminal UI, auth gate, info panel, SSE chat |
@@ -89,8 +94,8 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | Pilot profiles | ✓ Every auth creates/updates pilot profile in `data/memory/{id}/pilots/` |
 | Auth backfill | ✓ On auth, existing profiles with missing `system_id`/`region_name` are resolved via galaxy_db |
 | `build_types.py` | ✓ One-shot script: fetches `/v2/types` from World API → `data/types.json` |
-| Ship stat auto-extraction | Future — manual input required for now (see Future Thinking below) |
-| ImGui navigation panel | Planned — pending ship params UX decision |
+| Ship stat auto-extraction | Future — manual input via F7 panel for now (see Future Thinking below) |
+| Client-side RouteCalculator | Planned — server-side engine exists as reference; client build deferred post-nav-panel |
 
 ---
 
@@ -137,9 +142,9 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │       └── test_session_tracker.py # 25 tests — session aggregation + timeouts
 │
 ├── tests/                          # Server-side tests
-│   ├── test_main.py                # Health endpoint
+│   ├── test_main.py                # Health + endpoint coverage (ship profile, route/activate, etc.)
 │   ├── test_log_buffer.py          # Ring buffer + live store
-│   ├── test_context_builder.py     # Context formatting (all event types)
+│   ├── test_context_builder.py     # Context formatting (all event types + SHIP profile line)
 │   ├── test_claude_client.py       # Message building + windowing
 │   ├── test_world_api.py           # 16 tests — index, caching, lookups, get_killmails
 │   ├── test_auth.py                # Token accept/reject
@@ -150,7 +155,10 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   ├── test_structure_client.py    # 17 tests — enriched context, alert detection, LobbyClient
 │   ├── test_galaxy_db.py           # 15 tests — real DB data (system, region, planet, celestials, jumps)
 │   ├── test_memory_store.py        # 12 tests — event append, search, summary, pilot profiles
-│   └── test_main_auth.py           # auth_verify backfill + pilot upsert integration test
+│   ├── test_main_auth.py           # auth_verify backfill + pilot upsert integration test
+│   ├── test_ship_profile.py        # 9 tests — SHIPS table, range/budget formulas, cargo, adaptive, red zone
+│   ├── test_route_engine.py        # 6 tests — A* correctness, alternative route, hot-system detection
+│   └── test_ssu_poller.py          # SSU poller background task tests
 │
 ├── static/
 │   ├── index.html                  # In-game browser chat UI (Tailwind, SSE, auto-reconnect)
@@ -190,12 +198,14 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
         ├── plans/
         │   ├── 2026-03-11-ship-ai-companion.md
         │   ├── 2026-03-13-structure-ai.md
-        │   ├── 2026-03-14-context-enrichment.md    # Context enrichment plan (original)
-        │   └── 2026-03-15-structure-ai-context-enrichment.md  # Implementation plan (10 tasks, completed)
+        │   ├── 2026-03-14-context-enrichment.md
+        │   ├── 2026-03-15-structure-ai-context-enrichment.md  # 10-task plan (completed)
+        │   └── 2026-03-16-nav-computer.md              # 7-task nav computer plan (completed)
         └── specs/
             ├── 2026-03-11-ship-ai-companion-design.md
             ├── 2026-03-11-blockchain-research.md
-            └── 2026-03-13-structure-ai-design.md
+            ├── 2026-03-13-structure-ai-design.md
+            └── 2026-03-15-nav-computer-design.md       # Nav computer design spec
 ```
 
 ---
@@ -987,19 +997,42 @@ Per-frame render logic called from `hookPresent`:
 10. `Signal` fence
 
 ### `overlay_core/input.cpp`
-WndProc subclass (`overlayWndProc`). F8 toggle fires first (`ui::visible = !ui::visible`). Then passes messages to `ImGui_ImplWin32_WndProcHandler`. Blocks mouse/keyboard messages from reaching the game when ImGui wants capture.
+WndProc subclass (`overlayWndProc`). F8 toggle fires first (`ui::visible = !ui::visible`); F7 toggle fires next (`ship_profile_panel::g_visible = !g_visible`). Then passes messages to `ImGui_ImplWin32_WndProcHandler`. Blocks mouse/keyboard messages from reaching the game when ImGui wants capture.
 
 ### `overlay_ui/config.h`
 Compile-time constants: `SERVER_HOST`, `SERVER_HOST_W`, `SERVER_PORT`, `SERVER_TOKEN`, `CHAT_PATH`. Edit before building on Windows.
 
 ### `overlay_ui/http_client.h` / `http_client.cpp`
-WinHTTP SSE client. `http::postChat()` runs synchronously on the caller's thread — always called from a background `std::thread`. Streams SSE `data:` lines via callbacks (`onChunk`, `onDone`). Handles partial-line buffering across `WinHttpReadData` calls. Plain HTTP (no TLS). Sends `X-Server-Token` header from `config::SERVER_TOKEN`.
+WinHTTP client. Three public functions:
+- `http::postChat()` — SSE streaming POST; `onChunk`/`onDone` callbacks; used by companion panel.
+- `http::getJson()` — synchronous GET; returns full response body; used by route and ship profile panels.
+- `http::postEmpty()` — fire-and-forget POST (no body); used for `/route/clear`.
+- `http::postJson()` — synchronous POST with JSON body; returns full response body; used for `/route/activate` and `/ship-profile`.
+
+All run synchronously — always call from a background thread. Shared `_openHandles`/`_closeHandles` helpers.
 
 ### `overlay_ui/companion_panel.h` / `companion_panel.cpp`
 Chat panel state and ImGui draw loop. Module-static state: message vector, input buffer, mutex, scroll flag, status line. `send()` pushes user + streaming assistant messages, spawns a detached `std::thread` that calls `http::postChat()` and appends chunks to the last message under mutex. `draw()` renders fixed-position panel (right side, 400×600px, dark terminal aesthetic, green text) every frame.
 
+### `overlay_ui/route_panel.h` / `route_panel.cpp`
+NAV COMPUTER panel (bottom-left, 440×260px). Background poller calls `GET /current-route` every 5s. Shows two rows when an alternative route is available:
+- Primary route: bright green text, no USE button (already active).
+- Alternative route: dimmed text, `[USE]` button → fires detached thread calling `POST /route/activate {"variant":"alternative"}`.
+- CLEAR ROUTE button calls `POST /route/clear`. Both `s_activating` and `s_clearing` are `std::atomic<bool>`.
+- Summary line format: `SYS-A → SYS-B   6 jumps · 142 LY · 87u`.
+
+### `overlay_ui/ship_profile_panel.h` / `ship_profile_panel.cpp`
+SHIP PROFILE panel (top-left, 440×280px). Toggled by F7 (`g_visible` bool). Five inputs:
+1. Ship type dropdown — 13 ships (Carom → Chumaq); resets fuel category on change.
+2. Fuel type dropdown — filtered to ship category (basic: D1/D2; advanced: SOF-40/EU-40/SOF-80/EU-90).
+3. Fuel units — InputInt clamped to `[0, max_fuel]`.
+4. Adaptive level — InputInt clamped to `[0, 10]`.
+5. Extra cargo (kg) — InputInt.
+
+Computes and displays live jump range (LY) and fuel budget (LY) using mirrored server formulas. Background poller fetches `current_system_temp` from `GET /current-route` every 5s (`std::atomic<float> s_cur_temp`). SAVE button POSTs to `/ship-profile`; shows SAVED/ERROR feedback for 2 seconds.
+
 ### `overlay_ui/render.cpp`
-UI entry point called every frame from `frame.cpp`. Checks `ui::visible`; if true, calls `companion_panel::draw()`.
+UI entry point called every frame from `frame.cpp`. Checks `ui::visible`; if true, calls `companion_panel::draw()`, `route_panel::draw()`, `ship_profile_panel::draw()`. `init()`/`shutdown()` lifecycle manages both panel poller threads.
 
 ---
 
@@ -1068,9 +1101,11 @@ H(D) = 100 × (2/π) × arctan(100 × 2π × √(L / L_sun) / D)
 
 `route_engine.py` provides two modes:
 
-1. **`bfs(origin, dest)`** — gate-only, free, no ship params. Finds shortest gate-hop path within a connected cluster. Fast (< 5ms). Falls back to this if A* fails.
+1. **`bfs(origin, dest)`** — gate-only, free, no ship params. Finds shortest gate-hop path within a connected cluster. Fast (< 5ms). Used as fallback when A* returns no result.
 
-2. **`route(origin, dest, profile)`** — A* hybrid. Gate hops cost 0; direct jumps cost distance in meters. Spatial index (`_SpatialIndex`) narrows range candidates via sorted X + binary search before exact distance check. Tracks total distance vs fuel budget. Falls back to BFS if result is None.
+2. **`route(origin, dest, profile)`** — heat-aware A* hybrid. Gate hops cost 0 LY; direct jumps cost distance in LY. Per-node jump range is computed from the system's `safe_jump_temp` (not the player's `external_temp`). Red-zone systems (≥90°) block outbound direct jumps (range=0). `_SpatialIndex` narrows candidates via sorted X-axis binary search + dy/dz AABB guards.
+
+   **Alternative route:** After the primary A* pass, if any system in `path[1:-1]` has `safe_jump_temp ≥ WARM_SYSTEM_TEMP (70.0)`, a second A* pass runs with those hot systems excluded as direct-jump waypoints (gates through them are still allowed). The alternative is stored in `log_buffer.pending_alternative`. Calling `POST /route/activate` swaps `current_route ↔ pending_alternative`.
 
 ### Universe data structure
 
@@ -1084,6 +1119,10 @@ H(D) = 100 × (2/π) × arctan(100 × 2π × √(L / L_sun) / D)
       "x": -5.1e18, "y": -4.4e17, "z": 1.3e18,
       "region_id": 10000001, "constellation_id": 20000001,
       "sun_type_id": 45031, "sun_type": "Sun K7 (Orange)", "spectral_class": "K7",
+      "star_luminosity": 6.3e26,
+      "star_radius": 4.8e8,
+      "max_orbit_m": 1.4e11,
+      "safe_jump_temp": 54.3,
       "planet_ids": [...],
       "gate_links": [30000004, 30000005]
     }
@@ -1091,50 +1130,80 @@ H(D) = 100 × (2/π) × arctan(100 × 2π × √(L / L_sun) / D)
 }
 ```
 
+**`safe_jump_temp` formula** (stored per system, computed by `build_universe.py`):
+```
+H(D) = 100 × (2/π) × arctan(K × 2π × √(L / L_sun) / D)
+```
+where `L_sun = 3.828e26 W`, `K = 100` (game canonical), `D = max_orbit_m / 299_792_458` (light-seconds).
+- **Red zone** (≥90°): no outbound direct jump possible
+- **Warm zone** (≥70°): triggers alternative route computation
+- 159 red-zone systems, ~905 warm-zone systems (out of 24,426)
+
 **Gate network facts:**
 - 3,438 unique gate pairs, 231 disconnected clusters, largest = 39 systems
 - ~2,878 systems have gates; ~21,548 are unreachable by gate alone
-- Gate hops are free (fuel cost 0) — used as zero-cost edges in A*
+- Gate hops are free (fuel cost 0) — zero-cost edges in A*
 
 ### Ship profile
 
-Stored in `data/ship_profile.json`, managed via `src/ship_profile.py`:
+Stored in `data/ship_profile.json`, managed via `src/ship_profile.py`. The `ship_type` field auto-fills `hull_mass` and `specific_heat` from the SHIPS table.
 
 | Field | Description |
 |---|---|
-| `hull_mass` | Base hull mass (kg) |
-| `current_mass` | Hull + fuel + cargo (kg) — pilot must account for cargo |
-| `specific_heat` | Ship thermal capacity stat (from ship info panel) |
-| `adaptive_level` | Adaptive upgrade level (0 = none) |
+| `ship_type` | Ship name (e.g. "Carom") — auto-fills hull_mass + specific_heat from SHIPS table |
+| `hull_mass` | Base hull mass (kg) — set automatically when ship_type is provided |
+| `specific_heat` | Ship thermal capacity — set automatically when ship_type is provided |
+| `adaptive_level` | Adaptive upgrade level (0–10) |
 | `fuel_type` | D1 / D2 / SOF-40 / EU-40 / SOF-80 / EU-90 |
 | `fuel_quantity` | Units of fuel loaded |
-| `external_temp` | Override for temp (default 0 = deep space) |
+| `extra_cargo_kg` | Additional cargo mass (kg); added to hull_mass for range/budget calculations |
+| `external_temp` | Override for ambient temp (default 0 = deep space) |
 
-**Default profile** is a placeholder — real in-game values required before routes work correctly.
+**SHIPS table** (13 entries): Carom, Stride, Reflex, Recurve, Reiver (basic — D1/D2 fuel); Lai, USV, Lorha, MCF, Tades, HAF, Maul, Chumaq (advanced — SOF/EU fuel).
 
-**Per-request overrides:** Any field can be passed to `POST /route` to compute a hypothetical route without changing the stored profile.
+**Jump range formula:**
+```
+range_ly = ((150 - temp) × C_eff × M_hull) / (3 × M_current)
+C_eff = specific_heat × (1 + adaptive_level × 0.02)
+M_current = hull_mass + extra_cargo_kg
+```
+
+**Fuel budget formula:**
+```
+budget_ly = (fuel_quantity × fuel_quality) / (1e-7 × M_current)
+```
 
 ### Route response format
 
 ```json
 {
+  "type": "route_planned",
   "path": ["system-a", "system-b", "system-c"],
   "jumps": 2,
-  "gate_hops": 1,
-  "direct_jumps": 1,
-  "total_distance_m": 4.7e18,
-  "total_distance_ly": 497.3,
+  "jump_types": ["gate", "direct"],
+  "total_ly": 142.5,
   "fuel_used": 87.4,
   "fuel_remaining": 412.6,
-  "warnings": ["system-b is null-sec"]
+  "hot_systems": ["system-b"],
+  "warnings": ["system-b: safe_jump_temp 78.2° — warm zone"],
+  "alternative": { ...same shape, or null }
+}
+```
+
+`GET /current-route` returns:
+```json
+{
+  "route": { ...route object or null },
+  "alternative": { ...route object or null },
+  "current_system_temp": 54.3
 }
 ```
 
 ### Future thinking: ship stat auto-extraction
 
-Currently, ship parameters (`hull_mass`, `specific_heat`, etc.) require manual input via `POST /ship-profile`. This is the primary UX friction point for routing.
+Currently, ship parameters are entered manually via the F7 ship profile panel or `POST /ship-profile`. The SHIPS table covers all 13 known ships so `ship_type` selection auto-fills mass and specific_heat — the main remaining manual input is fuel quantity and adaptive level.
 
-**Potential future approaches:**
+**Potential future improvements:**
 - Parse ship stats from game log lines (if EVE Frontier logs undock/loadout events with stats)
 - Query the World API for ship type stats by `typeID` (if endpoint exists or is added)
 - Read directly from game memory via overlay DLL (technically possible, high complexity)
@@ -1301,23 +1370,20 @@ python diagnose.py
 | Area | Gap | Priority |
 |------|-----|----------|
 | Client-side RouteCalculator | Not built — server-side engine exists as reference but must not run in production (VPS too small) | **High** |
-| Ship stat auto-extraction | Manual profile input required — see Future Thinking in Routing section | **High** |
-| ImGui navigation panel | Not started — "Route to:" input in overlay, triggers client-side route then POST /log/ingest | High |
-| Route engine calibration | Default `ShipProfile` values are placeholder — needs real in-game stats to verify formulas | **High** |
+| Ship stat auto-extraction | Manual input via F7 panel — SHIPS table covers all 13 ships; fuel qty + adaptive still manual | Medium |
+| Route engine calibration | Formulas verified against spec; real in-game testing needed to confirm edge cases | Medium |
 | `ssu_poller.poll_ssu_state` | SSU Sui object field mapping unverified — `_extract_fuel_pct()` may need adjustment for real on-chain layout | **High** |
 | WatchTower webhook | Not implemented — deferred post-hackathon. Would POST shield/fuel alerts to Discord/Slack. | Medium |
 | `GET /data/systems` endpoint | Not yet added — client-side RouteCalculator needs to download `systems.json` from server | Medium |
-| `test_context_builder.py` | Missing coverage for `current_route` / ROUTE PLANNED context line | Medium |
-| Route engine tests | No tests for `route_engine.py` or `ship_profile.py` | Medium |
+| A* memory usage | Path stored as full list per heap entry (quadratic). Acceptable for dev/debug server; optimize before client-side port. | Medium |
 | `memory_store.rebuild_summary()` | Claude summarization call not yet tested end-to-end — mock used in unit tests | Medium |
 | SSE keep-alive | Server does not send `: keep-alive` comments. Add to `event_stream()` if drops appear. | Low |
 | `world_api.get_system_by_id()` | Defined but never called — dead code | Low |
 | `/debug`, `/health` endpoints | No test coverage | Low |
-| Buffer persistence | In-memory only — `current_route` and ring buffer lost on server restart | Low |
+| Buffer persistence | In-memory only — `current_route`/`pending_alternative` and ring buffer lost on server restart | Low |
 | Multi-user | Single shared buffer — designed for one player | Out of scope |
 | `LogFileHandler` encoding fixes | Integration-level only; no unit tests | Low |
 | `PeriodicBootstrap` / `HeartbeatEmitter` | No unit tests (side-effect threads) | Low |
-| Star temperature in routing | `external_temp` defaults to 0 (deep space). For accuracy near hot stars, compute H(D) from `sun_type` luminosity + ship position. Not yet implemented. | Low |
 
 ---
 
@@ -1346,6 +1412,8 @@ python diagnose.py
 | `docs/superpowers/plans/2026-03-13-structure-ai.md` | Structure AI implementation plan — what's built, what's next |
 | `docs/superpowers/plans/2026-03-14-context-enrichment.md` | Data catalog — what's available from ResFiles, World API, blockchain, and live logs |
 | `docs/superpowers/plans/2026-03-15-structure-ai-context-enrichment.md` | 10-task implementation plan — galaxy_db, memory_store, ssu_poller, LobbyClient, context enrichment |
+| `docs/superpowers/specs/2026-03-15-nav-computer-design.md` | Nav computer design spec — heat formula, routing, overlay panels, API |
+| `docs/superpowers/plans/2026-03-16-nav-computer.md` | 7-task nav computer implementation plan (completed) |
 | `data/PROGRAMMER_GUIDE.md` | SQLite schema reference for `eve_universe.db` (tables, columns, query patterns) |
 | `log-agent/tests/` | Best examples of how parsers and tracker behave |
 | `tests/test_context_builder.py` | Best examples of context block output format |
