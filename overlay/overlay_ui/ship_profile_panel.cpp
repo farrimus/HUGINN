@@ -3,7 +3,6 @@
 #include <imgui.h>
 #include <string>
 #include <vector>
-#include <mutex>
 #include <thread>
 #include <atomic>
 #include <cmath>
