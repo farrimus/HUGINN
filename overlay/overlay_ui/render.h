@@ -1,4 +1,5 @@
 #pragma once
+#include "ship_profile_panel.h"
 
 namespace ui {
 
