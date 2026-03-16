@@ -570,6 +570,7 @@ async def chat(req: ChatRequest):
         live_sessions=log_buffer.get_live(),
         current_route=log_buffer.current_route,
         structure_alerts=log_buffer.pop_structure_alerts(),
+        ship_profile=load_profile(),
     )
 
     def event_stream():

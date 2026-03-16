@@ -9,6 +9,7 @@ def build_context_block(
     live_sessions: Optional[list] = None,
     current_route: Optional[dict] = None,
     structure_alerts: Optional[list] = None,
+    ship_profile=None,  # ShipProfile instance; import avoided to prevent circular dep
 ) -> str:
     lines = []
 
@@ -28,6 +29,19 @@ def build_context_block(
         if kills:
             location_line += f" | {len(kills)} recent kill(s) in system"
     lines.append(location_line)
+
+    # --- Ship profile summary ---
+    if ship_profile is not None:
+        ship_str  = ship_profile.ship_type or "custom"
+        fuel_str  = f"{ship_profile.fuel_type} x {int(ship_profile.fuel_quantity)}u"
+        # safe_jump_temp comes from system_data when available; falls back to 0 (coldest)
+        temp = (system_data or {}).get("safe_jump_temp")
+        r_ly = ship_profile.jump_range_at_temp(temp or 0.0)
+        b_ly = ship_profile.fuel_budget()
+        range_str = f"~{r_ly:.0f} LY" if temp is None else f"{r_ly:.0f} LY"
+        lines.append(
+            f"SHIP: {ship_str} | {fuel_str} | range {range_str} | budget {b_ly:.0f} LY"
+        )
 
     # --- Partition events by type ---
     combat_summary  = None

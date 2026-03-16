@@ -356,3 +356,31 @@ def test_route_error_suppresses_path_display():
 def test_no_route_when_none():
     block = build_context_block(None, [], "JITA", current_route=None)
     assert "ROUTE" not in block
+
+
+def test_ship_profile_summary_in_context():
+    from src.ship_profile import ShipProfile
+    profile = ShipProfile(
+        hull_mass=18_929_160, specific_heat=2.5, fuel_type="EU-90",
+        fuel_quantity=2400, extra_cargo_kg=0, external_temp=0.0,
+        adaptive_level=0, ship_type="Lai",
+    )
+    block = build_context_block(
+        system_data=None,
+        log_events=[],
+        current_system="test",
+        ship_profile=profile,
+    )
+    assert "SHIP:" in block
+    assert "EU-90" in block
+    assert "2400" in block
+
+
+def test_no_ship_profile_no_ship_line():
+    block = build_context_block(
+        system_data=None,
+        log_events=[],
+        current_system="test",
+        ship_profile=None,
+    )
+    assert "SHIP:" not in block
