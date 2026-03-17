@@ -1,5 +1,6 @@
 import os
 import hashlib
+import json
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
@@ -24,6 +25,17 @@ class TokenManager:
 
         self.private_key_path = self.key_dir / "private_key.pem"
         self.public_key_path = self.key_dir / "public_key.pem"
+
+        # Load config from token_config.json
+        try:
+            with open("config/token_config.json", "r") as f:
+                config = json.load(f)
+                self.lifetime_hours = config.get("token_lifetime_hours", 24)
+                self.algorithm = config.get("token_algorithm", "RS256")
+        except FileNotFoundError:
+            # Use defaults if config file not found
+            self.lifetime_hours = 24
+            self.algorithm = "RS256"
 
         # Get encryption password from environment or derive from key directory
         self._encryption_password = self._get_encryption_password()
