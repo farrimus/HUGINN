@@ -17,7 +17,7 @@ Binds all modules together. Runs on port 8745.
 | Route | Method | Auth | Purpose |
 |-------|--------|------|---------|
 | `/health` | GET | No | Returns `{status, systems_indexed}` |
-| `/log/ingest` | POST | Token | Receives events from log agent (including `route_planned`) |
+| `/log/ingest` | POST | Bearer JWT | Receives events from log agent (including `route_planned`) |
 | `/chat` | POST | Token | Streaming chat; auto-plots route on navigation intent; returns SSE |
 | `/debug` | GET | Token | Full pipeline state dump |
 | `/logs/stream` | GET | Token | SSE stream of server logs; for debugging |
@@ -31,6 +31,22 @@ Binds all modules together. Runs on port 8745.
 | `/ship-profile` | GET | Token | Return current ship profile + computed jump range + fuel budget |
 | `/ship-profile` | POST | Token | Update stored ship profile (partial updates supported) |
 | `/static/*` | GET | No | Serves `index.html`, `debug.html` |
+
+### Authentication Methods
+
+**Bearer JWT (New Primary Method):**
+- Endpoints: `/log/ingest`, `/route`, `/ship-profile`, `/chat` (streaming)
+- Requires: `Authorization: Bearer <jwt>` header
+- Token acquisition: `POST /auth/token` (pass `{"agent_id": "..."}`)
+- Token lifetime: 24 hours
+- Implementation: `validate_token()` dependency in FastAPI routes
+
+**Legacy X-Server-Token (Deprecated):**
+- Endpoints: Some structure debug endpoints still support this
+- Requires: `X-Server-Token` header
+- Status: Maintained for backward compatibility, not recommended for new integrations
+
+**Note:** Log agent client must use Bearer auth for `/log/ingest`. See log-agent/src/auth_flow.py for implementation.
 
 **Ingest routing logic:**
 - `in_progress: True` → `log_buffer.set_live([event])` (heartbeat snapshot)
@@ -49,6 +65,27 @@ Binds all modules together. Runs on port 8745.
 - Supports `If-None-Match` → 304 Not Modified when client already has the latest
 - `Cache-Control: public, max-age=3600`
 - Returns HTTP 503 if the file hasn't been built yet
+
+### TokenManager and Auth Router Initialization
+
+In main.py lifespan, the following happens:
+
+1. TokenManager is created: `token_manager = TokenManager(key_dir=".keys")`
+   - Generates or loads RSA key pair
+   - Private key encrypted at rest
+
+2. Auth endpoints are initialized: `init_auth(token_manager)`
+   - Binds TokenManager to /auth/token endpoint
+
+3. Auth router is registered: `app.include_router(auth_router)`
+   - Makes /auth/token endpoint available
+
+This enables the token acquisition flow:
+- Client: POST /auth/token with agent_id → receives JWT
+- Client: Store JWT securely (DPAPI on Windows, 0o600 on Unix)
+- Client: Include Authorization: Bearer <jwt> in all requests to /log/ingest
+
+See src/token_manager.py and src/endpoints/auth.py for implementation details.
 
 **Lifespan:**
 1. Launches `world_api.load_or_build_index()` as a background task (non-blocking)
@@ -439,10 +476,35 @@ Chat request: POST /chat {"message": "What's the situation?", "history": [...]}
 | `tests/test_ef_map_comparison.py` | — | Golden dataset vs ef-map.com (1 confirmed: UR8-K7K=36.9°) |
 | `tests/test_ship_profile.py` | 9 | SHIPS table, range/budget formulas, cargo, adaptive, red zone |
 
+### Token Authentication Tests
+
+New test files added for token auth:
+
+- `tests/test_token_manager.py` — TokenManager JWT generation/validation
+  - Test: RSA key generation and persistence
+  - Test: JWT token issuance and expiration
+  - Test: Token validation with signature verification
+
+- `tests/test_auth_endpoints.py` — /auth/token endpoint
+  - Test: Token issuance with valid agent_id
+  - Test: Token validation on protected endpoints
+  - Test: 401 response for invalid/missing tokens
+  - Test: Malformed header handling
+
+- `tests/test_integration_auth.py` — End-to-end token flow
+  - Test: Full flow (request token → use token → access protected endpoint)
+  - Test: JWT structure and expiration
+  - Test: Error handling for invalid tokens
+
 **Run all server tests:**
 ```bash
 cd /opt/eve-frontier
 .venv/bin/pytest tests/ -q
+```
+
+**Run token auth tests only:**
+```bash
+pytest tests/test_*auth*.py -v
 ```
 
 **Note:** `test_context_builder.py` now covers route planned, ship profile, and PLAYER STRUCTURE lines.
