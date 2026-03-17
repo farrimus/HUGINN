@@ -11,6 +11,7 @@ import json
 import asyncio
 import logging
 import jwt as pyjwt
+from dataclasses import asdict, fields as dc_fields
 
 from src.log_buffer import log_buffer
 from src.auth import require_token
@@ -165,7 +166,6 @@ class ShipProfileRequest(BaseModel):
 @app.get("/ship-profile", dependencies=[Depends(require_token)])
 async def get_ship_profile():
     p = load_profile()
-    from dataclasses import asdict
     return {
         **asdict(p),
         "jump_range_ly": p.jump_range(),
@@ -218,7 +218,6 @@ async def set_ship_profile(req: ShipProfileRequest):
 
     updated = current.with_overrides(**overrides)
     save_profile(updated)
-    from dataclasses import asdict
     return {**asdict(updated), "jump_range_ly": updated.jump_range(),
             "fuel_budget_ly": updated.fuel_budget()}
 
@@ -325,6 +324,7 @@ async def logs_stream():
     _log_clients.append(q)
 
     async def generate():
+        yield ": keep-alive\n\n"
         try:
             while True:
                 line = await q.get()
@@ -682,7 +682,6 @@ class StructureDebugChatRequest(BaseModel):
 
 @app.post("/structure-debug/chat", dependencies=[Depends(require_token)])
 async def structure_debug_chat(req: StructureDebugChatRequest):
-    from dataclasses import asdict
     profile = load_structure_profile(req.structure_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Structure profile not found")
@@ -731,7 +730,6 @@ async def structure_debug_chat(req: StructureDebugChatRequest):
 
 @app.get("/structure-debug/{structure_id}", dependencies=[Depends(require_token)])
 async def structure_debug_get(structure_id: str):
-    from dataclasses import asdict
     profile = load_structure_profile(structure_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Structure profile not found")
@@ -740,7 +738,6 @@ async def structure_debug_get(structure_id: str):
 
 @app.post("/structure-debug/{structure_id}", dependencies=[Depends(require_token)])
 async def structure_debug_post(structure_id: str, request: Request):
-    from dataclasses import asdict, fields as dc_fields
     body = await request.json()
     profile = load_structure_profile(structure_id)
     if not profile:
