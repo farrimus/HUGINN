@@ -61,7 +61,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 
 ---
 
-## Status — 2026-03-16
+## Status — 2026-03-17
 
 | Component | Status |
 |---|---|
@@ -102,6 +102,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | `build_types.py` | ✓ One-shot script: fetches `/v2/types` from World API → `data/types.json` |
 | Ship stat auto-extraction | Future — manual input via F7 panel for now |
 | Client-side RouteCalculator (`log-agent/route_calculator.py`) | ✓ Built — BFS, ETag-cached `systems.json` download, warnings + highlights, wired into log agent |
+| Radius search calculator | ✓ Server + client, filtering by planets/killmails/heat/structures |
 
 ---
 
@@ -224,6 +225,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | Structure AI + Sui auth + blockchain | `docs/ref/structure-ai.md` |
 | Structure AI dev console (token-gated endpoints + UI) | `docs/ref/structure-debug.md` |
 | Routing algorithm, heat formula, ship profile, response format | `docs/ref/routing.md` |
+| Radius search (planets, killmails, heat, structures) | `docs/ref/radius-search.md` |
 | DX12 overlay C++ modules | `docs/ref/overlay.md` |
 | index.html, debug.html, in-game browser env | `docs/ref/ui.md` |
 | Config, ops commands, known gaps, lore reference | `docs/ref/ops.md` |
