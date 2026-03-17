@@ -81,12 +81,12 @@ class ShipProfile:
         delta_t = T_MAX - self.external_temp
         return (delta_t * c_eff * self.hull_mass) / (HEAT_CONSTANT * self._current_mass)
 
-    def jump_range_at_temp(self, temp: float) -> float:
+    def jump_range_at_temp(self, safe_jump_temp: float) -> float:
         """Jump range in LY at a given external temperature (used by route engine)."""
-        if temp >= NO_JUMP_TEMP:
+        if safe_jump_temp >= NO_JUMP_TEMP:
             return 0.0
         c_eff = self.specific_heat * (1.0 + self.adaptive_level * 0.02)
-        return ((T_MAX - temp) * c_eff * self.hull_mass) / (HEAT_CONSTANT * self._current_mass)
+        return ((T_MAX - safe_jump_temp) * c_eff * self.hull_mass) / (HEAT_CONSTANT * self._current_mass)
 
     def fuel_budget(self) -> float:
         """Total jump distance available in light-years given current fuel."""

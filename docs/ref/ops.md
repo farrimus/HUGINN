@@ -1,6 +1,6 @@
 # Operations Reference
 
-**Last updated:** 2026-03-16
+**Last updated:** 2026-03-17
 **Contents:** Configuration, running the system, known gaps, lore reference
 
 ---
@@ -26,6 +26,9 @@ SSU_OBJECT_ID=<Sui object ID of the deployed SSU — leave blank to disable SSU 
 TURRET_OBJECT_IDS=<comma-separated Sui object IDs of turrets — leave blank to disable>
 # Player-owned structure IDs for Ship AI context (comma-separated Sui object IDs)
 PLAYER_STRUCTURE_IDS=<comma-separated Sui object IDs of player's own structures>
+# Deal mechanic — PATRON access for strangers
+VPS_SUI_ADDRESS=0x9a3e...    # VPS deployer wallet address — receives SUI coin payments
+EVE_FRONTIER_PACKAGE=0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75
 ```
 
 ### Log Agent `log-agent/.env` (Windows)
@@ -70,7 +73,7 @@ python log_agent.py
 ```bash
 cd /opt/eve-frontier
 .venv/bin/pytest tests/ -q
-# 91+ passing (2026-03-16 baseline — 4 test files covered in this run)
+# 258 passing (2026-03-17 baseline)
 ```
 
 ### Diagnostics
@@ -110,7 +113,7 @@ python diagnose.py
 | WatchTower webhook | Not implemented — deferred post-hackathon. Would POST shield/fuel alerts to Discord/Slack. | Medium |
 | A* memory usage | Path stored as full list per heap entry (quadratic). Acceptable for dev/debug server; optimize before client-side port. | Medium |
 | `memory_store.rebuild_summary()` | Claude summarization call not yet tested end-to-end — mock used in unit tests | Medium |
-| SSE keep-alive | Server does not send `: keep-alive` comments. Add to `event_stream()` if drops appear. | Low |
+| SSE keep-alive | Resolved — all three `event_stream()` generators yield `: keep-alive\n\n` before the first data chunk. | Resolved |
 | `world_api.get_system_by_id()` | Defined but never called — dead code | Low |
 | `/debug`, `/health` endpoints | No test coverage | Low |
 | Buffer persistence | In-memory only — `current_route`/`pending_alternative` and ring buffer lost on server restart | Low |
@@ -118,6 +121,10 @@ python diagnose.py
 | `LogFileHandler` encoding fixes | Integration-level only; no unit tests | Low |
 | `PeriodicBootstrap` / `HeartbeatEmitter` | No unit tests (side-effect threads) | Low |
 | `test_context_builder.py` | Does not yet cover the `current_route` / ROUTE PLANNED line | Low |
+| Deal mechanic on-chain enforcement | PATRON tier enforced server-side (`DealStore`); no on-chain contract yet. Post-hackathon: deploy `pay_for_access_time` / `pay_for_access_tokens` Move functions. | Post-hackathon |
+| LUX token payment | LUX CoinType not yet located in EVE Frontier contracts — `sui` payment method uses SUI coin only. | Medium |
+| LocationRevealedEvent coverage | 9 events exist on testnet (all from game server). Run `POST /admin/rebuild-location-index` after deploy to seed the index. | Medium |
+| `structure_chat` NONE tier | NONE is now routed to `lobby_client` (same as VETTED). Lobby persona should explicitly mention the deal mechanic. | Medium |
 
 ---
 

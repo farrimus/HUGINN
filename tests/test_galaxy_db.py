@@ -19,11 +19,6 @@ def test_get_system_by_name_returns_dict(db):
     assert result is not None
     assert result["solarSystemId"] == REAL_SYSTEM_ID
 
-def test_get_system_by_id_returns_dict(db):
-    result = db.get_system(REAL_SYSTEM_ID)
-    assert result is not None
-    assert result["name"] == REAL_SYSTEM_NAME
-
 def test_get_system_includes_region_name(db):
     result = db.get_system(REAL_SYSTEM_ID)
     assert result is not None

@@ -3,6 +3,7 @@ import json
 import os
 import re
 import logging
+import fcntl
 from dataclasses import dataclass, field, asdict, fields
 from typing import Optional
 
@@ -97,7 +98,11 @@ def save_profile(profile: StructureProfile, base_dir: str = _DEFAULT_BASE_DIR):
         if not profile.created_at:
             profile.created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         with open(path, "w") as f:
-            json.dump(asdict(profile), f, indent=2)
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                json.dump(asdict(profile), f, indent=2)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
     except ValueError:
         raise  # re-raise — caller must handle invalid structure_id
     except Exception as e:

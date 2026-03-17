@@ -194,20 +194,6 @@ class MemoryStore:
             log.warning("memory_store.get_pilot(%s) failed: %s", address, e)
             return None
 
-    def format_pilot_line(self, address: str) -> str:
-        """Return the pilot context line for the system prompt, or empty string."""
-        p = self.get_pilot(address)
-        if not p:
-            return ""
-        first = p.get("first_seen", "")[:10]
-        return (
-            f"Pilot: {p.get('character_name', address[:12])} "
-            f"(ID: {p.get('character_id', 0)}) | "
-            f"Tier: {p.get('tier', '?')} | "
-            f"Visits: {p.get('visit_count', 1)} | "
-            f"First seen: {first}"
-        )
-
 
 # Module-level factory — structure_id set at runtime
 def get_memory_store(structure_id: str) -> MemoryStore:

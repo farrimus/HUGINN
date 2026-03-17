@@ -214,26 +214,6 @@ async def poll_connected_assemblies(structure_id: str, assembly_ids: list) -> No
                  len(resolved), structure_id)
 
 
-def _extract_fuel_pct(fields: dict) -> float:
-    """Deprecated — fuel extraction is now inline in poll_ssu_state (two-hop RPC).
-
-    Retained to avoid breaking any direct callers outside this module, but no
-    longer called internally. Will be removed in a future cleanup pass.
-    """
-    for key in ("fuelAmount", "fuel_amount", "fuel", "fuelPct", "fuel_pct"):
-        val = fields.get(key)
-        if val is not None:
-            try:
-                f = float(val)
-                if 0 <= f <= 100:
-                    return f
-                log.debug("SSU fuel raw value: %s=%s (not a percentage)", key, val)
-                return 100.0
-            except (TypeError, ValueError):
-                pass
-    return 100.0
-
-
 async def poll_killmails(structure_id: str, system_id: int):
     """Poll World API killmails → append killmail events."""
     from src.world_api import world_api

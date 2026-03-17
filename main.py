@@ -666,9 +666,8 @@ async def chat(req: ChatRequest):
             for chunk in claude.stream(req.message, req.history, context):
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error("Stream error: %s", e)
-            yield f"data: {json.dumps({'error': 'Stream interrupted. Ship systems error.'})}\n\n"
+            log.error("Stream error: %s", e)
+            yield f"data: {json.dumps({'error': f'Stream error: {type(e).__name__}'})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
@@ -717,7 +716,7 @@ async def structure_debug_chat(req: StructureDebugChatRequest):
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
         except Exception as e:
             log.error("Structure debug chat stream error: %s", e)
-            yield f"data: {json.dumps({'error': 'Stream interrupted.'})}\n\n"
+            yield f"data: {json.dumps({'error': f'Stream error: {type(e).__name__}'})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
             try:
@@ -1217,7 +1216,7 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
         except Exception as e:
             log.error("Structure chat stream error: %s", e)
-            yield f"data: {json.dumps({'error': 'Stream interrupted.'})}\n\n"
+            yield f"data: {json.dumps({'error': f'Stream error: {type(e).__name__}'})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
             try:

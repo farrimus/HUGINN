@@ -240,10 +240,6 @@ class WorldAPIClient:
             return None
         return await self._cached_fetch(f"/v2/solarsystems/{system_id}")
 
-    async def get_system_by_id(self, system_id: int) -> Optional[dict]:
-        """Fetch full system data by ID directly."""
-        return await self._cached_fetch(f"/v2/solarsystems/{system_id}")
-
     async def get_killmails(self, system_id: int) -> list:
         """Fetch recent killmails for a solar system. Returns [] on error."""
         try:
