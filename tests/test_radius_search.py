@@ -173,3 +173,129 @@ class TestStructureLocationsFile:
         with open(file_path, 'r') as f:
             data = json.load(f)
         assert len(data['structure_locations']) == 0
+
+
+class TestDistanceCalculation:
+    """Test _distance_ly method for spatial distance calculation."""
+
+    def test_distance_ly_same_point(self):
+        """Distance between same point should be 0."""
+        searcher = RadiusSearch()
+        sys_a = {"x": 0, "y": 0, "z": 0}
+        sys_b = {"x": 0, "y": 0, "z": 0}
+        distance = searcher._distance_ly(sys_a, sys_b)
+        assert distance == 0.0
+
+    def test_distance_ly_simple_cartesian(self):
+        """Test distance with simple 3-4-5 Pythagorean triple (should give ~5 LY)."""
+        searcher = RadiusSearch()
+        # In meters: (3*9.461e15)^2 + (4*9.461e15)^2 + 0^2 = (5*9.461e15)^2
+        # So 3-4-5 in LY coordinates should yield 5 LY
+        sys_a = {"x": 0, "y": 0, "z": 0}
+        sys_b = {"x": 3 * 9.461e15, "y": 4 * 9.461e15, "z": 0}
+        distance = searcher._distance_ly(sys_a, sys_b)
+        assert abs(distance - 5.0) < 0.001, f"Expected ~5.0 LY, got {distance}"
+
+    def test_distance_ly_missing_coordinates_defaults_to_zero(self):
+        """Missing x, y, z should default to 0."""
+        searcher = RadiusSearch()
+        sys_a = {"name": "System A"}  # No coordinates
+        sys_b = {"x": 1e16, "y": 0, "z": 0}
+        distance = searcher._distance_ly(sys_a, sys_b)
+        # Should treat missing coords as 0
+        assert distance > 0
+
+    def test_distance_ly_symmetry(self):
+        """Distance from A to B should equal distance from B to A."""
+        searcher = RadiusSearch()
+        sys_a = {"x": 1e16, "y": 2e16, "z": 3e16}
+        sys_b = {"x": 4e16, "y": 5e16, "z": 6e16}
+        dist_ab = searcher._distance_ly(sys_a, sys_b)
+        dist_ba = searcher._distance_ly(sys_b, sys_a)
+        assert abs(dist_ab - dist_ba) < 0.001
+
+    def test_distance_ly_positive(self):
+        """Distance should always be non-negative."""
+        searcher = RadiusSearch()
+        sys_a = {"x": -1e16, "y": -2e16, "z": -3e16}
+        sys_b = {"x": 1e16, "y": 2e16, "z": 3e16}
+        distance = searcher._distance_ly(sys_a, sys_b)
+        assert distance >= 0
+
+
+class TestRadiusFiltering:
+    """Test find_systems_within_radius method."""
+
+    def test_find_systems_within_radius_nonexistent_center(self):
+        """Should return empty list for non-existent center system."""
+        searcher = RadiusSearch()
+        results = searcher.find_systems_within_radius("NONEXISTENT-SYSTEM-XYZ", 100.0)
+        assert results == []
+
+    def test_find_systems_within_radius_actual_system(self):
+        """Should find systems within radius of UR8-K7K."""
+        searcher = RadiusSearch()
+        # Find systems within 100 LY of UR8-K7K
+        results = searcher.find_systems_within_radius("UR8-K7K", 100.0)
+        assert isinstance(results, list)
+        # Should find at least the center system itself (or nearby systems)
+        # Check all results have distance_ly field and are within radius
+        for system in results:
+            assert "distance_ly" in system, "Results should have distance_ly field"
+            assert system["distance_ly"] <= 100.0, f"System distance {system['distance_ly']} exceeds radius 100.0"
+
+    def test_find_systems_within_radius_sorted_by_distance(self):
+        """Results should be sorted by distance (closest first)."""
+        searcher = RadiusSearch()
+        results = searcher.find_systems_within_radius("UR8-K7K", 500.0)
+        if len(results) > 1:
+            # Check that distances are in ascending order
+            distances = [s["distance_ly"] for s in results]
+            assert distances == sorted(distances), "Results should be sorted by distance"
+
+    def test_find_systems_within_radius_includes_center(self):
+        """Results should include center system (with distance 0)."""
+        searcher = RadiusSearch()
+        results = searcher.find_systems_within_radius("UR8-K7K", 100.0)
+        # Center system should be first with distance 0
+        if results:
+            assert results[0]["distance_ly"] == 0.0 or results[0]["name"] == "UR8-K7K"
+
+    def test_find_systems_within_radius_excludes_systems_without_coordinates(self):
+        """Should filter out systems without x, y, z coordinates."""
+        searcher = RadiusSearch()
+        # This test verifies the filtering logic
+        results = searcher.find_systems_within_radius("UR8-K7K", 1000.0)
+        for system in results:
+            # All returned systems should have valid coordinates
+            assert "x" in system and "y" in system and "z" in system, \
+                f"System {system.get('name')} missing coordinates"
+
+    def test_find_systems_within_radius_zero_radius(self):
+        """With radius 0, should only return center system (if it exists)."""
+        searcher = RadiusSearch()
+        results = searcher.find_systems_within_radius("UR8-K7K", 0.0)
+        # With radius 0, should get 0 or 1 result (just center system if it has coords)
+        assert len(results) <= 1
+        if len(results) == 1:
+            assert results[0]["name"] == "UR8-K7K"
+            assert results[0]["distance_ly"] == 0.0
+
+    def test_find_systems_within_radius_large_radius(self):
+        """Should find multiple systems within large radius."""
+        searcher = RadiusSearch()
+        results = searcher.find_systems_within_radius("UR8-K7K", 10000.0)
+        # With a large radius, should find multiple systems
+        assert len(results) > 1, "Should find multiple systems within large radius"
+
+    def test_find_systems_within_radius_result_contains_all_fields(self):
+        """Results should include all original system fields plus distance_ly."""
+        searcher = RadiusSearch()
+        results = searcher.find_systems_within_radius("UR8-K7K", 100.0)
+        if results:
+            # Each result should have distance_ly plus original fields
+            result = results[0]
+            assert "distance_ly" in result
+            assert "name" in result or "id" in result
+            # distance_ly should be a float
+            assert isinstance(result["distance_ly"], float)

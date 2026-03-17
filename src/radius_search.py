@@ -7,6 +7,7 @@ Provides spatial querying of structures within a given distance from a reference
 import os
 import json
 import logging
+import math
 from typing import Optional, Dict, List, Union
 
 from src.world_api import world_api
@@ -113,6 +114,92 @@ class RadiusSearch:
                         return system_data
 
         return None
+
+    def _distance_ly(self, sys_a: dict, sys_b: dict) -> float:
+        """
+        Calculate Euclidean distance between two systems in light-years.
+
+        EVE coordinates are in meters. 1 light-year = 9.461e15 meters.
+
+        Args:
+            sys_a: System dict with optional x, y, z keys (defaults to 0 if missing)
+            sys_b: System dict with optional x, y, z keys (defaults to 0 if missing)
+
+        Returns:
+            Distance in light-years as a float.
+        """
+        # Light-year in meters
+        ly_in_meters = 9.461e15
+
+        # Extract coordinates, defaulting to 0 if missing
+        x_a = sys_a.get('x', 0)
+        y_a = sys_a.get('y', 0)
+        z_a = sys_a.get('z', 0)
+
+        x_b = sys_b.get('x', 0)
+        y_b = sys_b.get('y', 0)
+        z_b = sys_b.get('z', 0)
+
+        # Calculate Euclidean distance in meters
+        dx = x_b - x_a
+        dy = y_b - y_a
+        dz = z_b - z_a
+
+        distance_m = math.sqrt(dx**2 + dy**2 + dz**2)
+
+        # Convert to light-years
+        distance_ly = distance_m / ly_in_meters
+
+        return distance_ly
+
+    def find_systems_within_radius(
+        self, center_name: str, radius_ly: float
+    ) -> List[dict]:
+        """
+        Find all systems within a radius from a center system.
+
+        Args:
+            center_name: Name of the center system (case-insensitive)
+            radius_ly: Search radius in light-years
+
+        Returns:
+            List of systems within radius, sorted by distance (closest first).
+            Each system includes an added "distance_ly" field.
+            Returns empty list if center system not found or has no coordinates.
+        """
+        # Find the center system
+        center_system = self.get_system(center_name)
+        if center_system is None:
+            return []
+
+        # Check if center system has coordinates
+        if not all(key in center_system for key in ['x', 'y', 'z']):
+            return []
+
+        # Find all systems within radius
+        results = []
+        for system_id, system_data in self.systems.items():
+            if not isinstance(system_data, dict):
+                continue
+
+            # Skip systems without coordinates
+            if not all(key in system_data for key in ['x', 'y', 'z']):
+                continue
+
+            # Calculate distance
+            distance = self._distance_ly(center_system, system_data)
+
+            # Include if within radius
+            if distance <= radius_ly:
+                # Add distance_ly field to the result
+                result_system = dict(system_data)
+                result_system['distance_ly'] = distance
+                results.append(result_system)
+
+        # Sort by distance (closest first)
+        results.sort(key=lambda s: s['distance_ly'])
+
+        return results
 
     def load_structures(self) -> int:
         """
