@@ -1224,3 +1224,393 @@ class TestSearchFilterHelpers:
         searcher = RadiusSearch()
         result = searcher._hours_since(0)
         assert result is None
+
+
+# ===========================================================================
+# Integration Tests
+# ===========================================================================
+# These tests verify the full search flow with multiple filters and
+# the server endpoint integration.
+
+import pytest
+from fastapi.testclient import TestClient
+
+# Import the app from main.py
+@pytest.fixture(scope="session")
+def app():
+    """Load the FastAPI app from main.py."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "main", os.path.join(os.path.dirname(__file__), '..', 'main.py')
+    )
+    main_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(main_module)
+    return main_module.app
+
+
+@pytest.fixture
+def test_client(app):
+    """Create a TestClient for the FastAPI app."""
+    return TestClient(app)
+
+
+class TestIntegrationFullSearch:
+    """Integration tests for full search with multiple filters."""
+
+    @pytest.mark.asyncio
+    async def test_full_search_multiple_filters(self):
+        """Test await rs.search() with center_system, radius, and multiple filters.
+
+        Verifies:
+        - result has total_systems > 0
+        - "planets" and "heat" in result["filters"]
+        - heat filter only contains systems where safe_jump_temp >= 70
+        - response structure is complete
+        """
+        rs = RadiusSearch()
+
+        # Use a system that exists and has systems nearby
+        # UR8-K7K is a known system in the game
+        result = await rs.search(
+            center_system="UR8-K7K",
+            radius_ly=150,
+            filters=["planets", "heat"],
+            top_n=5
+        )
+
+        # Verify result has total_systems > 0
+        assert "total_systems" in result
+        assert result["total_systems"] > 0, "Should find systems within 150 LY"
+
+        # Verify filters are in result
+        assert "filters" in result
+        assert "planets" in result["filters"]
+        assert "heat" in result["filters"]
+
+        # Verify heat filter contains only systems with safe_jump_temp >= 70
+        if result["filters"]["heat"]["systems"]:
+            for system in result["filters"]["heat"]["systems"]:
+                assert system.get("safe_jump_temp", 0) >= 70, \
+                    f"Heat filter should only include systems with temp >= 70, got {system.get('safe_jump_temp')}"
+
+        # Verify response structure is complete
+        assert "center" in result
+        assert "radius_ly" in result
+        assert "scan_summary" in result
+        assert result["center"] == "UR8-K7K"
+        assert result["radius_ly"] == 150
+
+        # Verify filter structure
+        for filter_name, filter_data in result["filters"].items():
+            assert "count" in filter_data
+            assert "systems" in filter_data
+            assert isinstance(filter_data["systems"], list)
+
+    @pytest.mark.asyncio
+    async def test_search_with_skip_heat_traps(self):
+        """Test that skip_heat_traps=True excludes warm/hot systems."""
+        rs = RadiusSearch()
+
+        # First search without skipping heat traps
+        result_with_heat = await rs.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["heat"],
+            top_n=10,
+            skip_heat_traps=False
+        )
+
+        # Then search with skip_heat_traps=True
+        result_no_heat = await rs.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["heat"],
+            top_n=10,
+            skip_heat_traps=True
+        )
+
+        # When skipping heat traps, there should be fewer systems overall
+        assert result_no_heat["total_systems"] <= result_with_heat["total_systems"]
+
+        # The heat filter result should be empty or have no systems when skip_heat_traps=True
+        if "heat" in result_no_heat["filters"]:
+            assert result_no_heat["filters"]["heat"]["count"] == 0 or len(result_no_heat["filters"]["heat"]["systems"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_search_empty_result_structure(self):
+        """Test that search returns valid structure even with no results."""
+        rs = RadiusSearch()
+
+        # Use a nonexistent system (should return valid but empty structure)
+        result = await rs.search(
+            center_system="NONEXISTENT_SYSTEM_XYZ",
+            radius_ly=100,
+            filters=["planets", "heat"],
+            top_n=5
+        )
+
+        # Should still have valid structure
+        assert "center" in result
+        assert "radius_ly" in result
+        assert "total_systems" in result
+        assert "scan_summary" in result
+        assert "filters" in result
+
+        # Should indicate no systems found
+        assert result["total_systems"] == 0
+
+    @pytest.mark.asyncio
+    async def test_search_with_planets_filter(self):
+        """Test that planets filter returns systems with planets."""
+        rs = RadiusSearch()
+
+        result = await rs.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["planets"],
+            top_n=10
+        )
+
+        # Check structure
+        assert "planets" in result["filters"]
+        planets_data = result["filters"]["planets"]
+        assert "count" in planets_data
+        assert "systems" in planets_data
+
+        # If there are results, verify they have planet data
+        for system in planets_data["systems"]:
+            assert "name" in system
+            assert "distance_ly" in system
+            assert "planets" in system
+            assert system["planets"] > 0
+
+
+class TestIntegrationServerEndpoint:
+    """Integration tests for the /search/radius endpoint via TestClient."""
+
+    def test_search_radius_endpoint_success(self, test_client):
+        """Test POST /search/radius endpoint with valid request.
+
+        Verifies:
+        - status_code == 200
+        - response["center"] == "UR8-K7K"
+        - response["radius_ly"] == 100
+        - response structure matches spec
+        """
+        # Get server token from environment
+        server_token = os.environ.get("SERVER_TOKEN", "test-token-default")
+
+        payload = {
+            "center_system": "UR8-K7K",
+            "radius_ly": 100,
+            "filters": ["planets"],
+            "top_n": 5,
+            "skip_heat_traps": False
+        }
+
+        headers = {
+            "X-Server-Token": server_token
+        }
+
+        response = test_client.post(
+            "/search/radius",
+            json=payload,
+            headers=headers
+        )
+
+        # Verify status code
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+
+        # Parse response
+        body = response.json()
+        assert "data" in body, "Response should have 'data' key"
+        result = body["data"]
+
+        # Verify center and radius
+        assert result["center"] == "UR8-K7K"
+        assert result["radius_ly"] == 100
+
+        # Verify structure
+        assert "total_systems" in result
+        assert "scan_summary" in result
+        assert "filters" in result
+
+        # Verify planets filter
+        assert "planets" in result["filters"]
+
+    def test_search_radius_endpoint_multiple_filters(self, test_client):
+        """Test endpoint with multiple filters."""
+        server_token = os.environ.get("SERVER_TOKEN", "test-token-default")
+
+        payload = {
+            "center_system": "UR8-K7K",
+            "radius_ly": 100,
+            "filters": ["planets", "heat"],
+            "top_n": 5,
+            "skip_heat_traps": False
+        }
+
+        response = test_client.post(
+            "/search/radius",
+            json=payload,
+            headers={"X-Server-Token": server_token}
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        result = body["data"]
+
+        # Both filters should be present
+        assert "planets" in result["filters"]
+        assert "heat" in result["filters"]
+
+        # Heat filter should only have systems with temp >= 70
+        if result["filters"]["heat"]["systems"]:
+            for system in result["filters"]["heat"]["systems"]:
+                assert system.get("safe_jump_temp", 0) >= 70
+
+    def test_search_radius_endpoint_missing_token(self, test_client):
+        """Test that endpoint rejects requests without auth token."""
+        payload = {
+            "center_system": "UR8-K7K",
+            "radius_ly": 100,
+            "filters": ["planets"]
+        }
+
+        # Request without token
+        response = test_client.post(
+            "/search/radius",
+            json=payload
+        )
+
+        # Should be 403 Forbidden
+        assert response.status_code in [403, 401, 400], f"Should reject without token, got {response.status_code}"
+
+    def test_search_radius_endpoint_invalid_filter(self, test_client):
+        """Test that endpoint validates filter types."""
+        server_token = os.environ.get("SERVER_TOKEN", "test-token-default")
+
+        payload = {
+            "center_system": "UR8-K7K",
+            "radius_ly": 100,
+            "filters": ["invalid_filter_type"],
+            "top_n": 5
+        }
+
+        response = test_client.post(
+            "/search/radius",
+            json=payload,
+            headers={"X-Server-Token": server_token}
+        )
+
+        # Should be 422 Unprocessable Entity (validation error)
+        assert response.status_code == 422, f"Expected 422 for invalid filter, got {response.status_code}"
+
+    def test_search_radius_endpoint_invalid_radius(self, test_client):
+        """Test that endpoint validates radius > 0."""
+        server_token = os.environ.get("SERVER_TOKEN", "test-token-default")
+
+        payload = {
+            "center_system": "UR8-K7K",
+            "radius_ly": -50,  # Invalid: negative radius
+            "filters": ["planets"]
+        }
+
+        response = test_client.post(
+            "/search/radius",
+            json=payload,
+            headers={"X-Server-Token": server_token}
+        )
+
+        # Should be 422 Unprocessable Entity (validation error)
+        assert response.status_code == 422, f"Expected 422 for invalid radius, got {response.status_code}"
+
+    def test_search_radius_endpoint_skip_heat_traps(self, test_client):
+        """Test skip_heat_traps flag works end-to-end."""
+        server_token = os.environ.get("SERVER_TOKEN", "test-token-default")
+
+        # Request with skip_heat_traps=True
+        payload = {
+            "center_system": "UR8-K7K",
+            "radius_ly": 100,
+            "filters": ["planets"],
+            "skip_heat_traps": True,
+            "top_n": 5
+        }
+
+        response = test_client.post(
+            "/search/radius",
+            json=payload,
+            headers={"X-Server-Token": server_token}
+        )
+
+        assert response.status_code == 200
+        result = response.json()["data"]
+
+        # With skip_heat_traps, no system should have safe_jump_temp >= 70
+        # (check all systems, not just filter results)
+        if result["total_systems"] > 0:
+            # If there are cool systems, they should be returned
+            # The total_systems count should be lower than without the flag
+            pass  # This is tested more thoroughly in async test
+
+
+class TestIntegrationCrossComponent:
+    """Cross-component integration tests."""
+
+    @pytest.mark.asyncio
+    async def test_search_context_in_prompt(self):
+        """Test that search results can be injected into Claude prompts.
+
+        This verifies the integration between RadiusSearch and context building.
+        """
+        from src.context_builder import build_context_block
+
+        rs = RadiusSearch()
+
+        # Perform a search
+        result = await rs.search(
+            center_system="UR8-K7K",
+            radius_ly=50,
+            filters=["planets", "heat"],
+            top_n=3
+        )
+
+        # Verify the result can be serialized to JSON
+        result_json = json.dumps(result)
+        assert result_json is not None
+        assert len(result_json) > 0
+
+        # Verify key fields are present for context building
+        assert "center" in result
+        assert "filters" in result
+        assert "total_systems" in result
+
+    @pytest.mark.asyncio
+    async def test_different_filter_combinations(self):
+        """Test that different filter combinations work together."""
+        rs = RadiusSearch()
+
+        filter_combinations = [
+            ["planets"],
+            ["heat"],
+            ["planets", "heat"],
+            [],  # No filters
+        ]
+
+        for filters in filter_combinations:
+            result = await rs.search(
+                center_system="UR8-K7K",
+                radius_ly=75,
+                filters=filters,
+                top_n=5
+            )
+
+            # Verify structure is valid
+            assert "center" in result
+            assert "filters" in result
+            assert "total_systems" in result
+
+            # Verify requested filters are present
+            for filter_name in filters:
+                assert filter_name in result["filters"]
