@@ -126,44 +126,6 @@ class RouteEngine:
             return f"{self._name(sid)} is null-sec"
         return None
 
-    def classify_heat(self, system: dict) -> str:
-        """Classify system heat level based on safe_jump_temp.
-
-        Returns one of: "cool" (< 70°), "warm" (70–89°), or "hot" (>= 90°).
-        """
-        temp = system.get("safe_jump_temp", 0)
-        if temp is None:
-            temp = 0
-
-        if temp < 70:
-            return "cool"
-        elif temp < 90:
-            return "warm"
-        else:
-            return "hot"
-
-    def count_planets(self, system: dict) -> int:
-        """Count planets from planet_ids list.
-
-        Returns the number of planets in the system. Handles missing or None
-        planet_ids gracefully, defaulting to 0.
-        """
-        planet_ids = system.get("planet_ids", None)
-        if planet_ids is None:
-            return 0
-        return len(planet_ids)
-
-    def is_heat_trap(self, system: dict) -> bool:
-        """Flag warm/hot systems (safe_jump_temp >= 70°).
-
-        Returns True if system is warm (>= 70°) or hot (>= 90°).
-        Returns False for cool systems.
-        """
-        temp = system.get("safe_jump_temp", 0)
-        if temp is None:
-            temp = 0
-        return temp >= 70.0
-
     def _node_range_ly(self, sid: str, profile: ShipProfile) -> float:
         """Compute direct-jump range (LY) from a given system node.
 

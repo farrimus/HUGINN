@@ -152,6 +152,34 @@ class RadiusSearch:
 
         return distance_ly
 
+    def classify_heat(self, system: dict) -> str:
+        """
+        Classify a system by temperature.
+
+        Returns: "cool" (< 70°), "warm" (70–89°), or "hot" (>= 90°)
+        """
+        temp = system.get("safe_jump_temp", 0)
+        if temp is None:
+            temp = 0
+        if temp >= 90:
+            return "hot"
+        elif temp >= 70:
+            return "warm"
+        else:
+            return "cool"
+
+    def count_planets(self, system: dict) -> int:
+        """Count planets in a system from planet_ids."""
+        planet_ids = system.get("planet_ids", [])
+        return len(planet_ids) if planet_ids else 0
+
+    def is_heat_trap(self, system: dict) -> bool:
+        """Return True if system is warm (>= 70°) or hot (>= 90°)."""
+        temp = system.get("safe_jump_temp", 0)
+        if temp is None:
+            temp = 0
+        return temp >= 70
+
     def find_systems_within_radius(
         self, center_name: str, radius_ly: float
     ) -> List[dict]:
