@@ -33,10 +33,8 @@ class TokenStore:
                 from dpapi_wrapper import encrypt_data
                 encrypted_token = encrypt_data(token)
                 data["access_token"] = encrypted_token
-            except ImportError:
-                # DPAPI not available, warn user
-                print("WARNING: DPAPI not available. Token stored unencrypted.")
-                data["encrypted"] = False
+            except (ImportError, RuntimeError) as e:
+                raise RuntimeError(f"Failed to encrypt token on Windows: {e}")
 
         with open(self.token_file, "w") as f:
             json.dump(data, f)

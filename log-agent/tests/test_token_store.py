@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import json
 import tempfile
 
 # Add parent directory to path for imports
@@ -19,13 +20,28 @@ def test_token_store_saves_and_loads():
         loaded_token = store.get_token()
 
         assert loaded_token == test_token
+        # On Windows, token should be encrypted
+        if sys.platform == "win32":
+            with open(store.token_file) as f:
+                data = json.load(f)
+                assert data.get("encrypted") == True
 
 
 def test_token_store_encrypts_on_windows():
-    """Token store uses Windows DPAPI for encryption."""
-    # Mock test (DPAPI only works on Windows)
-    # On non-Windows, falls back to file-based storage
-    pass
+    """Token store uses Windows DPAPI for encryption flag."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        store = TokenStore(storage_dir=tmpdir)
+        test_token = "test_token_data"
+
+        store.save_token(test_token)
+
+        # Check the encrypted flag in stored file
+        with open(store.token_file) as f:
+            data = json.load(f)
+            if sys.platform == "win32":
+                assert data.get("encrypted") == True
+            else:
+                assert data.get("encrypted") == False
 
 
 def test_token_store_raises_on_corrupted_file():
