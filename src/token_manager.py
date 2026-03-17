@@ -1,4 +1,5 @@
 import os
+import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
@@ -24,16 +25,48 @@ class TokenManager:
         self.private_key_path = self.key_dir / "private_key.pem"
         self.public_key_path = self.key_dir / "public_key.pem"
 
+        # Get encryption password from environment or derive from key directory
+        self._encryption_password = self._get_encryption_password()
+
         # Load or generate keys
         self.private_key = self._load_or_generate_private_key()
         self.public_key = self.private_key.public_key()
+
+    def _get_encryption_password(self) -> bytes:
+        """
+        Get encryption password for private key.
+
+        First checks TOKEN_KEY_PASSWORD environment variable.
+        If not set, derives a password from the key directory path.
+
+        Returns:
+            bytes: Password for key encryption (always 32 bytes)
+        """
+        env_password = os.environ.get("TOKEN_KEY_PASSWORD")
+        if env_password:
+            # Ensure it's 32 bytes (SHA-256 digest size)
+            return hashlib.sha256(env_password.encode()).digest()
+        else:
+            # Fallback: derive from key directory path
+            return hashlib.sha256(str(self.key_dir).encode()).digest()
 
     def _load_or_generate_private_key(self):
         """Load private key from file or generate a new one."""
         if self.private_key_path.exists():
             with open(self.private_key_path, "rb") as f:
+                key_data = f.read()
+
+            # Try to load with password first, then without (backward compatibility)
+            try:
                 private_key = serialization.load_pem_private_key(
-                    f.read(),
+                    key_data,
+                    password=self._encryption_password,
+                    backend=default_backend()
+                )
+            except TypeError:
+                # Key is not encrypted, try without password
+                private_key = serialization.load_pem_private_key(
+                    key_data,
                     password=None,
                     backend=default_backend()
                 )
@@ -45,15 +78,16 @@ class TokenManager:
                 key_size=2048,
                 backend=default_backend()
             )
-            # Save private key to file
+            # Save private key to file with encryption
+            private_pem = private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.BestAvailableEncryption(self._encryption_password)
+            )
             with open(self.private_key_path, "wb") as f:
-                f.write(
-                    private_key.private_bytes(
-                        encoding=serialization.Encoding.PEM,
-                        format=serialization.PrivateFormat.PKCS8,
-                        encryption_algorithm=serialization.NoEncryption()
-                    )
-                )
+                f.write(private_pem)
+            # Restrict file permissions to owner only (read/write)
+            os.chmod(self.private_key_path, 0o600)
             return private_key
 
     def issue_token(self, agent_id: str, scope: str = "log-ingest", lifetime_hours: int = 24) -> str:
