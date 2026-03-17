@@ -22,6 +22,7 @@ from src.ship_profile import (
     ShipProfile, FUEL_QUALITY, FUEL_CATEGORY, SHIPS, load_profile, save_profile
 )
 from src.structure_auth import nonce_store, verify_sui_personal_message, issue_jwt, decode_jwt, lookup_character
+from src.deal_store import deal_store, DEAL_MESSAGES_DEFAULT, DEAL_DURATION_HOURS_DEFAULT
 from src.structure_profile import StructureProfile, load_profile as load_structure_profile, save_profile as save_structure_profile
 from src.structure_client import structure_client, lobby_client, build_structure_context, detect_alerts
 from src.nova_client import nova_client
@@ -355,6 +356,20 @@ class VerifyRequest(BaseModel):
     nonce: str
     structure_id: str
     nova_registry_object_id: Optional[str] = None  # required on first owner auth
+
+
+class DealOfferRequest(BaseModel):
+    structure_id: str
+    address: str
+
+
+class DealClaimRequest(BaseModel):
+    nonce: str
+    address: str
+    structure_id: str
+    signature: str
+    payment_method: str          # "item" | "sui" | "info"
+    proof: dict = {}             # payment_method-specific evidence
 
 class StructureChatRequest(BaseModel):
     message: str
@@ -855,6 +870,25 @@ async def auth_verify(req: VerifyRequest):
                         log.warning("Profile backfill save failed: %s", e)
 
     return {"token": token, "tier": tier, "character_name": character_name, "character_id": character_id}
+
+
+@app.post("/auth/deal/offer")
+async def deal_offer(req: DealOfferRequest):
+    """
+    Issue a nonce and return deal terms for PATRON access.
+    No auth required — public endpoint for strangers.
+    """
+    nonce = nonce_store.issue()
+    return {
+        "nonce": nonce,
+        "structure_id": req.structure_id,
+        "expires_in_seconds": 300,
+        "terms": {
+            "messages": DEAL_MESSAGES_DEFAULT,
+            "duration_hours": DEAL_DURATION_HOURS_DEFAULT,
+            "payment_options": ["item", "sui", "info"],
+        },
+    }
 
 
 @app.get("/structure/{structure_id}")
