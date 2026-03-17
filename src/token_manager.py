@@ -1,8 +1,11 @@
 import os
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
+import jwt
 
 
 class TokenManager:
@@ -52,3 +55,23 @@ class TokenManager:
                     )
                 )
             return private_key
+
+    def issue_token(self, agent_id: str, scope: str = "log-ingest", lifetime_hours: int = 24) -> str:
+        """Issue a new JWT token for an agent."""
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": agent_id,
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(hours=lifetime_hours)).timestamp()),
+            "scope": scope,
+        }
+        token = jwt.encode(payload, self.private_key, algorithm="RS256")
+        return token
+
+    def validate_token(self, token: str) -> Optional[Dict]:
+        """Validate a JWT token and return payload if valid."""
+        try:
+            payload = jwt.decode(token, self.public_key, algorithms=["RS256"])
+            return payload
+        except jwt.InvalidTokenError:
+            return None
