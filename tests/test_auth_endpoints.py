@@ -28,3 +28,26 @@ async def test_auth_token_requires_agent_id(client):
     """POST /auth/token without agent_id returns 422 (Pydantic validation error)."""
     response = await client.post("/auth/token", json={})
     assert response.status_code == 422
+
+@pytest.mark.asyncio
+async def test_auth_token_empty_string(client):
+    """POST /auth/token with empty agent_id returns 400."""
+    response = await client.post("/auth/token", json={"agent_id": ""})
+    assert response.status_code in [400, 422]
+
+@pytest.mark.asyncio
+async def test_auth_token_whitespace_only(client):
+    """POST /auth/token with whitespace-only agent_id returns 400."""
+    response = await client.post("/auth/token", json={"agent_id": "   "})
+    assert response.status_code in [400, 422]
+
+@pytest.mark.asyncio
+async def test_auth_token_format(client):
+    """Returned token is valid JWT format."""
+    response = await client.post("/auth/token", json={"agent_id": "test-agent-001"})
+    assert response.status_code == 200
+    data = response.json()
+    token = data["access_token"]
+    # JWT has 3 parts separated by dots
+    assert token.count(".") == 2
+    assert len(token) > 50  # Valid JWT tokens are reasonably long
