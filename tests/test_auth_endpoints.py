@@ -2,6 +2,7 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from main import app
 from src.token_manager import TokenManager
+from src.endpoints.auth import token_manager
 import tempfile
 import os
 
@@ -10,6 +11,11 @@ async def client():
     """Create async test client."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as _client:
         yield _client
+
+@pytest.fixture
+def tm():
+    """Get the initialized token_manager from the auth module."""
+    return token_manager
 
 @pytest.mark.asyncio
 async def test_auth_token_endpoint(client):
@@ -51,3 +57,36 @@ async def test_auth_token_format(client):
     # JWT has 3 parts separated by dots
     assert token.count(".") == 2
     assert len(token) > 50  # Valid JWT tokens are reasonably long
+
+@pytest.mark.asyncio
+async def test_protected_endpoint_requires_valid_token(client):
+    """Protected endpoints reject requests without valid token."""
+    # Request without token - HTTPBearer returns 403 for missing credentials
+    response = await client.post(
+        "/log/ingest",
+        json={"type": "test"}
+    )
+    assert response.status_code in [401, 403]
+
+    # Request with invalid token - our validate_token returns 401
+    response = await client.post(
+        "/log/ingest",
+        json={"type": "test"},
+        headers={"Authorization": "Bearer invalid_token"}
+    )
+    assert response.status_code == 401
+
+@pytest.mark.asyncio
+async def test_protected_endpoint_accepts_valid_token(client, tm):
+    """Protected endpoints accept requests with valid token."""
+    # Use the initialized token_manager from the auth module
+    token = tm.issue_token("test-agent-001")
+
+    # Request with valid token to /log/ingest
+    response = await client.post(
+        "/log/ingest",
+        json={"type": "test"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    # Should NOT be 401 (auth passed; may fail on other validation)
+    assert response.status_code != 401

@@ -29,7 +29,7 @@ from src.structure_client import structure_client, lobby_client, build_structure
 from src.nova_client import nova_client
 from src.location_index import location_index
 from src.token_manager import TokenManager
-from src.endpoints.auth import auth_router, init_auth
+from src.endpoints.auth import auth_router, init_auth, validate_token
 
 log = logging.getLogger(__name__)
 
@@ -352,8 +352,8 @@ class LogEvent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str
 
-@app.post("/log/ingest", dependencies=[Depends(require_token)])
-async def ingest_log(event: LogEvent):
+@app.post("/log/ingest")
+async def ingest_log(event: LogEvent, token_payload = Depends(validate_token)):
     data = event.model_dump()
     if data.get("in_progress"):
         log_buffer.set_live([data])

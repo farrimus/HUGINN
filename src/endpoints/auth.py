@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from src.token_manager import TokenManager
 
@@ -41,3 +42,23 @@ async def issue_token(req: TokenRequest) -> TokenResponse:
         token_type="Bearer",
         expires_in=86400  # 24 hours in seconds
     )
+
+
+security = HTTPBearer()
+
+async def validate_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Validate JWT token from Authorization header.
+
+    Returns the token payload if valid, raises HTTPException(401) if invalid.
+    """
+    token = credentials.credentials
+    payload = token_manager.validate_token(token)
+
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return payload
