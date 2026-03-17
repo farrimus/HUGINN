@@ -1132,8 +1132,16 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
     if session["structure_id"] != req.structure_id:
         raise HTTPException(status_code=403, detail="Token not valid for this structure")
     tier = session["tier"]
-    if tier == "NONE":
-        raise HTTPException(status_code=403, detail="Access denied")
+
+    # PATRON: consume one message token before any expensive work.
+    # DealStore enforces both messages_remaining and expires_at.
+    if tier == "PATRON":
+        if not deal_store.consume_message(session["address"], req.structure_id):
+            raise HTTPException(
+                status_code=402,
+                detail="Deal exhausted or expired. Visit /auth/deal/offer to make a new deal.",
+            )
+    # NONE falls through — routed to lobby_client in event_stream below.
 
     profile = load_structure_profile(req.structure_id)
     if not profile:
@@ -1184,7 +1192,7 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
     def event_stream():
         yield ": keep-alive\n\n"
         try:
-            if tier == "VETTED":
+            if tier in ("VETTED", "NONE"):
                 gen = lobby_client.stream(
                     message=req.message,
                     history=req.history,

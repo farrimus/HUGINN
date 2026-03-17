@@ -165,3 +165,93 @@ def test_deal_claim_rejects_unknown_payment_method(client):
             "proof": {},
         })
     assert resp.status_code == 400
+
+
+def test_structure_chat_patron_consumes_message(client):
+    """PATRON tier: deal_store.consume_message called before streaming."""
+    import jwt as pyjwt, datetime
+    from unittest.mock import patch, MagicMock
+    from src.structure_auth import JWT_SECRET as secret
+
+    token = pyjwt.encode({
+        "address": "0xpatron",
+        "character_id": 0,
+        "character_name": "Stranger",
+        "tier": "PATRON",
+        "structure_id": "keep-7a",
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+    }, secret, algorithm="HS256")
+
+    mock_profile = MagicMock()
+    mock_profile.system_id = 0
+    mock_profile.routine_alerts = []
+
+    with patch("main.load_structure_profile", return_value=mock_profile), \
+         patch("main.detect_alerts", return_value=[]), \
+         patch("src.memory_store.get_memory_store", return_value=MagicMock(get_summary=lambda: {"text": ""})), \
+         patch("main.build_structure_context", return_value="ctx"), \
+         patch("main.deal_store.consume_message", return_value=True) as mock_consume, \
+         patch("main.structure_client.stream", return_value=iter(["hello"])):
+        resp = client.post(
+            "/structure-chat",
+            json={"structure_id": "keep-7a", "message": "hi", "history": []},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 200
+    mock_consume.assert_called_once_with("0xpatron", "keep-7a")
+
+
+def test_structure_chat_patron_exhausted_returns_402(client):
+    import jwt as pyjwt, datetime
+    from unittest.mock import patch, MagicMock
+    from src.structure_auth import JWT_SECRET as secret
+
+    token = pyjwt.encode({
+        "address": "0xpatron",
+        "character_id": 0,
+        "character_name": "Stranger",
+        "tier": "PATRON",
+        "structure_id": "keep-7a",
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+    }, secret, algorithm="HS256")
+
+    with patch("main.deal_store.consume_message", return_value=False):
+        resp = client.post(
+            "/structure-chat",
+            json={"structure_id": "keep-7a", "message": "hi", "history": []},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 402
+
+
+def test_structure_chat_none_tier_goes_to_lobby(client):
+    """NONE tier is routed to lobby_client, not 403."""
+    import jwt as pyjwt, datetime
+    from unittest.mock import patch, MagicMock
+    from src.structure_auth import JWT_SECRET as secret
+
+    token = pyjwt.encode({
+        "address": "0xstranger",
+        "character_id": 0,
+        "character_name": "Stranger",
+        "tier": "NONE",
+        "structure_id": "keep-7a",
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+    }, secret, algorithm="HS256")
+
+    mock_profile = MagicMock()
+    mock_profile.system_id = 0
+    mock_profile.routine_alerts = []
+
+    with patch("main.load_structure_profile", return_value=mock_profile), \
+         patch("main.detect_alerts", return_value=[]), \
+         patch("src.memory_store.get_memory_store", return_value=MagicMock(get_summary=lambda: {"text": ""})), \
+         patch("main.build_structure_context", return_value="ctx"), \
+         patch("main.lobby_client.stream", return_value=iter(["welcome"])) as mock_lobby:
+        resp = client.post(
+            "/structure-chat",
+            json={"structure_id": "keep-7a", "message": "hi", "history": []},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 200
+    mock_lobby.assert_called_once()
