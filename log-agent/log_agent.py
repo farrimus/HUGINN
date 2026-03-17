@@ -1,5 +1,6 @@
 # log-agent/log_agent.py
 import os
+import sys
 import time
 import threading
 import logging
@@ -8,6 +9,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from parsers import parse_gamelog_line, parse_chatlog_line
 from session_tracker import SessionTracker
+from auth_flow import AuthFlow
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,9 +19,13 @@ log = logging.getLogger(__name__)
 
 SERVER_URL   = os.getenv("SERVER_URL", "http://localhost:8745")
 SERVER_TOKEN = os.getenv("SERVER_TOKEN", "")
+AGENT_ID     = os.getenv("AGENT_ID", "log-agent-001")
 LOG_BASE     = os.getenv("LOG_BASE_PATH", "")
 GAMELOG_DIR  = os.path.join(LOG_BASE, "Gamelogs")
 CHATLOG_DIR  = os.path.join(LOG_BASE, "Chatlogs")
+
+# Initialize auth flow (will acquire token on first use)
+auth_flow = None
 
 
 def validate_paths():
@@ -30,7 +36,18 @@ def validate_paths():
 
 
 def send_event(event: dict):
-    headers = {"X-Server-Token": SERVER_TOKEN} if SERVER_TOKEN else {}
+    """Send event to server with Bearer token authentication."""
+    headers = {}
+    if auth_flow:
+        try:
+            token = auth_flow.get_token()
+            headers["Authorization"] = f"Bearer {token}"
+        except Exception as e:
+            log.warning("Failed to get token: %s", e)
+            return
+    elif SERVER_TOKEN:
+        headers["X-Server-Token"] = SERVER_TOKEN
+
     try:
         requests.post(f"{SERVER_URL}/log/ingest", json=event, headers=headers, timeout=5)
         log.info(">> %s", event)
@@ -221,7 +238,17 @@ class LogFileHandler(FileSystemEventHandler):
                             dest = _parse_route_command(out_event["message"])
                             origin = self.tracker.current_system
                             if dest and origin:
-                                headers = {"X-Server-Token": SERVER_TOKEN} if SERVER_TOKEN else {}
+                                headers = {}
+                                if auth_flow:
+                                    try:
+                                        token = auth_flow.get_token()
+                                        headers["Authorization"] = f"Bearer {token}"
+                                    except Exception as e:
+                                        log.warning("Failed to get token for route request: %s", e)
+                                        headers = {}
+                                elif SERVER_TOKEN:
+                                    headers["X-Server-Token"] = SERVER_TOKEN
+
                                 try:
                                     requests.post(
                                         f"{SERVER_URL}/route",
@@ -351,6 +378,17 @@ class HeartbeatEmitter(threading.Thread):
 
 if __name__ == "__main__":
     validate_paths()
+
+    # Initialize authentication flow
+    auth_flow = AuthFlow(SERVER_URL, AGENT_ID)
+    log.info("Authenticating as %s...", AGENT_ID)
+    try:
+        token = auth_flow.get_token()
+        log.info("Authentication successful")
+    except Exception as e:
+        log.error("Authentication failed: %s", e)
+        sys.exit(1)
+
     log.info("Watching %s and %s", GAMELOG_DIR, CHATLOG_DIR)
 
     # Initialize radius calculator

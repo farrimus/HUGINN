@@ -1,73 +1,91 @@
-"""Tests for token-protected endpoint validation."""
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock, MagicMock
-import jwt as pyjwt
-import datetime
-
-
-@pytest.fixture
-def client():
-    """FastAPI test client with mocked background tasks."""
-    from main import app
-    with patch("main.world_api.load_or_build_index", new_callable=AsyncMock), \
-         patch("src.ssu_poller.start_background_tasks"):
-        with TestClient(app) as c:
-            yield c
-
+from httpx import AsyncClient, ASGITransport
+from main import app
+from src.token_manager import TokenManager
+from src.endpoints.auth import token_manager
+import tempfile
+import os
 
 @pytest.fixture
-def token_manager():
-    """Mock TokenManager for issuing test tokens."""
-    from src.structure_auth import JWT_SECRET as secret
+async def client():
+    """Create async test client."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as _client:
+        yield _client
 
-    class MockTokenManager:
-        def issue_token(self, agent_id: str) -> str:
-            """Issue a JWT token for the given agent ID."""
-            payload = {
-                "sub": agent_id,
-                "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24),
-            }
-            return pyjwt.encode(payload, secret, algorithm="HS256")
+@pytest.fixture
+def tm():
+    """Get the initialized token_manager from the auth module."""
+    return token_manager
 
-        def validate_token(self, token: str) -> dict:
-            """Validate a JWT token and return its payload."""
-            try:
-                return pyjwt.decode(token, secret, algorithms=["HS256"])
-            except Exception:
-                return None
+@pytest.mark.asyncio
+async def test_auth_token_endpoint(client):
+    """POST /auth/token with valid agent_id returns JWT token."""
+    response = await client.post("/auth/token", json={"agent_id": "test-agent-001"})
 
-    return MockTokenManager()
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert "token_type" in data
+    assert data["token_type"] == "Bearer"
+    assert "expires_in" in data
 
+@pytest.mark.asyncio
+async def test_auth_token_requires_agent_id(client):
+    """POST /auth/token without agent_id returns 422 (Pydantic validation error)."""
+    response = await client.post("/auth/token", json={})
+    assert response.status_code == 422
 
-def test_protected_endpoint_requires_valid_token(client, token_manager):
+@pytest.mark.asyncio
+async def test_auth_token_empty_string(client):
+    """POST /auth/token with empty agent_id returns 400."""
+    response = await client.post("/auth/token", json={"agent_id": ""})
+    assert response.status_code in [400, 422]
+
+@pytest.mark.asyncio
+async def test_auth_token_whitespace_only(client):
+    """POST /auth/token with whitespace-only agent_id returns 400."""
+    response = await client.post("/auth/token", json={"agent_id": "   "})
+    assert response.status_code in [400, 422]
+
+@pytest.mark.asyncio
+async def test_auth_token_format(client):
+    """Returned token is valid JWT format."""
+    response = await client.post("/auth/token", json={"agent_id": "test-agent-001"})
+    assert response.status_code == 200
+    data = response.json()
+    token = data["access_token"]
+    # JWT has 3 parts separated by dots
+    assert token.count(".") == 2
+    assert len(token) > 50  # Valid JWT tokens are reasonably long
+
+@pytest.mark.asyncio
+async def test_protected_endpoint_requires_valid_token(client):
     """Protected endpoints reject requests without valid token."""
-    # Request without token
-    response = client.post("/log/ingest", json={})
-    assert response.status_code == 401
-
-    # Request with invalid token
-    response = client.post(
+    # Request without token - HTTPBearer returns 403 for missing credentials
+    response = await client.post(
         "/log/ingest",
-        json={},
+        json={"type": "test"}
+    )
+    assert response.status_code in [401, 403]
+
+    # Request with invalid token - our validate_token returns 401
+    response = await client.post(
+        "/log/ingest",
+        json={"type": "test"},
         headers={"Authorization": "Bearer invalid_token"}
     )
     assert response.status_code == 401
 
-
-def test_protected_endpoint_accepts_valid_token(client, token_manager):
+@pytest.mark.asyncio
+async def test_protected_endpoint_accepts_valid_token(client, tm):
     """Protected endpoints accept requests with valid token."""
-    # Issue a valid token
-    token = token_manager.issue_token("test-agent-001")
+    # Use the initialized token_manager from the auth module
+    token = tm.issue_token("test-agent-001")
 
-    # Request with valid token
-    response = client.post(
+    # Request with valid token to /log/ingest
+    response = await client.post(
         "/log/ingest",
-        json={
-            "type": "test",
-            "timestamp": "2026-03-17T00:00:00Z",
-            "data": {}
-        },
+        json={"type": "test"},
         headers={"Authorization": f"Bearer {token}"}
     )
     # Should NOT be 401 (auth passed; may fail on other validation)

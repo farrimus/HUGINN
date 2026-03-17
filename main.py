@@ -31,6 +31,8 @@ from src.structure_client import structure_client, lobby_client, build_structure
 from src.nova_client import nova_client
 from src.location_index import location_index
 from src.radius_search import RadiusSearch
+from src.token_manager import TokenManager
+from src.endpoints.auth import auth_router, init_auth, validate_token
 
 log = logging.getLogger(__name__)
 
@@ -112,6 +114,11 @@ async def lifespan(app):
 
 app = FastAPI(title="Ship AI Companion", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Initialize token manager and auth endpoints
+token_manager = TokenManager(key_dir=".keys")
+init_auth(token_manager)
+app.include_router(auth_router)
 
 @app.get("/health")
 async def health():

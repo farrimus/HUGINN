@@ -239,3 +239,26 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | Context block output format examples | `tests/test_context_builder.py` |
 | Galaxy DB query patterns | `tests/test_galaxy_db.py` |
 | Memory store usage | `tests/test_memory_store.py` |
+
+---
+
+## Token Authentication (Phase 1)
+
+### Architecture
+- Server issues RS256-signed JWT tokens (24-hour lifetime)
+- Log-agent stores token securely and includes in Authorization headers
+- Stateless validation (server validates signature only, no state needed)
+
+### Files
+- `src/token_manager.py` — JWT generation/validation, key management
+- `src/endpoints/auth.py` — `/auth/token` endpoint
+- `src/endpoints/auth.py` — Token validation decorator (validate_token)
+- `log-agent/src/auth_flow.py` — Client-side token acquisition
+- `log-agent/src/token_store.py` — Secure token storage
+
+### Configuration
+- `config/token_config.json` — Token settings (lifetime, algorithm, key directory)
+
+### Next Phases
+- Phase 2: Refresh tokens + revocation list
+- Phase 3: Device approval UI for initial token issuance
