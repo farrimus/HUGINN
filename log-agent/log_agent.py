@@ -87,6 +87,35 @@ def _decode_raw(raw: bytes, encoding: str, strip_bom: bool) -> str:
 # Actual routing is delegated to the server's POST /route (hybrid A* + fuel calc).
 from route_calculator import _parse_command as _parse_route_command
 
+# Radius search — client-side local calculation
+from radius_calculator import init_radius_calculator, search as radius_search
+
+
+def _parse_search_command(message: str) -> tuple[float, list]:
+    """
+    Parse /search command. Syntax: /search <radius_ly> [filters]
+
+    Example: "/search 100 planets,heat"
+
+    Returns:
+        Tuple of (radius_ly, filters_list) or (None, []) if parsing fails
+    """
+    parts = message.split()
+    if len(parts) < 2 or parts[0] != "/search":
+        return None, []
+
+    try:
+        radius_ly = float(parts[1])
+    except (ValueError, IndexError):
+        return None, []
+
+    filters = []
+    if len(parts) > 2:
+        filter_str = parts[2]
+        filters = [f.strip() for f in filter_str.split(",") if f.strip()]
+
+    return radius_ly, filters
+
 
 class LogFileHandler(FileSystemEventHandler):
     def __init__(self, parser_fn, tracker: SessionTracker, inject_channel: bool = False,
@@ -205,6 +234,25 @@ class LogFileHandler(FileSystemEventHandler):
                                     log.warning("Route request failed: %s", e)
                             else:
                                 log.warning("Route command ignored: origin=%r dest=%r", origin, dest)
+                        # Intercept /search commands — client-side radius search
+                        elif (out_event.get("type") == "chat"
+                                and out_event.get("message", "").startswith("/search")):
+                            radius_ly, filters = _parse_search_command(out_event["message"])
+                            origin = self.tracker.current_system
+                            if radius_ly is not None and origin:
+                                try:
+                                    result = radius_search(origin, radius_ly, filters=filters)
+                                    print(f"\n[SEARCH] {result['scan_summary']}")
+                                    if result['filters']:
+                                        for filter_type, filter_data in result['filters'].items():
+                                            print(f"  {filter_type}: {filter_data['count']} systems")
+                                            for sys in filter_data['systems']:
+                                                print(f"    - {sys['name']} ({sys['distance_ly']:.1f} LY)")
+                                    log.info("Radius search: %s radius=%.1f LY filters=%s", origin, radius_ly, filters)
+                                except Exception as e:
+                                    log.warning("Radius search failed: %s", e)
+                            else:
+                                log.warning("Search command ignored: origin=%r radius_ly=%r", origin, radius_ly)
                         else:
                             send_event(out_event)
         except Exception as e:
@@ -304,6 +352,10 @@ class HeartbeatEmitter(threading.Thread):
 if __name__ == "__main__":
     validate_paths()
     log.info("Watching %s and %s", GAMELOG_DIR, CHATLOG_DIR)
+
+    # Initialize radius calculator
+    init_radius_calculator()
+    log.info("Radius calculator initialized")
 
     agent_start = time.time()
     tracker = SessionTracker()
