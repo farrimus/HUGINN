@@ -324,21 +324,256 @@ class RadiusSearch:
 
     async def search(
         self,
-        system_name: str,
+        center_system: str,
         radius_ly: float,
-        heat_threshold: Optional[float] = None,
-        planet_threshold: Optional[int] = None,
-    ) -> List[dict]:
+        filters: Optional[List[str]] = None,
+        killmail_hours: int = 24,
+        top_n: int = 10,
+        skip_heat_traps: bool = False,
+    ) -> dict:
         """
-        Search for structures within radius of a system.
+        Search for systems within a radius and filter by criteria.
 
         Args:
-            system_name: Reference system name
+            center_system: Center system name (e.g., "UR8-K7K")
             radius_ly: Search radius in light-years
-            heat_threshold: Minimum star temperature (optional)
-            planet_threshold: Minimum planet count (optional)
+            filters: List of filter types to apply: ["planets", "killmails", "heat", "structures"]
+            killmail_hours: Killmail lookback period (default 24)
+            top_n: How many results per filter (default 10)
+            skip_heat_traps: If True, exclude warm/hot systems (>= 70°)
 
         Returns:
-            List of matching structures with metadata.
+            Dict with structure:
+            {
+                "center": "UR8-K7K",
+                "radius_ly": 100,
+                "total_systems": 156,
+                "scan_summary": "156 systems within 100 LY",
+                "filters": {
+                    "planets": { "count": 10, "systems": [...] },
+                    "killmails": { "count": 3, "systems": [...] },
+                    "heat": { "count": 5, "systems": [...] },
+                    "structures": { "count": 2, "systems": [...] }
+                }
+            }
         """
-        raise NotImplementedError("Feature not yet implemented")
+        filters = filters or []
+
+        # Find all systems within radius
+        all_systems = self.find_systems_within_radius(center_system, radius_ly)
+
+        if not all_systems:
+            return {
+                "center": center_system,
+                "radius_ly": radius_ly,
+                "total_systems": 0,
+                "scan_summary": f"0 systems within {radius_ly} LY",
+                "filters": {}
+            }
+
+        # Apply skip_heat_traps if requested
+        if skip_heat_traps:
+            all_systems = [s for s in all_systems if not self.is_heat_trap(s)]
+
+        result = {
+            "center": center_system,
+            "radius_ly": radius_ly,
+            "total_systems": len(all_systems),
+            "scan_summary": f"{len(all_systems)} systems within {radius_ly} LY",
+            "filters": {}
+        }
+
+        # Thresholding: if < 20 systems, return all; otherwise limit to top N per filter
+        threshold = 20
+        effective_top_n = len(all_systems) if len(all_systems) < threshold else top_n
+
+        # Apply filters
+        for filter_type in filters:
+            if filter_type == "planets":
+                result["filters"]["planets"] = self._filter_planets(all_systems, effective_top_n)
+
+            elif filter_type == "killmails":
+                # Async call
+                result["filters"]["killmails"] = await self._filter_killmails(all_systems, effective_top_n, killmail_hours)
+
+            elif filter_type == "heat":
+                result["filters"]["heat"] = self._filter_heat(all_systems, effective_top_n)
+
+            elif filter_type == "structures":
+                # Structures are only included if requested
+                result["filters"]["structures"] = self._filter_structures(all_systems, effective_top_n)
+
+        return result
+
+    def _filter_planets(self, systems: List[dict], top_n: int) -> dict:
+        """
+        Filter systems by planet count (highest first).
+
+        Args:
+            systems: List of systems to filter
+            top_n: Maximum number of systems to return
+
+        Returns:
+            Dict with "count" and "systems" keys
+        """
+        systems_with_planets = [
+            {
+                **sys,
+                "planets": self.count_planets(sys)
+            }
+            for sys in systems
+        ]
+
+        # Sort by planet count descending
+        sorted_sys = sorted(systems_with_planets, key=lambda s: s["planets"], reverse=True)
+
+        return {
+            "count": len([s for s in systems_with_planets if s["planets"] > 0]),
+            "systems": [
+                {
+                    "name": s["name"],
+                    "distance_ly": s["distance_ly"],
+                    "planets": s["planets"],
+                    "safe_jump_temp": s.get("safe_jump_temp", 0)
+                }
+                for s in sorted_sys[:top_n]
+            ]
+        }
+
+    async def _filter_killmails(self, systems: List[dict], top_n: int, hours: int) -> dict:
+        """
+        Filter systems by recent killmails (most kills first).
+
+        Args:
+            systems: List of systems to filter
+            top_n: Maximum number of systems to return
+            hours: Lookback window in hours
+
+        Returns:
+            Dict with "count" and "systems" keys
+        """
+        systems_with_kills = []
+
+        for sys in systems:
+            sys_id = sys.get("id")
+            if not sys_id:
+                continue
+
+            killmails = await self.get_killmails_for_system(sys_id, hours=hours)
+            if killmails:
+                most_recent_ts = self.get_most_recent_killmail_timestamp(killmails)
+                systems_with_kills.append({
+                    "system": sys,
+                    "kill_count": len(killmails),
+                    "most_recent_ts": most_recent_ts
+                })
+
+        # Sort by kill count descending
+        sorted_sys = sorted(systems_with_kills, key=lambda s: s["kill_count"], reverse=True)
+
+        return {
+            "count": len(systems_with_kills),
+            "systems": [
+                {
+                    "name": s["system"]["name"],
+                    "distance_ly": s["system"]["distance_ly"],
+                    "kills": s["kill_count"],
+                    "most_recent_kill_hours_ago": self._hours_since(s["most_recent_ts"])
+                }
+                for s in sorted_sys[:top_n]
+            ]
+        }
+
+    def _filter_heat(self, systems: List[dict], top_n: int) -> dict:
+        """
+        Filter systems by heat level (warm/hot systems only).
+
+        Args:
+            systems: List of systems to filter
+            top_n: Maximum number of systems to return
+
+        Returns:
+            Dict with "count" and "systems" keys
+        """
+        heat_trap_systems = [
+            {
+                **sys,
+                "heat_class": self.classify_heat(sys)
+            }
+            for sys in systems if self.is_heat_trap(sys)
+        ]
+
+        # Sort by temp descending (hottest first)
+        sorted_sys = sorted(heat_trap_systems, key=lambda s: s.get("safe_jump_temp", 0), reverse=True)
+
+        return {
+            "count": len(heat_trap_systems),
+            "systems": [
+                {
+                    "name": s["name"],
+                    "distance_ly": s["distance_ly"],
+                    "safe_jump_temp": s.get("safe_jump_temp", 0),
+                    "heat_class": s["heat_class"]
+                }
+                for s in sorted_sys[:top_n]
+            ]
+        }
+
+    def _filter_structures(self, systems: List[dict], top_n: int) -> dict:
+        """
+        Filter systems that have recorded structures.
+
+        Args:
+            systems: List of systems to filter
+            top_n: Maximum number of systems to return
+
+        Returns:
+            Dict with "count" and "systems" keys
+        """
+        systems_with_structures = []
+
+        for sys in systems:
+            sys_name = sys.get("name", "")
+            structures_in_sys = [
+                {
+                    "structure_id": struct_id,
+                    **struct_data
+                }
+                for struct_id, struct_data in self.structure_locations.items()
+                if struct_data.get("system_name", "").upper() == sys_name.upper()
+            ]
+
+            if structures_in_sys:
+                systems_with_structures.append({
+                    "system": sys,
+                    "structures": structures_in_sys
+                })
+
+        # Sort by distance ascending (closest first)
+        sorted_sys = sorted(systems_with_structures, key=lambda s: s["system"]["distance_ly"])
+
+        return {
+            "count": len(systems_with_structures),
+            "systems": [
+                {
+                    "name": s["system"]["name"],
+                    "distance_ly": s["system"]["distance_ly"],
+                    "structures": s["structures"]
+                }
+                for s in sorted_sys[:top_n]
+            ]
+        }
+
+    def _hours_since(self, timestamp: Optional[float]) -> Optional[float]:
+        """
+        Return hours elapsed since timestamp.
+
+        Args:
+            timestamp: Unix timestamp (seconds)
+
+        Returns:
+            Hours elapsed, rounded to 1 decimal place, or None if timestamp is None/0
+        """
+        if not timestamp:
+            return None
+        return round((time.time() - timestamp) / 3600, 1)

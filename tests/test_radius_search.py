@@ -885,3 +885,342 @@ class TestGetKillmailsForSystem:
         # 30-hour window should include all
         result = await searcher.get_killmails_for_system(30000142, hours=30)
         assert len(result) == 3
+
+
+class TestMainSearchMethod:
+    """Test the main async search() method."""
+
+    @pytest.mark.asyncio
+    async def test_search_basic(self):
+        """Test the main search() method basic response structure."""
+        searcher = RadiusSearch()
+
+        result = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["planets"],
+            top_n=5
+        )
+
+        # Verify response structure
+        assert isinstance(result, dict)
+        assert "center" in result
+        assert "radius_ly" in result
+        assert "total_systems" in result
+        assert "scan_summary" in result
+        assert "filters" in result
+        assert result["center"] == "UR8-K7K"
+        assert result["radius_ly"] == 100
+
+    @pytest.mark.asyncio
+    async def test_search_no_systems_found(self):
+        """Test search with non-existent center system."""
+        searcher = RadiusSearch()
+
+        result = await searcher.search(
+            center_system="NONEXISTENT-SYSTEM-XYZ",
+            radius_ly=100,
+            filters=["planets"]
+        )
+
+        assert result["total_systems"] == 0
+        assert result["filters"] == {}
+
+    @pytest.mark.asyncio
+    async def test_search_planets_filter(self):
+        """Test search with planets filter."""
+        searcher = RadiusSearch()
+
+        result = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["planets"],
+            top_n=3
+        )
+
+        planets_filter = result["filters"].get("planets", {})
+        assert "systems" in planets_filter
+        assert "count" in planets_filter
+
+        # Systems should be sorted by planet count (descending)
+        systems = planets_filter["systems"]
+        if len(systems) >= 2:
+            assert systems[0]["planets"] >= systems[1]["planets"]
+
+        # Check structure of returned systems
+        for sys in systems:
+            assert "name" in sys
+            assert "distance_ly" in sys
+            assert "planets" in sys
+            assert "safe_jump_temp" in sys
+
+    @pytest.mark.asyncio
+    async def test_search_heat_filter(self):
+        """Test search with heat filter."""
+        searcher = RadiusSearch()
+
+        result = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["heat"],
+            top_n=10
+        )
+
+        heat_filter = result["filters"].get("heat", {})
+        assert "systems" in heat_filter
+        assert "count" in heat_filter
+
+        # All heat-trap systems should have safe_jump_temp >= 70
+        for sys in heat_filter["systems"]:
+            assert sys.get("safe_jump_temp", 0) >= 70
+            assert "heat_class" in sys
+
+    @pytest.mark.asyncio
+    async def test_search_skip_heat_traps(self):
+        """Test search with skip_heat_traps flag."""
+        searcher = RadiusSearch()
+
+        # First get results without filtering
+        result_all = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["heat"],
+            skip_heat_traps=False
+        )
+
+        # Then get with skipping heat traps
+        result_cool = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["heat"],
+            skip_heat_traps=True
+        )
+
+        # When skip_heat_traps=True, heat filter should be empty (no heat traps to find)
+        heat_systems = result_cool["filters"].get("heat", {}).get("systems", [])
+        assert len(heat_systems) == 0
+
+    @pytest.mark.asyncio
+    async def test_search_multiple_filters(self):
+        """Test search with multiple filters applied."""
+        searcher = RadiusSearch()
+
+        result = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["planets", "heat"],
+            top_n=5
+        )
+
+        assert "planets" in result["filters"] or "heat" in result["filters"]
+
+    @pytest.mark.asyncio
+    async def test_search_empty_filters_list(self):
+        """Test search with empty filters list."""
+        searcher = RadiusSearch()
+
+        result = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=[],
+            top_n=5
+        )
+
+        assert result["filters"] == {}
+        assert result["total_systems"] > 0
+
+    @pytest.mark.asyncio
+    async def test_search_default_parameters(self):
+        """Test search with default parameters."""
+        searcher = RadiusSearch()
+
+        result = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=50
+        )
+
+        assert "center" in result
+        assert "radius_ly" in result
+        assert result["radius_ly"] == 50
+
+    @pytest.mark.asyncio
+    async def test_search_with_killmails_filter(self):
+        """Test search with killmails filter."""
+        searcher = RadiusSearch()
+        mock_api = AsyncMock()
+        now = time.time()
+
+        # Mock the API to return killmails
+        async def mock_get_killmails(system_id):
+            return [
+                {"kill_id": 1, "timestamp": now - 1000},
+                {"kill_id": 2, "timestamp": now - 2000},
+            ]
+
+        mock_api.get_killmails = mock_get_killmails
+        searcher.world_api_client = mock_api
+
+        result = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["killmails"],
+            killmail_hours=24,
+            top_n=5
+        )
+
+        killmails_filter = result["filters"].get("killmails", {})
+        assert "systems" in killmails_filter or "count" in killmails_filter
+
+    @pytest.mark.asyncio
+    async def test_search_response_scan_summary(self):
+        """Test that scan_summary is properly formatted."""
+        searcher = RadiusSearch()
+
+        result = await searcher.search(
+            center_system="UR8-K7K",
+            radius_ly=100,
+            filters=["planets"]
+        )
+
+        assert "scan_summary" in result
+        assert "systems within" in result["scan_summary"]
+        assert str(result["total_systems"]) in result["scan_summary"]
+
+
+class TestSearchFilterHelpers:
+    """Test the filter helper methods directly."""
+
+    def test_filter_planets_sorting(self):
+        """Test _filter_planets sorts by planet count descending."""
+        searcher = RadiusSearch()
+        systems = [
+            {"name": "SYS1", "distance_ly": 10.0, "planet_ids": [1, 2, 3]},
+            {"name": "SYS2", "distance_ly": 20.0, "planet_ids": [1]},
+            {"name": "SYS3", "distance_ly": 5.0, "planet_ids": [1, 2, 3, 4, 5]},
+            {"name": "SYS4", "distance_ly": 15.0, "planet_ids": []},
+        ]
+
+        result = searcher._filter_planets(systems, top_n=3)
+
+        assert result["count"] == 3  # Only systems with planets
+        assert len(result["systems"]) <= 3
+        # Verify sorting by planet count descending
+        if len(result["systems"]) >= 2:
+            assert result["systems"][0]["planets"] >= result["systems"][1]["planets"]
+
+    def test_filter_planets_includes_safe_jump_temp(self):
+        """Test _filter_planets includes safe_jump_temp."""
+        searcher = RadiusSearch()
+        systems = [
+            {"name": "SYS1", "distance_ly": 10.0, "planet_ids": [1, 2], "safe_jump_temp": 75.0},
+        ]
+
+        result = searcher._filter_planets(systems, top_n=10)
+        sys = result["systems"][0]
+        assert "safe_jump_temp" in sys
+        assert sys["safe_jump_temp"] == 75.0
+
+    def test_filter_heat_only_heat_traps(self):
+        """Test _filter_heat only includes systems >= 70°."""
+        searcher = RadiusSearch()
+        systems = [
+            {"name": "COOL", "distance_ly": 10.0, "safe_jump_temp": 50.0},
+            {"name": "WARM", "distance_ly": 20.0, "safe_jump_temp": 75.0},
+            {"name": "HOT", "distance_ly": 5.0, "safe_jump_temp": 95.0},
+        ]
+
+        result = searcher._filter_heat(systems, top_n=10)
+
+        # Only warm and hot systems should be included
+        assert result["count"] == 2
+        for sys in result["systems"]:
+            assert sys["safe_jump_temp"] >= 70
+
+    def test_filter_heat_sorting_by_temperature(self):
+        """Test _filter_heat sorts by temperature descending (hottest first)."""
+        searcher = RadiusSearch()
+        systems = [
+            {"name": "WARM", "distance_ly": 20.0, "safe_jump_temp": 75.0},
+            {"name": "HOT", "distance_ly": 5.0, "safe_jump_temp": 95.0},
+            {"name": "HOTTER", "distance_ly": 15.0, "safe_jump_temp": 100.0},
+        ]
+
+        result = searcher._filter_heat(systems, top_n=10)
+
+        # Verify sorted by temp descending
+        if len(result["systems"]) >= 2:
+            assert result["systems"][0]["safe_jump_temp"] >= result["systems"][1]["safe_jump_temp"]
+
+    def test_filter_heat_includes_heat_class(self):
+        """Test _filter_heat includes heat_class field."""
+        searcher = RadiusSearch()
+        systems = [
+            {"name": "WARM", "distance_ly": 20.0, "safe_jump_temp": 75.0},
+        ]
+
+        result = searcher._filter_heat(systems, top_n=10)
+        sys = result["systems"][0]
+        assert "heat_class" in sys
+        assert sys["heat_class"] == "warm"
+
+    def test_filter_structures_sorting_by_distance(self):
+        """Test _filter_structures sorts by distance ascending (closest first)."""
+        searcher = RadiusSearch()
+        # Populate structure_locations
+        searcher.structure_locations = {
+            "struct1": {"system_name": "SYS1", "type": "engineering_complex"},
+            "struct2": {"system_name": "SYS2", "type": "citadel"},
+            "struct3": {"system_name": "SYS3", "type": "raitaru"},
+        }
+        systems = [
+            {"name": "SYS1", "distance_ly": 30.0},
+            {"name": "SYS2", "distance_ly": 10.0},
+            {"name": "SYS3", "distance_ly": 20.0},
+        ]
+
+        result = searcher._filter_structures(systems, top_n=10)
+
+        # Verify sorted by distance ascending (closest first)
+        if len(result["systems"]) >= 2:
+            assert result["systems"][0]["distance_ly"] <= result["systems"][1]["distance_ly"]
+
+    def test_filter_structures_respects_top_n(self):
+        """Test _filter_structures limits to top_n results."""
+        searcher = RadiusSearch()
+        searcher.structure_locations = {
+            f"struct{i}": {"system_name": f"SYS{i}", "type": "citadel"}
+            for i in range(10)
+        }
+        systems = [
+            {"name": f"SYS{i}", "distance_ly": float(i)}
+            for i in range(10)
+        ]
+
+        result = searcher._filter_structures(systems, top_n=3)
+        assert len(result["systems"]) <= 3
+
+    def test_hours_since_helper(self):
+        """Test _hours_since calculates elapsed hours correctly."""
+        searcher = RadiusSearch()
+        now = time.time()
+        one_hour_ago = now - 3600
+        two_hours_ago = now - (2 * 3600)
+
+        hours1 = searcher._hours_since(one_hour_ago)
+        hours2 = searcher._hours_since(two_hours_ago)
+
+        # Should be approximately 1 and 2 hours
+        assert 0.9 < hours1 < 1.1
+        assert 1.9 < hours2 < 2.1
+
+    def test_hours_since_with_none(self):
+        """Test _hours_since returns None for None timestamp."""
+        searcher = RadiusSearch()
+        result = searcher._hours_since(None)
+        assert result is None
+
+    def test_hours_since_with_zero(self):
+        """Test _hours_since returns None for zero timestamp."""
+        searcher = RadiusSearch()
+        result = searcher._hours_since(0)
+        assert result is None
