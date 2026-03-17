@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 from typing import Optional, List
 import os
 import re
@@ -12,10 +12,11 @@ import asyncio
 import logging
 import jwt as pyjwt
 from dataclasses import asdict, fields as dc_fields
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.log_buffer import log_buffer
 from src.auth import require_token
+from src.endpoints.auth import validate_token
 from src.claude_client import claude
 from src.context_builder import build_context_block
 from src.world_api import world_api
@@ -350,8 +351,8 @@ class LogEvent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str
 
-@app.post("/log/ingest", dependencies=[Depends(require_token)])
-async def ingest_log(event: LogEvent):
+@app.post("/log/ingest")
+async def ingest_log(event: LogEvent, token_payload = Depends(validate_token)):
     data = event.model_dump()
     if data.get("in_progress"):
         log_buffer.set_live([data])
@@ -369,16 +370,25 @@ class ChatRequest(BaseModel):
 
 class RadiusSearchRequest(BaseModel):
     center_system: str
-    radius_ly: float
-    filters: List[str] = ["planets"]
-    killmail_hours: int = 24
-    top_n: int = 10
+    radius_ly: float = Field(gt=0, description="Radius in light-years, must be > 0")
+    filters: List[str] = Field(default=["planets"], description="Filter types to apply")
+    killmail_hours: int = Field(default=24, ge=1, description="Hours to search for killmails, must be >= 1")
+    top_n: int = Field(default=10, gt=0, description="Number of results to return, must be > 0")
     skip_heat_traps: bool = False
 
+    @field_validator('filters')
+    @classmethod
+    def validate_filters(cls, v: List[str]) -> List[str]:
+        valid_types = {"planets", "killmails", "heat", "structures"}
+        invalid = set(v) - valid_types
+        if invalid:
+            raise ValueError(f"Invalid filter types: {invalid}. Valid types are: {valid_types}")
+        return v
+
 class RecordStructureRequest(BaseModel):
-    structure_id: str
-    system_name: str
-    reported_by: str
+    structure_id: str = Field(min_length=1, description="Structure ID, cannot be empty")
+    system_name: str = Field(min_length=1, description="System name, cannot be empty")
+    reported_by: str = Field(min_length=1, description="Reporter name, cannot be empty")
     tribe: Optional[str] = None
 
 class ChallengeRequest(BaseModel):
@@ -528,7 +538,7 @@ async def search_radius(req: RadiusSearchRequest):
             top_n=req.top_n,
             skip_heat_traps=req.skip_heat_traps,
         )
-        return result
+        return {"data": result}
     except Exception as e:
         log.error("search_radius failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
@@ -538,7 +548,7 @@ async def search_radius(req: RadiusSearchRequest):
 async def record_structure(req: RecordStructureRequest):
     """Record a structure location in the radius search index."""
     try:
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         radius_search.structure_locations[req.structure_id] = {
             "system_name": req.system_name,
             "reported_by": req.reported_by,
@@ -548,9 +558,13 @@ async def record_structure(req: RecordStructureRequest):
         }
         await radius_search._save_structure_locations()
         return {
-            "success": True,
-            "structure_id": req.structure_id,
-            "system_name": req.system_name,
+            "data": {
+                "structure_id": req.structure_id,
+                "system_name": req.system_name,
+                "reported_by": req.reported_by,
+                "tribe": req.tribe,
+                "discovered_at": timestamp,
+            }
         }
     except Exception as e:
         log.error("record_structure failed: %s", e)
@@ -570,7 +584,7 @@ async def get_structures_locations():
                 "tribe": struct_data.get("tribe"),
                 "discovered_at": struct_data.get("discovered_at"),
             })
-        return {"structures": structures}
+        return {"data": {"structures": structures}}
     except Exception as e:
         log.error("get_structures_locations failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve structures: {str(e)}")
