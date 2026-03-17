@@ -36,8 +36,30 @@ class MemoryStore:
         return os.path.join(self._root(), "pilots")
 
     def _pilot_path(self, address: str) -> str:
-        # Sanitize address — only hex chars and 0x prefix
-        safe = address.lower().replace("/", "").replace("..", "")
+        """Validate Sui address format and return safe file path.
+
+        Validates that address is exactly 0x + 64 hex chars.
+        Rejects path traversal attempts and dangerous characters.
+        """
+        # Validate format: 0x + exactly 64 hex characters
+        if not address or not address.startswith('0x') or len(address) != 66:
+            raise ValueError('address must be 0x followed by 64 hexadecimal characters')
+
+        # Validate hex content
+        hex_part = address[2:]
+        try:
+            int(hex_part, 16)
+        except ValueError:
+            raise ValueError('address contains non-hexadecimal characters')
+
+        # Reject dangerous characters that could enable path traversal
+        dangerous_chars = ['\\', '/', '..', ':', '.', '\x00', '\t', '\n', '\r']
+        for char_seq in dangerous_chars:
+            if char_seq in address:
+                raise ValueError(f'address contains forbidden character sequence: {repr(char_seq)}')
+
+        # Use lowercase normalized address
+        safe = address.lower()
         return os.path.join(self._pilots_dir(), f"{safe}.json")
 
     # ------------------------------------------------------------------

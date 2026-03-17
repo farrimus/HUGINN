@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
 import os
 import re
@@ -372,6 +372,17 @@ class VerifyRequest(BaseModel):
     structure_id: str
     nova_registry_object_id: Optional[str] = None  # required on first owner auth
 
+    @field_validator('address')
+    @classmethod
+    def validate_address(cls, v: str) -> str:
+        if not v or not v.startswith('0x') or len(v) != 66:
+            raise ValueError('address must be 0x followed by 64 hexadecimal characters')
+        try:
+            int(v[2:], 16)
+        except ValueError:
+            raise ValueError('address contains non-hexadecimal characters')
+        return v.lower()
+
 
 class DealOfferRequest(BaseModel):
     structure_id: str
@@ -385,6 +396,17 @@ class DealClaimRequest(BaseModel):
     signature: str
     payment_method: str          # "item" | "sui" | "info"
     proof: dict = {}             # payment_method-specific evidence
+
+    @field_validator('address')
+    @classmethod
+    def validate_address(cls, v: str) -> str:
+        if not v or not v.startswith('0x') or len(v) != 66:
+            raise ValueError('address must be 0x followed by 64 hexadecimal characters')
+        try:
+            int(v[2:], 16)
+        except ValueError:
+            raise ValueError('address contains non-hexadecimal characters')
+        return v.lower()
 
 class StructureChatRequest(BaseModel):
     message: str
