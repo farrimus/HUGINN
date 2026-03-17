@@ -20,10 +20,12 @@ Binds all modules together. Runs on port 8745.
 | `/log/ingest` | POST | Token | Receives events from log agent (including `route_planned`) |
 | `/chat` | POST | Token | Streaming chat; auto-plots route on navigation intent; returns SSE |
 | `/debug` | GET | Token | Full pipeline state dump |
+| `/logs/stream` | GET | Token | SSE stream of server logs; for debugging |
 | `/admin/rebuild-index` | POST | Token | Force rebuild system index from world API |
 | `/data/gate-graph` | GET | Token | Serve legacy `gate_graph.json` (ETag + 304 support) |
 | `/data/systems` | GET | Token | Serve `data/systems.json` (ETag + 304 support, FileResponse) |
 | `/route` | POST | Token | Compute route (BFS or A* hybrid); store in `current_route` |
+| `/route/clear` | POST | Token | Clear active route; sets `current_route = null` |
 | `/current-route` | GET | Token | Return `{route, alternative, current_system_temp}` |
 | `/route/activate` | POST | Token | Swap `current_route ↔ pending_alternative` |
 | `/ship-profile` | GET | Token | Return current ship profile + computed jump range + fuel budget |
