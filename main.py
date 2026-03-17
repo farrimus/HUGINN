@@ -631,6 +631,7 @@ async def chat(req: ChatRequest):
     )
 
     def event_stream():
+        yield ": keep-alive\n\n"
         try:
             for chunk in claude.stream(req.message, req.history, context):
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
@@ -673,6 +674,7 @@ async def structure_debug_chat(req: StructureDebugChatRequest):
     context = build_structure_context(profile, "OWNER", memory_text=memory_text)
 
     def event_stream():
+        yield ": keep-alive\n\n"
         try:
             for chunk in structure_client.stream(
                 message=req.message,
@@ -960,6 +962,7 @@ async def structure_chat(req: StructureChatRequest, session: dict = Depends(requ
     )
 
     def event_stream():
+        yield ": keep-alive\n\n"
         try:
             if tier == "VETTED":
                 gen = lobby_client.stream(

@@ -173,3 +173,25 @@ async def test_chat_slash_profile_prints_summary():
                               json={"message": "/profile", "history": []})
     assert r.status_code == 200
     assert "data:" in r.text
+
+@pytest.mark.asyncio
+async def test_ship_chat_stream_starts_with_keepalive():
+    """SSE stream must yield a keep-alive comment before the first data chunk."""
+    from unittest.mock import patch
+
+    chunks = ["Hello", " world"]
+
+    def fake_stream(message, history, context):
+        return iter(chunks)
+
+    with patch("main.claude.stream", side_effect=fake_stream), \
+         patch("main.world_api.get_system", return_value=None), \
+         patch("main.log_buffer.current_system", None):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/chat",
+                json={"message": "hi", "history": []},
+                headers={"X-Server-Token": TOKEN},
+            )
+    body = resp.text
+    assert body.startswith(": keep-alive\n\n"), f"Expected keep-alive first, got: {body[:40]!r}"
