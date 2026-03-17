@@ -18,35 +18,62 @@ Binds all modules together. Runs on port 8745.
 |-------|--------|------|---------|
 | `/health` | GET | No | Returns `{status, systems_indexed}` |
 | `/log/ingest` | POST | Bearer JWT | Receives events from log agent (including `route_planned`) |
-| `/chat` | POST | Token | Streaming chat; auto-plots route on navigation intent; returns SSE |
-| `/debug` | GET | Token | Full pipeline state dump |
-| `/logs/stream` | GET | Token | SSE stream of server logs; for debugging |
-| `/admin/rebuild-index` | POST | Token | Force rebuild system index from world API |
-| `/data/gate-graph` | GET | Token | Serve legacy `gate_graph.json` (ETag + 304 support) |
-| `/data/systems` | GET | Token | Serve `data/systems.json` (ETag + 304 support, FileResponse) |
-| `/route` | POST | Token | Compute route (BFS or A* hybrid); store in `current_route` |
-| `/route/clear` | POST | Token | Clear active route; sets `current_route = null` |
-| `/current-route` | GET | Token | Return `{route, alternative, current_system_temp}` |
-| `/route/activate` | POST | Token | Swap `current_route ↔ pending_alternative` |
-| `/ship-profile` | GET | Token | Return current ship profile + computed jump range + fuel budget |
-| `/ship-profile` | POST | Token | Update stored ship profile (partial updates supported) |
+| `/chat` | POST | Legacy X-Server-Token | Streaming chat; auto-plots route on navigation intent; returns SSE |
+| `/debug` | GET | Legacy X-Server-Token | Full pipeline state dump |
+| `/logs/stream` | GET | Legacy X-Server-Token | SSE stream of server logs; for debugging |
+| `/admin/rebuild-index` | POST | Legacy X-Server-Token | Force rebuild system index from world API |
+| `/admin/rebuild-location-index` | POST | Legacy X-Server-Token | Rebuild location index from world API |
+| `/data/gate-graph` | GET | Legacy X-Server-Token | Serve legacy `gate_graph.json` (ETag + 304 support) |
+| `/data/systems` | GET | Legacy X-Server-Token | Serve `data/systems.json` (ETag + 304 support, FileResponse) |
+| `/route` | POST | Legacy X-Server-Token | Compute route (BFS or A* hybrid); store in `current_route` |
+| `/route/clear` | POST | Legacy X-Server-Token | Clear active route; sets `current_route = null` |
+| `/current-route` | GET | Legacy X-Server-Token | Return `{route, alternative, current_system_temp}` |
+| `/route/activate` | POST | Legacy X-Server-Token | Swap `current_route ↔ pending_alternative` |
+| `/ship-profile` | GET | Legacy X-Server-Token | Return current ship profile + computed jump range + fuel budget |
+| `/ship-profile` | POST | Legacy X-Server-Token | Update stored ship profile (partial updates supported) |
+| `/search/radius` | POST | Legacy X-Server-Token | Search for structures within radius of current system |
+| `/structures/record` | POST | Legacy X-Server-Token | Record player-owned structures in a system |
+| `/structures/locations` | GET | Legacy X-Server-Token | Get cached list of player-owned structures |
+| `/structure-debug/chat` | POST | Legacy X-Server-Token | Structure AI debug chat endpoint |
+| `/structure-debug/{structure_id}` | GET | Legacy X-Server-Token | Get debug state for a structure |
+| `/structure-debug/{structure_id}` | POST | Legacy X-Server-Token | Post debug data to a structure |
+| `/auth/challenge` | POST | No | Initiate SUI login challenge (blockchain auth) |
+| `/auth/verify` | POST | No | Verify SUI login signature and issue JWT |
+| `/auth/deal/offer` | POST | No | Blockchain deal offer endpoint |
+| `/auth/deal/claim` | POST | No | Blockchain deal claim endpoint |
+| `/structure/{structure_id}` | GET | Structure JWT | Get structure profile (authenticated via JWT) |
+| `/structure/{structure_id}` | POST | Structure JWT | Update structure profile |
+| `/structure/{structure_id}` | PATCH | Structure JWT | Patch structure profile |
+| `/structure-chat` | POST | Structure JWT | Structure AI chat endpoint |
 | `/static/*` | GET | No | Serves `index.html`, `debug.html` |
 
 ### Authentication Methods
 
-**Bearer JWT (New Primary Method):**
-- Endpoints: `/log/ingest`, `/route`, `/ship-profile`, `/chat` (streaming)
+**Bearer JWT (New Method for Log Ingest):**
+- Endpoints: `/log/ingest` only
 - Requires: `Authorization: Bearer <jwt>` header
 - Token acquisition: `POST /auth/token` (pass `{"agent_id": "..."}`)
 - Token lifetime: 24 hours
 - Implementation: `validate_token()` dependency in FastAPI routes
+- Use case: Log agent authentication for secure event ingestion
 
-**Legacy X-Server-Token (Deprecated):**
-- Endpoints: Some structure debug endpoints still support this
+**Legacy X-Server-Token (Deprecated, Still Widely Used):**
+- Endpoints: All other protected endpoints (`/chat`, `/route`, `/ship-profile`, `/admin/rebuild-index`, structure debug endpoints, etc.)
 - Requires: `X-Server-Token` header
-- Status: Maintained for backward compatibility, not recommended for new integrations
+- Token value: Set via `SERVER_TOKEN` environment variable
+- Status: Maintained for backward compatibility; if `SERVER_TOKEN` is not set, endpoints are open access (local-only mode)
+- Implementation: `require_token()` dependency in FastAPI routes
 
-**Note:** Log agent client must use Bearer auth for `/log/ingest`. See log-agent/src/auth_flow.py for implementation.
+**Structure JWT (SUI Blockchain Auth):**
+- Endpoints: `/structure/{structure_id}`, `/structure-chat`
+- Requires: `Authorization: Bearer <jwt>` header (from `/auth/verify` after blockchain challenge)
+- Token acquisition: `POST /auth/challenge` → verify signature with `POST /auth/verify`
+- Implementation: `require_structure_jwt()` dependency
+
+**No Authentication Required:**
+- Endpoints: `/health`, `/auth/challenge`, `/auth/verify`, `/auth/deal/offer`, `/auth/deal/claim`, `/static/*`
+
+**Note:** Log agent client must use Bearer auth for `/log/ingest`. See `log-agent/auth_flow.py` for implementation.
 
 **Ingest routing logic:**
 - `in_progress: True` → `log_buffer.set_live([event])` (heartbeat snapshot)
