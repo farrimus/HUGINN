@@ -68,6 +68,14 @@ def _registry_for(structure_id: str, client_hint: Optional[str] = None) -> Optio
     """Return the best registry object ID for a structure. Server map takes priority."""
     return _STRUCTURE_REGISTRY_MAP.get(structure_id) or client_hint
 
+_EVE_FRONTIER_PACKAGE = os.environ.get(
+    "EVE_FRONTIER_PACKAGE",
+    "0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75",
+)
+_VPS_SUI_ADDRESS = os.environ.get("VPS_SUI_ADDRESS", "")
+_ITEM_DEPOSIT_EVENT = f"{_EVE_FRONTIER_PACKAGE}::ephemeral_inventory::ItemDepositedEvent"
+_ITEM_DEPOSIT_WINDOW_MS = 600_000  # 10 minutes
+
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -889,6 +897,184 @@ async def deal_offer(req: DealOfferRequest):
             "payment_options": ["item", "sui", "info"],
         },
     }
+
+
+@app.post("/auth/deal/claim")
+async def deal_claim(req: DealClaimRequest):
+    """
+    Verify wallet signature + payment proof, issue PATRON JWT.
+
+    payment_method="item": server queries suix_queryEvents for a recent
+        ItemDepositedEvent from req.address. No proof field needed.
+    payment_method="sui": req.proof must contain {"tx_digest": "0x..."}.
+        Server calls sui_getTransactionBlock to verify sender and receiver.
+    payment_method="info": req.proof must contain {"structure_ids": ["0x..."]}.
+        Server reads each via sui_getObject and stores in memory.
+    """
+    # 1. Consume nonce
+    if not nonce_store.consume(req.nonce):
+        raise HTTPException(status_code=400, detail="Invalid or expired nonce")
+
+    # 2. Verify wallet signature (reuse existing helper)
+    try:
+        verify_sui_personal_message(req.nonce.encode(), req.signature, req.address)
+    except Exception as e:
+        log.warning("deal_claim: signature failed for %s: %s", req.address, e)
+        raise HTTPException(status_code=401, detail="Signature verification failed")
+
+    # 3. Verify payment
+    if req.payment_method == "item":
+        await _verify_item_deposit(req.address, req.structure_id)
+    elif req.payment_method == "sui":
+        await _verify_sui_payment(req.address, req.proof)
+    elif req.payment_method == "info":
+        await _process_info_trade(req.address, req.structure_id, req.proof)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown payment_method: {req.payment_method!r}")
+
+    # 4. Lookup character (non-fatal)
+    character_id = 0
+    character_name = req.address[:12] + "..."
+    char_data = await lookup_character(req.address)
+    if char_data:
+        character_id = char_data.get("id", 0)
+        character_name = char_data.get("name", character_name) or character_name
+
+    # 5. Issue deal record + PATRON JWT
+    rec = deal_store.issue(req.address, req.structure_id, req.payment_method)
+    token = issue_jwt({
+        "address": req.address,
+        "character_id": character_id,
+        "character_name": character_name,
+        "tier": "PATRON",
+        "structure_id": req.structure_id,
+    })
+
+    # 6. Upsert pilot profile (same as /auth/verify)
+    from src.memory_store import get_memory_store
+    mem = get_memory_store(req.structure_id)
+    mem.upsert_pilot(
+        address=req.address,
+        character_name=character_name,
+        character_id=character_id,
+        tier="PATRON",
+    )
+
+    return {
+        "token": token,
+        "tier": "PATRON",
+        "character_name": character_name,
+        "character_id": character_id,
+        "messages_remaining": rec.messages_remaining,
+        "expires_at": rec.expires_at,
+    }
+
+
+async def _verify_item_deposit(address: str, structure_id: str) -> None:
+    """Query suix_queryEvents for a recent ItemDepositedEvent from address.
+    Raises HTTPException 402 if no qualifying event found.
+    """
+    import time as _time
+    try:
+        result = await nova_client._rpc("suix_queryEvents", [
+            {"MoveEventType": _ITEM_DEPOSIT_EVENT},
+            None,   # cursor = latest page
+            50,     # limit
+            True,   # descending (newest first)
+        ])
+    except Exception as e:
+        log.warning("_verify_item_deposit: RPC failed: %s", e)
+        raise HTTPException(status_code=502, detail="Chain query failed — try again")
+
+    events = result.get("result", {}).get("data") or []
+    cutoff_ms = (_time.time() - _ITEM_DEPOSIT_WINDOW_MS / 1000) * 1000
+
+    for event in events:
+        sender = event.get("sender", "").lower()
+        ts_ms = int(event.get("timestampMs") or 0)
+        if sender == address.lower() and ts_ms >= cutoff_ms:
+            return  # found a qualifying deposit
+
+    raise HTTPException(
+        status_code=402,
+        detail="No recent item deposit found. Drag any item into the SSU within 10 minutes of requesting a deal, then claim.",
+    )
+
+
+async def _verify_sui_payment(address: str, proof: dict) -> None:
+    """Verify a SUI coin transfer to VPS address.
+    proof must contain {"tx_digest": "0x..."}.
+    Raises HTTPException 402 if verification fails.
+    """
+    if not _VPS_SUI_ADDRESS:
+        raise HTTPException(status_code=503, detail="SUI payment not configured on this structure")
+
+    tx_digest = proof.get("tx_digest", "")
+    if not tx_digest:
+        raise HTTPException(status_code=400, detail="proof.tx_digest required for sui payment")
+
+    try:
+        result = await nova_client._rpc("sui_getTransactionBlock", [
+            tx_digest,
+            {"showInput": True, "showEffects": False, "showBalanceChanges": True},
+        ])
+    except Exception as e:
+        log.warning("_verify_sui_payment: RPC failed: %s", e)
+        raise HTTPException(status_code=502, detail="Chain query failed — try again")
+
+    tx_data = result.get("result", {})
+    if not tx_data:
+        raise HTTPException(status_code=402, detail="Transaction not found on chain")
+
+    # Check sender
+    sender = (tx_data.get("transaction", {})
+                     .get("data", {})
+                     .get("sender", "")).lower()
+    if sender != address.lower():
+        raise HTTPException(status_code=402, detail="Transaction sender does not match your address")
+
+    # Check balance changes: VPS address received SUI
+    balance_changes = tx_data.get("balanceChanges") or []
+    vps_received = any(
+        bc.get("owner", {}).get("AddressOwner", "").lower() == _VPS_SUI_ADDRESS.lower()
+        and int(bc.get("amount", 0)) > 0
+        for bc in balance_changes
+    )
+    if not vps_received:
+        raise HTTPException(status_code=402, detail="Transaction does not show SUI sent to this structure's address")
+
+
+async def _process_info_trade(address: str, structure_id: str, proof: dict) -> None:
+    """Player provides structure object IDs as payment.
+    Server reads each from chain, stores what it learns.
+    Raises HTTPException 400 if no structure_ids provided.
+    """
+    structure_ids = proof.get("structure_ids") or []
+    if not structure_ids:
+        raise HTTPException(status_code=400, detail="proof.structure_ids required for info payment")
+
+    from src.memory_store import get_memory_store
+    mem = get_memory_store(structure_id)
+    learned = []
+    for obj_id in structure_ids[:5]:  # cap at 5 to limit RPC calls
+        try:
+            result = await nova_client._rpc("sui_getObject", [
+                obj_id,
+                {"showContent": True, "showType": True}
+            ])
+            data = result.get("result", {}).get("data", {})
+            type_str = data.get("type", "unknown")
+            learned.append({"object_id": obj_id, "type": type_str})
+        except Exception as e:
+            log.debug("_process_info_trade: could not read %s: %s", obj_id[:12], e)
+
+    # Store in memory even if chain reads partially failed
+    mem.append_event("info_trade", 0, {
+        "address": address,
+        "structures_offered": structure_ids,
+        "structures_read": learned,
+    })
+    log.info("info_trade: %s offered %d structures, read %d", address[:12], len(structure_ids), len(learned))
 
 
 @app.get("/structure/{structure_id}")
