@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, Response, FileRes
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, field_validator
-from typing import Optional
+from typing import Optional, List
 import os
 import re
 import json
@@ -12,6 +12,7 @@ import asyncio
 import logging
 import jwt as pyjwt
 from dataclasses import asdict, fields as dc_fields
+from datetime import datetime
 
 from src.log_buffer import log_buffer
 from src.auth import require_token
@@ -28,10 +29,14 @@ from src.structure_profile import StructureProfile, load_profile as load_structu
 from src.structure_client import structure_client, lobby_client, build_structure_context, detect_alerts
 from src.nova_client import nova_client
 from src.location_index import location_index
+from src.radius_search import RadiusSearch
 
 log = logging.getLogger(__name__)
 
 load_dotenv()
+
+# Initialize RadiusSearch
+radius_search = RadiusSearch()
 
 # ---------------------------------------------------------------------------
 # Live log broadcaster — streams server log lines to connected SSE clients
@@ -362,6 +367,20 @@ class ChatRequest(BaseModel):
     message: str
     history: list = []
 
+class RadiusSearchRequest(BaseModel):
+    center_system: str
+    radius_ly: float
+    filters: List[str] = ["planets"]
+    killmail_hours: int = 24
+    top_n: int = 10
+    skip_heat_traps: bool = False
+
+class RecordStructureRequest(BaseModel):
+    structure_id: str
+    system_name: str
+    reported_by: str
+    tribe: Optional[str] = None
+
 class ChallengeRequest(BaseModel):
     structure_id: str
 
@@ -495,6 +514,67 @@ async def activate_route(req: RouteActivateRequest):
     # "primary" — current_route is already primary; no-op
     log_buffer.add({"type": "route_planned", **{k: v for k, v in log_buffer.current_route.items() if k != "alternative"}})
     return log_buffer.current_route
+
+
+@app.post("/search/radius", dependencies=[Depends(require_token)])
+async def search_radius(req: RadiusSearchRequest):
+    """Search for systems within a radius and apply filters."""
+    try:
+        result = await radius_search.search(
+            center_system=req.center_system,
+            radius_ly=req.radius_ly,
+            filters=req.filters,
+            killmail_hours=req.killmail_hours,
+            top_n=req.top_n,
+            skip_heat_traps=req.skip_heat_traps,
+        )
+        return result
+    except Exception as e:
+        log.error("search_radius failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@app.post("/structures/record", dependencies=[Depends(require_token)])
+async def record_structure(req: RecordStructureRequest):
+    """Record a structure location in the radius search index."""
+    try:
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        radius_search.structure_locations[req.structure_id] = {
+            "system_name": req.system_name,
+            "reported_by": req.reported_by,
+            "tribe": req.tribe,
+            "discovered_at": timestamp,
+            "source": "manual",
+        }
+        await radius_search._save_structure_locations()
+        return {
+            "success": True,
+            "structure_id": req.structure_id,
+            "system_name": req.system_name,
+        }
+    except Exception as e:
+        log.error("record_structure failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to record structure: {str(e)}")
+
+
+@app.get("/structures/locations", dependencies=[Depends(require_token)])
+async def get_structures_locations():
+    """Get all recorded structure locations."""
+    try:
+        structures = []
+        for struct_id, struct_data in radius_search.structure_locations.items():
+            structures.append({
+                "structure_id": struct_id,
+                "system_name": struct_data.get("system_name"),
+                "reported_by": struct_data.get("reported_by"),
+                "tribe": struct_data.get("tribe"),
+                "discovered_at": struct_data.get("discovered_at"),
+            })
+        return {"structures": structures}
+    except Exception as e:
+        log.error("get_structures_locations failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve structures: {str(e)}")
+
 
 @app.post("/chat", dependencies=[Depends(require_token)])
 async def chat(req: ChatRequest):

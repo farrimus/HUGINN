@@ -577,3 +577,30 @@ class RadiusSearch:
         if not timestamp:
             return None
         return round((time.time() - timestamp) / 3600, 1)
+
+    async def _save_structure_locations(self) -> None:
+        """
+        Save structure locations to disk.
+
+        Writes structure_locations dict to JSON file with built_at timestamp.
+        Creates parent directory if needed. Logs success and errors appropriately.
+        """
+        try:
+            # Ensure parent directory exists
+            parent_dir = os.path.dirname(self.structure_locations_path)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+
+            # Prepare data with timestamp
+            data = {
+                "structure_locations": self.structure_locations,
+                "built_at": time.time(),
+            }
+
+            # Write to file
+            with open(self.structure_locations_path, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            log.info(f"Saved {len(self.structure_locations)} structures to {self.structure_locations_path}")
+        except Exception as e:
+            log.error(f"Error saving structure locations: {e}")
