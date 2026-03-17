@@ -26,6 +26,7 @@ from src.deal_store import deal_store, DEAL_MESSAGES_DEFAULT, DEAL_DURATION_HOUR
 from src.structure_profile import StructureProfile, load_profile as load_structure_profile, save_profile as save_structure_profile
 from src.structure_client import structure_client, lobby_client, build_structure_context, detect_alerts
 from src.nova_client import nova_client
+from src.location_index import location_index
 
 log = logging.getLogger(__name__)
 
@@ -113,6 +114,12 @@ async def health():
 async def rebuild_index():
     count = await world_api.rebuild_index()
     return {"systems_indexed": count}
+
+@app.post("/admin/rebuild-location-index", dependencies=[Depends(require_token)])
+async def rebuild_location_index():
+    """Rebuild LocationRevealedEvent index from chain. Requires X-Server-Token."""
+    count = await location_index.rebuild()
+    return {"entries_indexed": count}
 
 @app.get("/data/systems", dependencies=[Depends(require_token)])
 async def get_systems(request: Request):
