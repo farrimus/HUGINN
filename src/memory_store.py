@@ -1,5 +1,6 @@
 # src/memory_store.py
 import os
+import time
 import json
 import logging
 from datetime import datetime, timezone, timedelta
@@ -15,9 +16,10 @@ SUMMARY_CAP = 300
 
 
 class MemoryStore:
-    def __init__(self, base_dir: str = _DEFAULT_BASE_DIR, structure_id: str = ""):
+    def __init__(self, base_dir: str = _DEFAULT_BASE_DIR, structure_id: str = "", world_api_client=None):
         self._base = base_dir
         self._sid = structure_id
+        self.world_api = world_api_client
 
     # ------------------------------------------------------------------
     # Paths
@@ -215,6 +217,89 @@ class MemoryStore:
         except Exception as e:
             log.warning("memory_store.get_pilot(%s) failed: %s", address, e)
             return None
+
+    # ------------------------------------------------------------------
+    # Killmail methods
+    # ------------------------------------------------------------------
+
+    async def get_killmails_for_system(self, system_id: int, hours: int = 24) -> list:
+        """Fetch killmails for a system and filter by recency.
+
+        Args:
+            system_id: Solar system ID to fetch killmails for
+            hours: Window in hours to filter by (default 24)
+
+        Returns:
+            List of top 10 killmails sorted by most recent first,
+            or empty list on API errors
+        """
+        if not self.world_api:
+            log.warning("world_api_client not initialized")
+            return []
+
+        try:
+            killmails = await self.world_api.get_killmails(system_id)
+            if not killmails:
+                return []
+
+            filtered = self.filter_killmails_by_recency(killmails, hours)
+            return filtered[:10]
+        except Exception as e:
+            log.warning("get_killmails_for_system(%d) failed: %s", system_id, e)
+            return []
+
+    def filter_killmails_by_recency(self, killmails: list, hours: int) -> list:
+        """Filter killmails by timestamp within a hours window.
+
+        Args:
+            killmails: List of killmail dicts with 'timestamp' field
+            hours: Number of hours to include (from now backwards)
+
+        Returns:
+            List of killmails within window, sorted by recency (newest first)
+        """
+        if not killmails:
+            return []
+
+        now = time.time()
+        cutoff = now - (hours * 3600)
+
+        filtered = []
+        for km in killmails:
+            if not isinstance(km, dict):
+                continue
+            ts = km.get("timestamp")
+            if ts is None:
+                continue
+            # Handle both Unix timestamps (seconds) and milliseconds
+            ts_seconds = ts / 1000 if ts > 100000000000 else ts
+            if ts_seconds >= cutoff:
+                filtered.append(km)
+
+        # Sort by timestamp descending (newest first)
+        filtered.sort(key=lambda km: km.get("timestamp", 0), reverse=True)
+        return filtered
+
+    def get_most_recent_killmail_timestamp(self, killmails: list) -> Optional[float]:
+        """Get the most recent killmail timestamp from a list.
+
+        Args:
+            killmails: List of killmail dicts with 'timestamp' field
+
+        Returns:
+            Most recent timestamp as float, or None if list is empty
+        """
+        if not killmails:
+            return None
+
+        timestamps = []
+        for km in killmails:
+            if isinstance(km, dict):
+                ts = km.get("timestamp")
+                if ts is not None:
+                    timestamps.append(ts)
+
+        return max(timestamps) if timestamps else None
 
 
 # Module-level factory — structure_id set at runtime
