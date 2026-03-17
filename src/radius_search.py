@@ -7,7 +7,7 @@ Provides spatial querying of structures within a given distance from a reference
 import os
 import json
 import logging
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Union
 
 from src.world_api import world_api
 
@@ -44,7 +44,7 @@ class RadiusSearch:
         )
         self.structure_locations_path = structure_locations_path or _STRUCTURE_LOCATIONS_PATH
         self.systems: Dict[str, dict] = {}  # {system_id: {name, x, y, z, ...}}
-        self.structure_locations: Dict = {}  # {...}
+        self.structure_locations: Dict[str, dict] = {}  # {...}
         self.world_api_client = world_api
         self._load_systems()
         self._load_structure_locations()
@@ -88,7 +88,7 @@ class RadiusSearch:
             log.error(f"Error loading structure locations: {e}")
             self.structure_locations = {}
 
-    def get_system(self, name_or_id) -> Optional[dict]:
+    def get_system(self, name_or_id: Union[str, int]) -> Optional[dict]:
         """
         Lookup a system by name (case-insensitive) or ID.
 
@@ -121,7 +121,7 @@ class RadiusSearch:
         Returns:
             Number of structures loaded.
         """
-        pass
+        raise NotImplementedError("Feature not yet implemented")
 
     async def search(
         self,
@@ -142,4 +142,4 @@ class RadiusSearch:
         Returns:
             List of matching structures with metadata.
         """
-        pass
+        raise NotImplementedError("Feature not yet implemented")
