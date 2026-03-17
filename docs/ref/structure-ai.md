@@ -1,6 +1,6 @@
 # Structure AI — Modules Reference
 
-**Last updated:** 2026-03-16 (on-chain asset data — Phase 1/2/3)
+**Last updated:** 2026-03-17 (deal mechanic, LocationIndex, SSE keep-alive)
 **What this covers:** Sui/Nova deployment, all Structure AI server modules, build_types.py
 
 The Structure AI is a second Claude node running in the EVE Frontier SSU (Smart Storage Unit) in-game browser at `http://vps-ip:8745/static/structure.html?id=<structure-id>`. Auth is wallet-based (Sui/EVEVault), not shared-secret. Urgent alerts bridge to the Ship AI via `log_buffer.pending_structure_alerts`.
@@ -42,19 +42,34 @@ sui client call \
 |-------|--------|------|---------|
 | `/auth/challenge` | POST | None | Issue nonce for wallet signing. Returns `{nonce, structure_id, expires_in_seconds: 300}` |
 | `/auth/verify` | POST | None | Consume nonce, verify Sui ed25519 sig, resolve tier from Nova AccessRegistry, return JWT |
+| `/auth/deal/offer` | POST | None | Issue nonce + return deal terms for PATRON access. Returns `{nonce, structure_id, expires_in_seconds, terms}` |
+| `/auth/deal/claim` | POST | None | Verify signature + payment proof, issue PATRON JWT. See deal mechanic section below. |
 | `/structure/{id}` | GET | JWT (≥VETTED) | Return tier-filtered structure profile |
 | `/structure/{id}` | POST | JWT (OWNER) | Update structure profile fields |
-| `/structure-chat` | POST | JWT (≥VETTED) | Structure AI streaming chat (SSE). Detects alerts, routes urgent to log_buffer, streams Claude response |
+| `/structure-chat` | POST | JWT (any tier) | Structure AI streaming chat (SSE). All tiers accepted — NONE and VETTED go to lobby persona; PATRON/OWNER/TRIBE go to full structure AI |
+| `/admin/rebuild-location-index` | POST | Server token | Rebuild `LocationRevealedEvent` index from chain. Returns `{entries_indexed: N}` |
 
 **`require_structure_jwt()` dependency:** Validates `Authorization: Bearer <jwt>` header. Decodes with `structure_auth.decode_jwt()`. Returns payload dict `{structure_id, address, tier, character_id, character_name}`.
 
 **`/structure-chat` flow:**
-1. Fetch `mem_store = get_memory_store(structure_id)`; `memory_text = mem_store.get_summary()`
-2. Fetch `kills_nearby` via `world_api.get_killmails(profile.system_id)` — filtered to last 2h
-3. `build_structure_context(profile, tier, memory_text=memory_text, kills_nearby=kills_nearby)`
-4. VETTED tier → routes to `lobby_client.stream()` (restricted, no internal structure data)
-5. OWNER/TRIBE → `structure_client.stream(...)` as before
-6. `event_stream()` finally block: yields `[DONE]`, calls `mem_store.rebuild_summary()`
+1. Tier check: PATRON → `deal_store.consume_message(address, structure_id)` → 402 if exhausted/expired. NONE → falls through.
+2. Fetch `mem_store = get_memory_store(structure_id)`; `memory_text = mem_store.get_summary()`
+3. Fetch `kills_nearby` via `world_api.get_killmails(profile.system_id)` — filtered to last 2h
+4. `build_structure_context(profile, tier, memory_text=memory_text, kills_nearby=kills_nearby)`
+5. VETTED or NONE → routes to `lobby_client.stream()` (restricted, no internal structure data)
+6. OWNER / TRIBE / PATRON → `structure_client.stream(...)` with full context
+7. All `event_stream()` generators yield `: keep-alive\n\n` first (SSE connection stability)
+8. `event_stream()` finally block: yields `[DONE]`, calls `mem_store.rebuild_summary()`
+
+**Tier routing summary:**
+
+| Tier | Access | Client |
+|------|--------|--------|
+| OWNER | Full vitals + management | `structure_client` |
+| TRIBE | Full vitals | `structure_client` |
+| PATRON | Full vitals, token-limited (20 messages / 24h by default) | `structure_client` |
+| VETTED | Lobby persona only | `lobby_client` |
+| NONE | Lobby persona — invited to make a deal | `lobby_client` |
 
 **`auth_verify` logic:**
 - On first OWNER profile creation: reads `STRUCTURE_SYSTEM_NAME` env var, resolves `system_id` and `region_name` via `galaxy_db`, writes them to the new profile
@@ -111,7 +126,7 @@ Reads `AccessRegistry` shared objects on the Nova chain (EVE Frontier builder sa
 | `resolve_tier(address, registry) → str` | Returns `OWNER`, `TRIBE`, `VETTED`, or `NONE`. Case-insensitive address comparison. |
 | `_rpc(method: str, params: list) → dict` | Generic async JSON-RPC helper. POSTs to `self._rpc_url` (from `NOVA_RPC_URL` env var). Returns the full JSON response dict. Used internally by `ssu_poller.py` for `suix_queryEvents`. |
 
-**Tier semantics:** OWNER and TRIBE see all structure vitals. VETTED sees identity only. NONE is rejected by all protected endpoints.
+**Tier semantics:** OWNER and TRIBE see all structure vitals. VETTED and NONE see lobby persona only (no internal data). PATRON is a temporary paid tier — see `src/deal_store.py`.
 
 **Global:** `nova_client = NovaClient()`
 
@@ -265,7 +280,7 @@ File-backed persistent memory per structure. Stores game events for context and 
 | `append_event(type, system_id, data)` | Appends one event to `events.jsonl`. |
 | `search_events(keyword, days=7)` | Returns up to 20 matching events (newest-first) from the last N days. |
 | `rebuild_summary()` | Reads recent events, calls Claude to condense into ≤300 chars, writes `summary.json`. Called in `event_stream()` finally block after every `/structure-chat` response. |
-| `get_summary() → str` | Returns `summary.json` text, or `""` if missing. |
+| `get_summary() → dict` | Returns `{"last_updated": ISO8601 timestamp or None, "text": str}`. Text is summary content, empty string if missing. |
 | `upsert_pilot(address, name, character_id, tier)` | Creates or updates pilot profile JSON. Called by `auth_verify` on every successful auth. |
 | `get_pilot(address) → dict` | Returns pilot profile dict, or `{}` if not found. |
 | `format_pilot_line(address) → str` | Returns `"name (tier)"` for context injection. |
@@ -403,6 +418,84 @@ Type IDs resolved via `src/type_names.py` (loads `data/type_names_all.json`):
 
 ---
 
+## `src/deal_store.py` — PATRON Deal Persistence
+
+Server-side state for the "deal-with-the-devil" mechanic. A stranger pays (item deposit, SUI coin, or information trade) to receive a time/token-limited PATRON JWT.
+
+**`DealRecord` dataclass:**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `address` | `str` | Wallet address (lowercased) |
+| `structure_id` | `str` | Structure the deal applies to |
+| `payment_method` | `str` | `"item"` \| `"sui"` \| `"info"` |
+| `messages_remaining` | `int` | Decremented on each `/structure-chat` call |
+| `expires_at` | `float` | Unix timestamp — absolute expiry |
+| `created_at` | `str` | ISO8601 creation time |
+
+**`DealStore` methods:**
+
+| Method | Behavior |
+|--------|----------|
+| `issue(address, structure_id, payment_method, messages=20, duration_hours=24) → DealRecord` | Create or overwrite deal. Saves to `data/deals/`. |
+| `get(address, structure_id) → Optional[DealRecord]` | Load from disk. Returns `None` if not found. |
+| `consume_message(address, structure_id) → bool` | Returns `False` if missing, expired, or exhausted. Otherwise decrements `messages_remaining` and saves. |
+
+**Persistence:** `data/deals/{safe_address}-{safe_structure_id}.json`. Both keys sanitized to `[a-zA-Z0-9_-]`, truncated to 80 chars — path traversal safe.
+
+**Constants:** `DEAL_MESSAGES_DEFAULT = 20`, `DEAL_DURATION_HOURS_DEFAULT = 24`
+
+**Global:** `deal_store = DealStore()`
+
+**Deal claim flow** (`POST /auth/deal/claim`):
+1. Consume nonce (reuses `nonce_store`) → 400 if invalid
+2. Verify signature (reuses `verify_sui_personal_message`) → 401 if fails
+3. Verify payment:
+   - `"item"`: `suix_queryEvents` for `ItemDepositedEvent` from sender, within last 10 min → 402 if not found
+   - `"sui"`: `sui_getTransactionBlock` on provided `proof.tx_digest`, check sender + VPS balance change → 402 if wrong
+   - `"info"`: read up to 5 structure IDs from `proof.structure_ids` via `sui_getObject`, store in memory → 400 if none provided
+4. Issue `DealRecord` via `deal_store.issue()`
+5. Issue PATRON JWT via `issue_jwt()` (standard 24h expiry; actual deal limits enforced by `DealStore`)
+6. Upsert pilot profile via `mem.upsert_pilot()` with `tier="PATRON"`
+
+**Env vars:**
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `VPS_SUI_ADDRESS` | `""` | Receives SUI coin payments. Leave blank to disable `"sui"` payment method. |
+| `EVE_FRONTIER_PACKAGE` | `0xd12a70c74...` | EVE Frontier Move package ID for event type construction |
+
+---
+
+## `src/location_index.py` — LocationRevealedEvent Index
+
+Indexes `LocationRevealedEvent` on-chain events to map structure assembly IDs to real-world coordinates. Persisted to `data/location_index.json`. Rebuilt on demand via admin endpoint.
+
+**`LocationIndex` methods:**
+
+| Method | Behavior |
+|--------|----------|
+| `load()` | Read `data/location_index.json` from disk. No network calls — safe at import time. |
+| `rebuild() → int` | Paginate `suix_queryEvents({"MoveEventType": _LOCATION_EVENT_TYPE})` via `nova_client._rpc`. Rebuilds index, saves, returns count. All errors logged, not raised. |
+| `get(assembly_id) → Optional[dict]` | Returns `{solarsystem, x, y, z, location_hash}` or `None`. |
+| `get_all() → list` | Returns all entries as `[{assembly_id, solarsystem, x, y, z, location_hash}]`. |
+
+**Event type:** `0xd12a70c74...::location::LocationRevealedEvent`
+
+**Storage:** `data/location_index.json` — `{assembly_id: {solarsystem, x, y, z, location_hash}}`
+
+**Global:** `location_index = LocationIndex()` — calls `load()` at import (disk read only).
+
+**Usage:**
+```bash
+# Rebuild after deploy (9 events on testnet)
+curl -X POST -H "X-Server-Token: $SERVER_TOKEN" http://localhost:8745/admin/rebuild-location-index | jq
+```
+
+**Known limitation:** `verify_proximity` on-chain requires a game-server-issued `LocationProof` — not freely callable. Location intelligence comes from this index (events the game server emits when a structure location is revealed) and from information-trade deals.
+
+---
+
 ## `build_types.py` — World API Type Catalog Fetcher
 
 One-shot CLI script. Fetches all pages of `/v2/types` from the World API and writes `data/types.json`.
@@ -430,3 +523,7 @@ python build_types.py
 | `tests/test_type_names.py` | 4 | Known type IDs, string key, unknown ID, None |
 | `tests/test_ssu_poller.py` | 20 | Two-hop fuel, services, `connected_assembly_ids`, `poll_connected_assemblies`, inventory dynamic fields (populate/empty/no-fields), `poll_player_structure` (cache/RPC-failure), `get_player_structures_in_system` (all returned) |
 | `tests/test_main_auth.py` | — | `auth_verify` backfills `system_id`/`region_name` on existing profiles, calls `upsert_pilot` |
+| `tests/test_deal_store.py` | 8 | `issue`/`get`/`consume_message`/overwrite/expire/exhaust/path-sanitize/missing |
+| `tests/test_deal_endpoints.py` | 10 | `/auth/deal/offer` (nonce+terms, no auth required); `/auth/deal/claim` (item/info/invalid-nonce/no-deposit/unknown-method); `structure_chat` PATRON routing, 402 on exhausted deal, NONE→lobby |
+| `tests/test_location_index.py` | 7 | `rebuild` stores/persists/paginates, `get` missing, `get_all` empty, RPC error swallowed, disk `load` |
+| `tests/test_main.py` | +1 | SSE keep-alive: `/chat` stream starts with `: keep-alive\n\n` |
