@@ -7,6 +7,55 @@
 
 ## Configuration
 
+### Token Authentication Configuration
+
+**Environment Variables:**
+
+```bash
+# Existing (still supported for backward compatibility)
+SERVER_TOKEN=your-static-token          # Legacy; for old X-Server-Token header
+
+# New (for JWT token system)
+JWT_SECRET=your-secret-key              # Used by structure_auth for Sui wallet JWTs
+TOKEN_KEY_PASSWORD=encryption-password  # Password for encrypting RSA private key (optional)
+                                         # If not set, derived from key directory path
+
+# Token lifetime (in TokenManager config)
+# See config/token_config.json for token_lifetime_hours (default: 24)
+```
+
+**Configuration File: config/token_config.json**
+
+```json
+{
+  "token_lifetime_hours": 24,
+  "token_algorithm": "RS256",
+  "token_key_dir": ".keys",
+  "token_validation_enabled": true,
+  "auth_endpoints": {
+    "token": "/auth/token"
+  }
+}
+```
+
+**Key Management:**
+
+- RSA keys stored: `<token_key_dir>/` (default: `.keys/`)
+  - `private_key.pem` — Encrypted with TOKEN_KEY_PASSWORD (PBKDF2)
+  - `public_key.pem` — Public key for client-side validation (optional)
+- Keys generated: Automatically on first startup
+- Key rotation: Delete key files and restart server (invalidates all outstanding tokens)
+
+**Deployment Checklist:**
+
+- [ ] Set TOKEN_KEY_PASSWORD environment variable (strong random password)
+- [ ] Ensure `config/token_config.json` exists with correct token_key_dir
+- [ ] Create `.keys/` directory with proper permissions (readable by app only)
+- [ ] Configure token_lifetime_hours based on your security policy (default 24h)
+- [ ] (Optional) Distribute public key if using multi-server setup
+
+---
+
 ### Server `.env`
 ```
 ANTHROPIC_API_KEY=sk-ant-...
@@ -16,6 +65,7 @@ WORLD_API_ENV=utopia
 SERVER_TOKEN=<random secret — must match overlay config.h and log-agent .env>
 PORT=8745
 JWT_SECRET=<random secret for structure JWT signing>
+TOKEN_KEY_PASSWORD=<password for RSA private key encryption>
 # Structure AI identity
 STRUCTURE_ID=keep-7a
 STRUCTURE_SYSTEM_NAME=JITA
@@ -43,12 +93,46 @@ LOG_BASE_PATH=C:\Users\Markus\Documents\Frontier\logs
 ## Running the System
 
 ### Server
+
 ```bash
 cd /opt/eve-frontier
 source .venv/bin/activate
 ./start.sh
 # or: uvicorn main:app --host 0.0.0.0 --port 8745
 ```
+
+**During startup, the server performs token system initialization:**
+
+1. **TokenManager Creation:**
+   ```python
+   token_manager = TokenManager(key_dir=".keys")
+   # - Loads or creates RSA key pair
+   # - Private key encrypted with TOKEN_KEY_PASSWORD
+   ```
+
+2. **Auth Router Registration:**
+   ```python
+   init_auth(token_manager)
+   app.include_router(auth_router)
+   # - Registers /auth/token endpoint
+   # - Binds TokenManager to validate_token() dependency
+   ```
+
+3. **Server Ready for Token Requests:**
+   - `/auth/token` endpoint available (no auth required)
+   - Protected endpoints require Bearer JWT validation
+   - Tokens issued with 24-hour lifetime
+
+**Logs to watch:**
+```
+INFO: TokenManager initialized with RSA keys
+INFO: auth_router registered, /auth/token available
+```
+
+If you see errors about missing keys or encryption failure, check:
+- TOKEN_KEY_PASSWORD environment variable set
+- `.keys/` directory exists and is writable
+- Sufficient permissions to read/write key files
 
 ### Build universe data (one-time after deploy)
 ```bash
@@ -77,13 +161,76 @@ cd /opt/eve-frontier
 ```
 
 ### Diagnostics
+
+**Token Acquisition:**
+
 ```bash
+# Request a token (no auth required)
+curl -X POST http://localhost:8745/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "test-agent-001"}'
+
+# Response:
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "token_type": "Bearer",
+  "expires_in": 86400
+}
+
+# Extract token for use in other requests:
+TOKEN=$(curl -s -X POST http://localhost:8745/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "test-agent"}' | jq -r '.access_token')
+```
+
+**Using Bearer Token (NEW - Primary Method):**
+
+```bash
+# POST to protected endpoint with Bearer token
+curl -X POST http://localhost:8745/log/ingest \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"event": "test_event"}'
+
 # Full pipeline state
-curl -H "X-Server-Token: $SERVER_TOKEN" http://localhost:8745/debug | jq
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8745/debug | jq
 
 # Gate graph availability
-curl -H "X-Server-Token: $SERVER_TOKEN" http://localhost:8745/data/gate-graph | jq '.built_at, (.adj | length)'
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8745/data/gate-graph | jq '.built_at, (.adj | length)'
 
+# Check token validity (will fail with 401 if invalid/expired)
+curl -X GET http://localhost:8745/log/ingest \
+  -H "Authorization: Bearer $TOKEN" -w "\nStatus: %{http_code}\n"
+```
+
+**Legacy X-Server-Token (Deprecated, may not work):**
+
+```bash
+# Old style (not recommended, included for reference)
+curl -X POST http://localhost:8745/log/ingest \
+  -H "X-Server-Token: static-token" \
+  -d '{"event": "test_event"}'
+```
+
+**Troubleshooting Token Issues:**
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| 401 Unauthorized | Token expired or invalid | Request new token via /auth/token |
+| 401 "Missing Authorization header" | No Bearer auth sent | Include `Authorization: Bearer <token>` header |
+| 401 "Invalid or expired token" | Token signature invalid | Token may be expired or corrupted |
+| 500 "TokenManager not initialized" | Server startup failed | Check logs for key generation errors |
+| "DPAPI not available" (Windows overlay) | Encryption failed | Check TOKEN_KEY_PASSWORD env var set |
+
+**Check logs for token-related errors:**
+
+```bash
+grep -i "token\|auth" /var/log/app.log | tail -20
+```
+
+**Additional diagnostics:**
+
+```bash
 # Check safe_jump_temp for named systems vs ef-map.com
 python scripts/check_temps.py UR8-K7K EVV-7GK
 
