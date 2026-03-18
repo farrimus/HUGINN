@@ -11,19 +11,19 @@ Maps every module to its agent doc and reference documentation.
 
 ### claude_client
 - **Agent Doc:** [modules/claude_client.md](modules/claude_client.md) (Ship AI streaming client; enforces lore-grounded persona)
-- **Reference:** `/docs/ref/ship-ai.md` (section: "Claude Integration & Streaming")
+- **Reference:** `/docs/ref/ship-ai.md`
 - **Related Modules:** context_builder, log_buffer, claude_client (intra-chat state)
 - **Tests:** `/opt/eve-frontier/tests/test_claude_client.py`
 
 ### context_builder
 - **Agent Doc:** [modules/context_builder.md](modules/context_builder.md) (Assembles [SHIP SENSORS] context block for Claude)
-- **Reference:** `/docs/ref/ship-ai.md` (section: "Context Assembly & Log Synthesis")
+- **Reference:** `/docs/ref/ship-ai.md`
 - **Related Modules:** log_buffer, world_api, ship_profile, location_index, structure_profile
 - **Tests:** `/opt/eve-frontier/tests/test_context_builder.py`
 
 ### structure_client
 - **Agent Doc:** [modules/structure_client.md](modules/structure_client.md) (Structure AI streaming client; separate prompt + context)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Structure Client & Streaming")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** context_builder, memory_store, structure_profile, structure_auth
 - **Tests:** `/opt/eve-frontier/tests/test_structure_client.py`
 
@@ -34,13 +34,13 @@ Maps every module to its agent doc and reference documentation.
 ### log_buffer
 - **Agent Doc:** [modules/log_buffer.md](modules/log_buffer.md) (Ring buffer of game events; tracks location, route, live snapshots)
 - **Reference:** `/docs/log-pipeline.md` (canonical log event design and flow)
-- **Reference:** `/docs/ref/ship-ai.md` (section: "Log Event Types & Partitioning")
+- **Reference:** `/docs/ref/ship-ai.md`
 - **Related Modules:** context_builder, ship_profile, route_engine
 - **Tests:** `/opt/eve-frontier/tests/test_log_buffer.py`
 
 ### memory_store
 - **Agent Doc:** [modules/memory_store.md](modules/memory_store.md) (Persistent Structure AI memory: events, summaries, pilot notes)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Memory Management & Persistence")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** structure_client, structure_profile
 - **Tests:** `/opt/eve-frontier/tests/test_memory_store.py`
 
@@ -50,8 +50,8 @@ Maps every module to its agent doc and reference documentation.
 
 ### world_api
 - **Agent Doc:** [modules/world_api.md](modules/world_api.md) (Public World API client; caches systems, gates, structures)
-- **Reference:** `/docs/ref/routing.md` (section: "Gate Graph & World Data")
-- **Reference:** `/docs/ref/ship-ai.md` (section: "Real-Time Universe State")
+- **Reference:** `/docs/ref/routing.md`
+- **Reference:** `/docs/ref/ship-ai.md`
 - **Related Modules:** route_engine, location_index, galaxy_db, radius_search, structure_profile
 - **Tests:** `/opt/eve-frontier/tests/test_world_api.py`
 
@@ -63,25 +63,25 @@ Maps every module to its agent doc and reference documentation.
 
 ### ship_profile
 - **Agent Doc:** [modules/ship_profile.md](modules/ship_profile.md) (Ship physics: jump range, fuel budget, heat dissipation)
-- **Reference:** `/docs/ref/routing.md` (section: "Ship Profile & Heat Mechanics")
+- **Reference:** `/docs/ref/routing.md`
 - **Related Modules:** route_engine, context_builder
 - **Tests:** `/opt/eve-frontier/tests/test_ship_profile.py`
 
 ### location_index
 - **Agent Doc:** [modules/location_index.md](modules/location_index.md) (Sui chain LocationRevealedEvent tracking; maps assembly_id to coordinates and structure metadata)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Structure Location Resolution")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** world_api, structure_profile, structure_client
 - **Tests:** `/opt/eve-frontier/tests/test_location_index.py`
 
 ### galaxy_db
 - **Agent Doc:** [modules/galaxy_db.md](modules/galaxy_db.md) (Static galaxy data: systems, constellations, regions)
-- **Reference:** `/docs/ref/routing.md` (section: "Galaxy Structure & Hierarchy")
+- **Reference:** `/docs/ref/routing.md`
 - **Related Modules:** world_api, location_index, route_engine
 - **Tests:** `/opt/eve-frontier/tests/test_galaxy_db.py`
 
 ### type_names
 - **Agent Doc:** [modules/type_names.md](modules/type_names.md) (Type ID to human-readable name conversion)
-- **Reference:** `/docs/ref/ship-ai.md` (section: "Game Constants & Type Resolution")
+- **Reference:** `/docs/ref/ship-ai.md`
 - **Related Modules:** context_builder, world_api
 - **Tests:** `/opt/eve-frontier/tests/test_type_names.py`
 
@@ -97,25 +97,25 @@ Maps every module to its agent doc and reference documentation.
 
 ### structure_profile
 - **Agent Doc:** [modules/structure_profile.md](modules/structure_profile.md) (Structure state: fuel, shields, services, docked pilots)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Structure State & Data Model")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** structure_client, memory_store, ssu_poller, structure_auth
 - **Tests:** `/opt/eve-frontier/tests/test_structure_profile.py`
 
 ### structure_auth
 - **Agent Doc:** [modules/structure_auth.md](modules/structure_auth.md) (Sui wallet auth: nonce store, signature verification, JWT issuance)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Nonce Store, Sui Signature Verification, JWT")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** deal_store, memory_store, structure_client
 - **Tests:** `/opt/eve-frontier/tests/test_structure_auth.py`
 
 ### nova_client
 - **Agent Doc:** [modules/nova_client.md](modules/nova_client.md) (Sui blockchain client; fetches AccessRegistry objects)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Sui Integration & Nova Registry")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** structure_auth, token_manager
 - **Tests:** `/opt/eve-frontier/tests/test_nova_client.py`
 
 ### ssu_poller
 - **Agent Doc:** [modules/ssu_poller.md](modules/ssu_poller.md) (Background polling of SSU telemetry; triggers low-fuel alerts)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Telemetry & Background Polling")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** structure_profile, memory_store, structure_client
 - **Tests:** `/opt/eve-frontier/tests/test_ssu_poller.py`
 
@@ -125,13 +125,13 @@ Maps every module to its agent doc and reference documentation.
 
 ### auth
 - **Agent Doc:** [modules/auth.md](modules/auth.md) (Simple X-Server-Token header validation)
-- **Reference:** `/docs/ref/ops.md` (section: "Configuration & Server Token")
+- **Reference:** `/docs/ref/ops.md`
 - **Related Modules:** token_manager, endpoints
 - **Tests:** `/opt/eve-frontier/tests/test_auth.py`
 
 ### token_manager
 - **Agent Doc:** [modules/token_manager.md](modules/token_manager.md) (RSA key generation; JWT token issuance and validation)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "JWT Token Lifecycle")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** auth, structure_auth, nova_client
 - **Tests:** `/opt/eve-frontier/tests/test_token_manager.py`
 
@@ -142,8 +142,8 @@ Maps every module to its agent doc and reference documentation.
 ### endpoints
 - **Agent Doc:** [modules/endpoints.md](modules/endpoints.md) (FastAPI route handlers organized into sub-routers)
 - **Reference:** `/docs/CODEBASE.md` (section: "API Endpoints & Routes")
-- **Reference:** `/docs/ref/ship-ai.md` (section: "Endpoint Flow: /chat, /log/ingest, /structures")
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Structure AI Endpoints")
+- **Reference:** `/docs/ref/ship-ai.md`
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** auth, context_builder, claude_client, structure_client, log_buffer
 - **Tests:** `/opt/eve-frontier/tests/test_endpoints.py`
 
@@ -153,7 +153,7 @@ Maps every module to its agent doc and reference documentation.
 
 ### deal_store
 - **Agent Doc:** [modules/deal_store.md](modules/deal_store.md) (Persistent deal/contract storage and CRUD)
-- **Reference:** `/docs/ref/structure-ai.md` (section: "Marketplace & Deal Management")
+- **Reference:** `/docs/ref/structure-ai.md`
 - **Related Modules:** structure_client, memory_store
 - **Tests:** `/opt/eve-frontier/tests/test_deal_store.py`
 

@@ -323,10 +323,17 @@ def build_context_block(
     current_system: Optional[str],
     live_sessions: Optional[list] = None,
     current_route: Optional[dict] = None,
+    structure_alerts: Optional[list] = None,
+    ship_profile=None,
+    nearby_structures: Optional[list] = None,
 ) -> str
 ```
 
-`current_route` is passed from `log_buffer.current_route` in the chat endpoint.
+**Parameters:**
+- `current_route` — passed from `log_buffer.current_route` in the chat endpoint
+- `structure_alerts` — critical structures (low fuel, etc.) from Structure AI
+- `ship_profile` — Ship heat, range, jump distance from route_engine
+- `nearby_structures` — structures within radius_search (e.g., player-owned stations)
 
 ---
 

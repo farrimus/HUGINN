@@ -74,12 +74,12 @@ H(D) = 100 × (2/π) × arctan(100 × 2π × √(L / L_sun) / D)
 
 `route_engine.py` provides three modes via the `cost_mode` parameter:
 
-1. **`bfs(origin, dest)`** — gate-only, free, no ship params. Finds shortest gate-hop path within a connected cluster. Fast (< 5ms). Used as fallback when A* returns no result (also surfaced as `cost_mode="gate"` in the API).
+1. **`bfs(origin, dest)`** — gate-only, free, no ship params. Finds shortest gate-hop path within a connected cluster. Fast (< 5ms). Used as fallback when A* returns no result (also surfaced via `gate_only=true` in the API).
 
 2. **`route(origin, dest, profile, cost_mode="jumps")`** — heat-aware A* hybrid.
    - **`cost_mode="jumps"`** (default): minimizes hop count. Gate hops cost 1; direct jumps cost 1. Heuristic = dist_to_dest / max_range. Finds fewest-hop paths even when the route refuels en route at cool systems.
    - **`cost_mode="fuel"`**: minimizes total LY flown. Gate hops cost 0 LY; direct jumps cost distance in LY. Heuristic = 0 (Dijkstra). Finds routes that string gate hops together to save fuel even at the cost of many more hops.
-   - **`cost_mode="gate"`**: calls BFS, gate hops only.
+   - **`gate_only=true`**: calls BFS, gate hops only. When true, only use gate jumps (0 cost). When false, calculate heat-based route cost.
 
    Per-node jump range is computed from the system's `safe_jump_temp` (not the player's `external_temp`). Red-zone systems (≥90°) block outbound direct jumps (range=0). `_SpatialIndex` narrows candidates via sorted X-axis binary search + dy/dz AABB guards.
 

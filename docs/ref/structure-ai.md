@@ -112,7 +112,7 @@ Both use JWT format but different signing keys and validation methods.
 
 **`auth_verify` logic:**
 - On first OWNER profile creation: reads `STRUCTURE_SYSTEM_NAME` env var, resolves `system_id` and `region_name` via `galaxy_db`, writes them to the new profile
-- Backfills existing profiles where `system_id == 0` or `region_name == ""` using the same lookup
+- Backfills existing profiles where `system_id == 0`, `region_name == ""`, or `system_name == ""` using the same lookup
 - After JWT decode: calls `mem.upsert_pilot(address, name, character_id, tier)` to create/update the pilot profile
 
 ---
