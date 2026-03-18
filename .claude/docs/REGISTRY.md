@@ -1,7 +1,7 @@
 # Documentation Registry
 
-**Auto-maintained by doc-doctor.** Last updated: 2026-03-18
-**Git Hash:** c2ae7ff9dd74646b17cda8c076e3f9a5e47e5119
+**Auto-maintained by doc-doctor.** Last updated: 2026-03-18 (10 missing docs regenerated)
+**Git Hash:** 83a6403df85f5a8bb96c5225b6d9ced2d23a7fcd
 
 Maps every module to its agent doc and reference documentation.
 
