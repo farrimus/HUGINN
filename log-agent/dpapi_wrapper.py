@@ -2,7 +2,7 @@ import sys
 import base64
 from ctypes import (
     Structure, c_char_p, c_uint32, POINTER, create_string_buffer,
-    byref, windll, GetLastError
+    byref, windll, GetLastError, cast, c_char, string_at
 )
 
 if sys.platform == "win32":
@@ -26,7 +26,9 @@ if sys.platform == "win32":
 
         # Create input blob
         input_data = create_string_buffer(plaintext_bytes)
-        input_blob = DATA_BLOB(len(plaintext_bytes), input_data)
+        input_blob = DATA_BLOB()
+        input_blob.cbData = len(plaintext_bytes)
+        input_blob.pbData = cast(input_data, POINTER(c_char_p))
 
         # Create output blob (will be populated by CryptProtectData)
         output_blob = DATA_BLOB()
@@ -47,7 +49,7 @@ if sys.platform == "win32":
             raise RuntimeError(f"CryptProtectData failed with error code {error_code}")
 
         # Convert output to base64
-        ciphertext = output_blob.pbData[:output_blob.cbData]
+        ciphertext = string_at(output_blob.pbData, output_blob.cbData)
         return base64.b64encode(ciphertext).decode("utf-8")
 
     def decrypt_data(ciphertext_b64: str) -> str:
@@ -70,7 +72,9 @@ if sys.platform == "win32":
 
         # Create input blob
         input_data = create_string_buffer(ciphertext)
-        input_blob = DATA_BLOB(len(ciphertext), input_data)
+        input_blob = DATA_BLOB()
+        input_blob.cbData = len(ciphertext)
+        input_blob.pbData = cast(input_data, POINTER(c_char_p))
 
         # Create output blob (will be populated by CryptUnprotectData)
         output_blob = DATA_BLOB()
@@ -91,7 +95,7 @@ if sys.platform == "win32":
             raise RuntimeError(f"CryptUnprotectData failed with error code {error_code}")
 
         # Extract and decode plaintext
-        plaintext_bytes = output_blob.pbData[:output_blob.cbData]
+        plaintext_bytes = string_at(output_blob.pbData, output_blob.cbData)
         return plaintext_bytes.decode("utf-8")
 
 else:
