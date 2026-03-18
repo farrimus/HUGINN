@@ -49,17 +49,86 @@ WndProc subclass (`overlayWndProc`). F8 toggle fires first (`ui::visible = !ui::
 
 ---
 
+## Bearer Token Authentication in HTTP Client
+
+All HTTP client functions now include Bearer JWT token in Authorization headers:
+
+```cpp
+// Internal helper function (in http_client.cpp)
+Headers getAuthHeaders() {
+    std::string token = getStoredToken();  // From TokenStore (DPAPI encrypted)
+    return {
+        {"Authorization", "Bearer " + token},
+        {"Content-Type", "application/json"}
+    };
+}
+
+// All HTTP functions use auth headers:
+postChat(message) {
+    headers = getAuthHeaders();  // Injects Authorization: Bearer <jwt>
+    POST /log/ingest with headers
+}
+
+postJson(endpoint, data) {
+    headers = getAuthHeaders();
+    POST endpoint with headers and data
+}
+```
+
+**Token Lifecycle:**
+1. On startup: Request token from `/auth/token` via `AuthFlow`
+2. Store token securely: Windows DPAPI encryption (TokenStore)
+3. On each request: Inject `Authorization: Bearer <token>` header
+4. If 401 received: Refresh token via `/auth/token` and retry
+
+See log-agent/src/auth_flow.py for Python equivalent and reference implementation.
+
+---
+
 ## `overlay_ui/config.h`
 Compile-time constants: `SERVER_HOST`, `SERVER_HOST_W`, `SERVER_PORT`, `SERVER_TOKEN`, `CHAT_PATH`. Edit before building on Windows.
+
+**Token Configuration:**
+- `SERVER_TOKEN` is used as the base for JWT Bearer auth (deprecated as static string)
+- At runtime, overlay obtains a JWT from `POST /auth/token` (requires `agent_id`, not auth)
+- Token stored securely in `%APPDATA%\ShipAI\token.json` (DPAPI encrypted)
+- Token passed via `Authorization: Bearer <token>` header on all requests
+- Token lifetime: 24 hours (auto-refresh when near expiry)
 
 ---
 
 ## `overlay_ui/http_client.h` / `http_client.cpp`
-WinHTTP client. Four public functions:
-- `http::postChat()` — SSE streaming POST; `onChunk`/`onDone` callbacks; used by companion panel.
-- `http::getJson()` — synchronous GET; returns full response body; used by route and ship profile panels.
-- `http::postEmpty()` — fire-and-forget POST (no body); used for `/route/clear`.
-- `http::postJson()` — synchronous POST with JSON body; returns full response body; used for `/route/activate` and `/ship-profile`.
+WinHTTP client. Four public functions (all with automatic Bearer token authentication):
+- `http::postChat()` — SSE streaming POST; `onChunk`/`onDone` callbacks; used by companion panel. Injects `Authorization: Bearer <token>`.
+- `http::getJson()` — synchronous GET; returns full response body; used by route and ship profile panels. Injects `Authorization: Bearer <token>`.
+- `http::postEmpty()` — fire-and-forget POST (no body); used for `/route/clear`. Injects `Authorization: Bearer <token>`.
+- `http::postJson()` — synchronous POST with JSON body; returns full response body; used for `/route/activate` and `/ship-profile`. Injects `Authorization: Bearer <token>`.
+
+**Bearer Token Injection:**
+All functions in `http_client.h` now automatically include Bearer authentication:
+
+```cpp
+// Function signature (unchanged from user perspective)
+ResponseData postChat(const std::string& message);
+
+// What happens internally (now with Bearer auth):
+// 1. Get stored token via TokenStore::getToken()
+// 2. Build headers: {"Authorization", "Bearer <token>"}, {"Content-Type", "application/json"}
+// 3. POST to /log/ingest with headers
+// 4. Return response
+//
+// On 401 Unauthorized: Token expired, request new token via /auth/token, retry
+
+// Other public functions follow the same pattern:
+ResponseData postJson(const std::string& endpoint, const nlohmann::json& data);
+  // POST to any endpoint with Bearer token
+
+ResponseData getJson(const std::string& endpoint);
+  // GET with Bearer token
+
+ResponseData postEmpty(const std::string& endpoint);
+  // POST empty body with Bearer token
+```
 
 All run synchronously — always call from a background thread. Shared `_openHandles`/`_closeHandles` helpers.
 
