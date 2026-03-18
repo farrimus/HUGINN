@@ -24,7 +24,7 @@ Probed 2026-03-13. EVE Frontier uses **Chromium 122** (Chrome/537.36 UA, AppleWe
 
 **SSE persistence:** Confirmed alive across panel resize and alt-tab (`visibilitychange` green). The 5-second auto-reconnect in `index.html` handles brief network blips.
 
-**SSE keep-alive:** Server should send a `: keep-alive\n\n` comment every 15–20 seconds to prevent embedded-view timeout. **Not yet implemented.** Add to the `event_stream()` generator in `main.py` if connection stability issues appear.
+**SSE keep-alive:** Server sends a `: keep-alive\n\n` comment at the start of each stream to prevent embedded-view timeout. **Implemented** — all `event_stream()` generators in `main.py` emit the keep-alive comment immediately (heartbeat sent every connection open).
 
 ---
 
@@ -98,8 +98,8 @@ Added 2026-03-16. Standalone dev tool served at `http://vps-ip:8745/static/debug
 **Nav computer in debug.html:**
 - Origin / Destination fields: `oninput` uppercases, `text-transform: uppercase` CSS
 - Ship type dropdown (all 13 ships), fuel type dropdown, fuel quantity, adaptive level
-- **Route mode dropdown:** "Fewest jumps" (`cost_mode=jumps`), "Least fuel" (`cost_mode=fuel`), "Gate only" (`cost_mode=gate`)
-- POSTs `POST /route` with full ship profile + `cost_mode`; renders result as vertical hop chain
+- **Route mode dropdown:** "Fewest jumps" (`cost_mode=jumps`), "Least fuel" (`cost_mode=fuel`), "Gate only" (`gate_only=true`)
+- Checkbox: "Gate-only route (no heat cost)" → POSTs `POST /route` with full ship profile + `gate_only=true`; renders result as vertical hop chain
 
 **Route result display:**
 Each hop rendered as a labeled connector between system boxes:
