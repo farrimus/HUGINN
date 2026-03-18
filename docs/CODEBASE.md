@@ -99,7 +99,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 | VETTED routing → LobbyClient | ✓ VETTED tier gets restricted lobby Claude (no internal structure data) |
 | Pilot profiles | ✓ Every auth creates/updates pilot profile in `data/memory/{id}/pilots/` |
 | Auth backfill | ✓ On auth, existing profiles with missing `system_id`/`region_name` are resolved via galaxy_db |
-| `build_types.py` | ✓ One-shot script: fetches `/v2/types` from World API → `data/types.json` |
+| `build_types.py` | ✓ One-shot script: fetches `/v2/types` from World API → `data/type_names_all.json` |
 | Ship stat auto-extraction | Future — manual input via F7 panel for now |
 | Client-side RouteCalculator (`log-agent/route_calculator.py`) | ✓ Built — BFS, ETag-cached `systems.json` download, warnings + highlights, wired into log agent |
 | Radius search calculator | ✓ Server + client, filtering by planets/killmails/heat/structures |
@@ -116,17 +116,24 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 ├── .env / .env.example             # Server environment config
 ├── start.sh                        # Server startup script
 ├── build_universe.py               # ResFiles → systems.json + gates.json
-├── build_types.py                  # One-shot: World API /v2/types → data/types.json
+├── build_types.py                  # One-shot: World API /v2/types → data/type_names_all.json
 │
 ├── src/
 │   ├── __init__.py
+│   ├── endpoints/                  # Authorization endpoints
+│   │   ├── __init__.py
+│   │   └── auth.py                 # Token auth endpoints (/auth/token, /auth/verify)
+│   ├── auth.py                     # X-Server-Token header validation
+│   ├── token_manager.py            # JWT generation/validation, key management
+│   ├── location_index.py           # Location indexing for context enrichment
+│   ├── radius_search.py            # Radius search: planets, killmails, heat, structures
+│   ├── deal_store.py               # Deal/contract persistence
 │   ├── log_buffer.py               # Ring buffer + live session store + current_route
 │   ├── context_builder.py          # Formats context block for Claude (2000 char cap)
 │   ├── claude_client.py            # Claude API streaming client
 │   ├── world_api.py                # EVE World API client + system index builder; utopia default
 │   ├── route_engine.py             # BFS (gate-only) + A* hybrid router + spatial index
 │   ├── ship_profile.py             # ShipProfile dataclass + persistence + fuel formulas
-│   ├── auth.py                     # X-Server-Token header validation
 │   ├── structure_auth.py           # NonceStore, Sui ed25519 sig verify, JWT issue/decode, character lookup
 │   ├── nova_client.py              # Sui JSON-RPC client, AccessRegistry, tier resolver, _rpc() helper
 │   ├── structure_profile.py        # StructureProfile dataclass + tier-filtered view + persistence
@@ -137,10 +144,16 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   └── type_names.py               # Type ID → name resolver; loaded once from data/type_names_all.json
 │
 ├── log-agent/                      # Runs on Windows gaming PC
+│   ├── __init__.py
 │   ├── log_agent.py                # File watcher + bootstrap + heartbeat loop
 │   ├── parsers.py                  # Line-level log parsing → structured event dicts
 │   ├── session_tracker.py          # Stateful session aggregation (combat / mining)
 │   ├── route_calculator.py         # Client-side BFS router; ETag-cached systems.json; POSTs route_planned
+│   ├── dpapi_wrapper.py            # Windows DPAPI token encryption wrapper
+│   ├── ship_ai_client.py           # Ship AI HTTP client + streaming response handler
+│   ├── auth_flow.py                # Client-side token acquisition flow
+│   ├── token_store.py              # Secure token storage (DPAPI-backed)
+│   ├── radius_calculator.py        # Client-side radius search calculator
 │   ├── conftest.py                 # pytest config for log-agent subtree
 │   ├── requirements.txt            # Client dependencies
 │   ├── .env.example                # Template for Windows agent config
@@ -148,7 +161,10 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   ├── diagnose.py                 # Diagnostic: chatlog encoding debugger
 │   └── tests/
 │       ├── test_parsers.py         # 31 tests — parsing correctness
-│       └── test_session_tracker.py # 25 tests — session aggregation + timeouts
+│       ├── test_session_tracker.py # 25 tests — session aggregation + timeouts
+│       ├── test_auth_flow.py       # Auth flow integration tests
+│       ├── test_token_store.py     # Token storage + DPAPI tests
+│       └── test_radius_calculator.py # Radius search computation tests
 │
 ├── tests/                          # Server-side tests
 │   ├── test_main.py                # Health + endpoint coverage
@@ -182,8 +198,7 @@ POST /route → route_engine.py A* (CPU cost on VPS — avoid under load)
 │   ├── systems.json                # 24,426 systems: full data from ResFiles (x/y/z, gates, star type, safe_jump_temp)
 │   ├── gates.json                  # 3,438 unique undirected gate pairs
 │   ├── starmapcache.json           # Raw ResFiles dump (source for systems.json — not served)
-│   ├── type_names_all.json         # Type ID → name map (source for star type names — not served)
-│   ├── types.json                  # [generated] World API /v2/types catalog (build_types.py)
+│   ├── type_names_all.json         # Type ID → name map (loaded at import for name resolution)
 │   ├── eve_universe.db             # SQLite DB: Regions, Constellations, SolarSystems, Planets, Moons, Stations, Lagrange, Jumps, Types
 │   ├── ship_profile.json           # [generated] Persisted ship profile
 │   ├── gate_graph.json             # Legacy — world API gate data (empty gateLinks, superseded by systems.json)
