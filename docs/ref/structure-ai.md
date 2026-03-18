@@ -36,20 +36,59 @@ sui client call \
 
 ---
 
+## Authentication Systems Overview
+
+**Two separate JWT token systems serve different purposes:**
+
+#### System 1: Agent Tokens (TokenManager)
+- **Purpose:** Authenticate log agents and game clients connecting to `/log/ingest`
+- **Endpoint:** `POST /auth/token` (no authentication required)
+- **Request:** `{"agent_id": "log-agent-001"}`
+- **Response:** `{"access_token": "<jwt>", "token_type": "Bearer", "expires_in": 86400}`
+- **Lifetime:** 24 hours (configurable)
+- **Key type:** RSA-2048 (private key encrypted at rest)
+- **Validation:** `validate_token()` dependency in FastAPI routes
+- **Used by:** Log agents, Windows overlay, in-game browser
+- **Implementation:** `src/token_manager.py`, `src/endpoints/auth.py`
+
+#### System 2: Structure/Wallet Tokens (structure_auth)
+- **Purpose:** Authenticate game structures via Sui wallet (Sui personal message signing)
+- **Flow:** Challenge → Sign → Verify
+  1. `POST /auth/challenge` → receive `challenge_uuid` (no auth)
+  2. Client signs challenge with Sui wallet (client-side)
+  3. `POST /auth/verify` → provide signed message + Sui address (no auth)
+  4. Server verifies signature and issues JWT token
+- **Token type:** JWT signed with `JWT_SECRET`
+- **Validation:** `require_structure_jwt()` dependency
+- **Used by:** In-game structure UI (browser)
+- **Implementation:** `src/structure_auth.py`
+
+**Key Difference:**
+- **Agent tokens** (TokenManager): Simple, one-step acquisition (just pass agent_id)
+- **Structure tokens** (structure_auth): Multi-step, requires Sui wallet signing (security-critical)
+
+Both use JWT format but different signing keys and validation methods.
+
+---
+
 ## Endpoints (from `main.py`)
 
-| Route | Method | Auth | Purpose |
-|-------|--------|------|---------|
-| `/auth/challenge` | POST | None | Issue nonce for wallet signing. Returns `{nonce, structure_id, expires_in_seconds: 300}` |
-| `/auth/verify` | POST | None | Consume nonce, verify Sui ed25519 sig, resolve tier from Nova AccessRegistry, return JWT |
-| `/auth/deal/offer` | POST | None | Issue nonce + return deal terms for PATRON access. Returns `{nonce, structure_id, expires_in_seconds, terms}` |
-| `/auth/deal/claim` | POST | None | Verify signature + payment proof, issue PATRON JWT. See deal mechanic section below. |
-| `/structure/{id}` | GET | JWT (≥VETTED) | Return tier-filtered structure profile |
-| `/structure/{id}` | POST | JWT (OWNER) | Update structure profile fields |
-| `/structure-chat` | POST | JWT (any tier) | Structure AI streaming chat (SSE). All tiers accepted — NONE and VETTED go to lobby persona; PATRON/OWNER/TRIBE go to full structure AI |
-| `/admin/rebuild-location-index` | POST | Server token | Rebuild `LocationRevealedEvent` index from chain. Returns `{entries_indexed: N}` |
+| Route | Method | Auth | Purpose | System |
+|-------|--------|------|---------|--------|
+| `/auth/challenge` | POST | None | Issue nonce for wallet signing. Returns `{nonce, structure_id, expires_in_seconds: 300}` | **structure_auth** |
+| `/auth/verify` | POST | None | Consume nonce, verify Sui ed25519 sig, resolve tier from Nova AccessRegistry, return JWT | **structure_auth** |
+| `/auth/deal/offer` | POST | None | Issue nonce + return deal terms for PATRON access. Returns `{nonce, structure_id, expires_in_seconds, terms}` | **structure_auth** |
+| `/auth/deal/claim` | POST | None | Verify signature + payment proof, issue PATRON JWT. See deal mechanic section below. | **structure_auth** |
+| `/structure/{id}` | GET | JWT (≥VETTED) | Return tier-filtered structure profile | **structure_auth** |
+| `/structure/{id}` | POST | JWT (OWNER) | Update structure profile fields | **structure_auth** |
+| `/structure-chat` | POST | JWT (any tier) | Structure AI streaming chat (SSE). All tiers accepted — NONE and VETTED go to lobby persona; PATRON/OWNER/TRIBE go to full structure AI | **structure_auth** |
+| `/admin/rebuild-location-index` | POST | Server token | Rebuild `LocationRevealedEvent` index from chain. Returns `{entries_indexed: N}` | — |
 
-**`require_structure_jwt()` dependency:** Validates `Authorization: Bearer <jwt>` header. Decodes with `structure_auth.decode_jwt()`. Returns payload dict `{structure_id, address, tier, character_id, character_name}`.
+**Auth Dependencies:**
+- `require_structure_jwt()` from `src/structure_auth.py` — Validates structure/wallet JWTs
+  - Validates `Authorization: Bearer <jwt>` header
+  - Decodes with `structure_auth.decode_jwt()`
+  - Returns payload dict `{structure_id, address, tier, character_id, character_name}`
 
 **`/structure-chat` flow:**
 1. Tier check: PATRON → `deal_store.consume_message(address, structure_id)` → 402 if exhausted/expired. NONE → falls through.
@@ -103,6 +142,40 @@ Verifies a `signPersonalMessage` Sui compact signature (97 bytes: `flag(1) || si
 **`lookup_character(address) → dict`** — async; calls World API `/v2/smartcharacters?address={address}`; returns `{id, name}` or `{}` on failure. Gracefully degrades if World API is unavailable.
 
 **Global:** `nonce_store = NonceStore()`
+
+**Integration with Agent Token System:**
+
+While Structure Auth issues its own JWTs (for Sui wallet holders), it coexists with the Agent Token system (TokenManager):
+
+- Both use JWT format internally
+- Different signing keys: `JWT_SECRET` for structure, RSA key for agents
+- Different validation methods:
+  - Structure tokens: `require_structure_jwt()` dependency
+  - Agent tokens: `validate_token()` dependency
+
+When designing multi-server or federated systems, keep token validation separate by dependency type.
+
+**See also:** `src/endpoints/auth.py` for Agent TokenManager initialization and `/auth/token` endpoint.
+
+---
+
+## Main Application Integration
+
+TokenManager and auth router are initialized in main.py lifespan:
+
+```python
+# In lifespan context manager:
+token_manager = TokenManager(key_dir=".keys")
+init_auth(token_manager)
+app.include_router(auth_router)
+
+# This makes /auth/token endpoint available and wires validate_token() dependency
+```
+
+This happens alongside structure_auth initialization, ensuring both authentication systems are ready:
+- Agent tokens available via `/auth/token`
+- Structure wallet auth available via `/auth/challenge` + `/auth/verify`
+- Protected endpoints can validate either token type using appropriate dependency
 
 ---
 
