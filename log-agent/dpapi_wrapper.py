@@ -2,13 +2,13 @@ import sys
 import base64
 from ctypes import (
     Structure, c_char_p, c_uint32, POINTER, create_string_buffer,
-    byref, windll, GetLastError
+    byref, windll, GetLastError, cast, c_char
 )
 
 if sys.platform == "win32":
     # Define DATA_BLOB structure for DPAPI
     class DATA_BLOB(Structure):
-        _fields_ = [("cbData", c_uint32), ("pbData", POINTER(c_char_p))]
+        _fields_ = [("cbData", c_uint32), ("pbData", POINTER(c_char))]
 
     def encrypt_data(plaintext: str) -> str:
         """Encrypt plaintext using Windows DPAPI.
@@ -24,9 +24,11 @@ if sys.platform == "win32":
         """
         plaintext_bytes = plaintext.encode("utf-8")
 
-        # Create input blob
+        # Create input blob - construct empty and assign fields with proper casting
         input_data = create_string_buffer(plaintext_bytes)
-        input_blob = DATA_BLOB(len(plaintext_bytes), input_data)
+        input_blob = DATA_BLOB()
+        input_blob.cbData = len(plaintext_bytes)
+        input_blob.pbData = cast(input_data, POINTER(c_char))
 
         # Create output blob (will be populated by CryptProtectData)
         output_blob = DATA_BLOB()
@@ -68,9 +70,11 @@ if sys.platform == "win32":
         except Exception as e:
             raise ValueError(f"Invalid base64 input: {e}")
 
-        # Create input blob
+        # Create input blob - construct empty and assign fields with proper casting
         input_data = create_string_buffer(ciphertext)
-        input_blob = DATA_BLOB(len(ciphertext), input_data)
+        input_blob = DATA_BLOB()
+        input_blob.cbData = len(ciphertext)
+        input_blob.pbData = cast(input_data, POINTER(c_char))
 
         # Create output blob (will be populated by CryptUnprotectData)
         output_blob = DATA_BLOB()
