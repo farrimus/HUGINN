@@ -14,7 +14,7 @@ Spatial search engine that loads system data and structure locations, calculates
 
 - **Initialization:** Loads `data/systems.json` (24k+ systems) and `data/structure_locations.json` (persistent structure cache)
 - **Distance metric:** Euclidean in 3D space; EVE coordinates in meters; converted to light-years (1 LY = 9.461e15 m)
-- **Filters:** planets, killmails (async, World API), heat, structures (OWNER-tier gated)
+- **Filters:** planets, killmails (async, World API), heat, structures (accessible to all authenticated clients)
 - **Thresholding:** < 20 systems = return all results; >= 20 systems = limit to top N per filter (prevents context explosion)
 
 ### Client-side (`log-agent/radius_calculator.py`)
@@ -346,7 +346,7 @@ Client response structure matches server (where applicable):
 - `reported_by`: Pilot or reporter name
 - `tribe`: Optional tribal affiliation
 - `discovered_at`: ISO 8601 timestamp (UTC) when recorded
-- `source`: Origin of data; typically `"manual"` (OWNER-tier players can also submit via /structures/record)
+- `source`: Origin of data; typically `"manual"` (all authenticated clients can submit via /structures/record)
 
 ---
 
@@ -427,9 +427,9 @@ Returns systems with `safe_jump_temp >= 70`, sorted by temperature (hottest firs
 }
 ```
 
-#### Structures (Server-only, OWNER-tier gated)
+#### Structures (Server-only)
 
-Returns systems that have recorded structures, sorted by distance (closest first). Structures are only visible to OWNER-tier users (auth via Sui wallet).
+Returns systems that have recorded structures, sorted by distance (closest first). All authenticated clients can access structure data via the radius search endpoints. Authentication uses the standard X-Server-Token header (same as all other server endpoints).
 
 ```json
 {
@@ -488,7 +488,7 @@ Timestamps in milliseconds are normalized to seconds automatically.
 
 - **Server-side:** Structures are recorded and queryable via `/structures/locations`
 - **Client-side (log-agent):** Structures are NOT fetched or displayed (server-only feature)
-- **Access control:** Structures gated to OWNER-tier only (token-based auth)
+- **Access control:** All authenticated clients can access structure data. Authentication uses the standard X-Server-Token header (same as all other server endpoints).
 
 ### Performance Considerations
 
