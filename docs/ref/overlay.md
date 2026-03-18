@@ -49,39 +49,35 @@ WndProc subclass (`overlayWndProc`). F8 toggle fires first (`ui::visible = !ui::
 
 ---
 
-## Bearer Token Authentication in HTTP Client
+### Authentication
 
-All HTTP client functions now include Bearer JWT token in Authorization headers:
+The log agent authenticates all requests to the server using a static server token.
 
-```cpp
-// Internal helper function (in http_client.cpp)
-Headers getAuthHeaders() {
-    std::string token = getStoredToken();  // From TokenStore (DPAPI encrypted)
-    return {
-        {"Authorization", "Bearer " + token},
-        {"Content-Type", "application/json"}
-    };
-}
+**Mechanism:** Static X-Server-Token Header
+- Header: `X-Server-Token`
+- Value: Static token from `SERVER_TOKEN` environment variable
+- Set in: `.env` file on the Windows gaming PC
+- Applied to: ALL requests (GET /data/gate-graph, POST /log/ingest, etc.)
 
-// All HTTP functions use auth headers:
-postChat(message) {
-    headers = getAuthHeaders();  // Injects Authorization: Bearer <jwt>
-    POST /log/ingest with headers
-}
-
-postJson(endpoint, data) {
-    headers = getAuthHeaders();
-    POST endpoint with headers and data
-}
+**Configuration:**
+```bash
+# In log-agent/.env
+SERVER_TOKEN=<static-token-from-server>
 ```
 
-**Token Lifecycle:**
-1. On startup: Request token from `/auth/token` via `AuthFlow`
-2. Store token securely: Windows DPAPI encryption (TokenStore)
-3. On each request: Inject `Authorization: Bearer <token>` header
-4. If 401 received: Refresh token via `/auth/token` and retry
+**Request example:**
+```bash
+curl -H "X-Server-Token: ${SERVER_TOKEN}" \
+  http://localhost:8745/log/ingest \
+  -X POST \
+  -d '{"event": "route_planned", "route": [...]}'
+```
 
-See log-agent/src/auth_flow.py for Python equivalent and reference implementation.
+**Security notes:**
+- Token is shared between client and server (must be set in .env before deployment)
+- Token is NOT a JWT and does NOT expire
+- Token is a symmetric key—server and client must have identical value
+- Treat token as a credential: do not commit to version control, rotate via server restart
 
 ---
 
@@ -89,11 +85,10 @@ See log-agent/src/auth_flow.py for Python equivalent and reference implementatio
 Compile-time constants: `SERVER_HOST`, `SERVER_HOST_W`, `SERVER_PORT`, `SERVER_TOKEN`, `CHAT_PATH`. Edit before building on Windows.
 
 **Token Configuration:**
-- `SERVER_TOKEN` is used as the base for JWT Bearer auth (deprecated as static string)
-- At runtime, overlay obtains a JWT from `POST /auth/token` (requires `agent_id`, not auth)
-- Token stored securely in `%APPDATA%\ShipAI\token.json` (DPAPI encrypted)
-- Token passed via `Authorization: Bearer <token>` header on all requests
-- Token lifetime: 24 hours (auto-refresh when near expiry)
+- `SERVER_TOKEN` is set in `.env` on both server and client
+- Passed via `X-Server-Token` header on all HTTP requests
+- Does not require token refresh or dynamic token acquisition
+- Treat as a shared symmetric credential
 
 ---
 
