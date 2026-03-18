@@ -197,9 +197,10 @@ LOCAL CHAT: zaroot, ikeee active
 8. `ROUTE PLANNED` — when `current_route` is set
 
 **ROUTE PLANNED format:**
-- Path shown as `→`-separated system names
+- Path shown as `→`-separated system names (UPPERCASED, e.g., "JITA", "AMARR")
 - Jump count and optional estimate from `route_planned.est_time_min`
-- `WARNINGS:` appended if `route_planned.warnings` is non-empty
+- `ROUTE WARN:` appended if `route_planned.warnings` is non-empty
+- `ROUTE STOP:` appended if `route_planned.highlights` is non-empty
 - Persists across all chat turns until replaced by a new route_planned event
 
 **Rules:**
@@ -424,10 +425,11 @@ Posted by the **client-side RouteCalculator** (`log-agent/route_calculator.py`) 
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `path` | `list[str]` | Ordered system names, lowercase, origin to destination inclusive |
+| `path` | `list[str]` | Ordered system names, lowercase input; displayed UPPERCASED in output (e.g., "JITA", "AMARR"). Origin to destination inclusive |
 | `jumps` | `int` | `len(path) - 1` |
 | `est_time_min` | `int \| null` | Optional pilot-provided or formula-derived estimate |
-| `warnings` | `list[str]` | Hazards on the route (high temp systems, sec status flags, etc.) |
+| `warnings` | `list[str]` | Hazards on the route (high temp systems, sec status flags, etc.). Displayed as `ROUTE WARN: <text>` |
+| `highlights` | `list[str]` | Optional. Systems or locations to highlight in UI (dangerous systems, structure locations, jump range warnings). Displayed as `ROUTE STOP: <text>` |
 
 **Server handling:**
 - Routed through normal `log_buffer.add()` (stored in ring buffer for history)
