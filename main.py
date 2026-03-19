@@ -33,6 +33,7 @@ from src.location_index import location_index
 from src.radius_search import RadiusSearch
 from src.token_manager import TokenManager
 from src.endpoints.auth import auth_router, init_auth, validate_token
+from src.endpoints.transactions import tx_router
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 token_manager = TokenManager(key_dir=".keys")
 init_auth(token_manager)
 app.include_router(auth_router)
+app.include_router(tx_router)
 
 @app.get("/health")
 async def health():
