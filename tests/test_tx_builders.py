@@ -1,0 +1,31 @@
+"""Tests for transaction builders."""
+import pytest
+from src.tx_builders.base import map_move_error, MOVE_ERROR_MAP
+
+
+def test_map_move_error_recognizes_not_owner():
+    """ENotOwner maps to readable message"""
+    error = "MoveAbort(ENotOwner, 0) in module gate"
+    result = map_move_error(error)
+    assert "do not own" in result.lower()
+
+
+def test_map_move_error_recognizes_already_linked():
+    """EAlreadyLinked maps to readable message"""
+    error = "MoveAbort(EAlreadyLinked, 0)"
+    result = map_move_error(error)
+    assert "already linked" in result.lower()
+
+
+def test_map_move_error_fallback():
+    """Unknown codes return generic message"""
+    error = "MoveAbort(EUnknown, 0)"
+    result = map_move_error(error)
+    assert "Move error" in result
+
+
+def test_move_error_map_has_common_codes():
+    """Standard errors are in the map"""
+    assert "ENotOwner" in MOVE_ERROR_MAP
+    assert "EAlreadyLinked" in MOVE_ERROR_MAP
+    assert "EInvalidTargetSystem" in MOVE_ERROR_MAP
