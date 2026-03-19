@@ -89,6 +89,22 @@ class NovaClient:
             return "VETTED"
         return "NONE"
 
+    async def get_character(self, wallet_address: str) -> dict:
+        """
+        Resolve wallet address → Character via World API.
+
+        Wrapper around structure_auth.lookup_character() for consistency in nova_client interface.
+        Character = keychain holding OwnerCaps (per world-contracts pattern).
+
+        Args:
+            wallet_address: Sui wallet ("0x...")
+
+        Returns:
+            Character object: {"id": "0x...", "name": "...", ...}
+        """
+        from src.structure_auth import lookup_character
+        return await lookup_character(wallet_address)
+
 
 # Global singleton
 nova_client = NovaClient()
