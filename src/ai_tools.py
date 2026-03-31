@@ -1449,15 +1449,40 @@ class ToolRegistry:
         except Exception as e:
             log.debug("_tool_calculate_build_options: inventory fetch failed: %s", e)
 
-        # 2. NetworkNode check — energy_source present on assembly = network online
+        # 2. NetworkNode check + already-built detection
         has_network = False
+        already_built: set = set()
         try:
             from src.entity_resolver import get_entity_resolver
+            from src.build_calculator import _type_repr_to_build_name
             resolver = get_entity_resolver()
             full = await resolver.get_assembly_full(structure_id)
-            has_network = bool(full and full.get("energy_source"))
+            energy_source = full and full.get("energy_source")
+            has_network = bool(energy_source)
+
+            # Current structure: try to identify its build-tree name
+            if full:
+                current_asm = full.get("assembly") or {}
+                build_name = _type_repr_to_build_name(current_asm.get("type_repr", ""))
+                if build_name:
+                    already_built.add(build_name)
+
+            # Connected assemblies: read names from the network node
+            if energy_source:
+                energy_id = energy_source.get("sui_id") or energy_source.get("id")
+                if energy_id:
+                    net = await resolver.get_network(energy_id)
+                    for asm in (net or {}).get("connected_assemblies", []):
+                        # Prefer exact name match against build tree
+                        asm_name = asm.get("name", "")
+                        # Also try type_repr for specific subtype identification
+                        tr_name = _type_repr_to_build_name(asm.get("type_repr", ""))
+                        if tr_name:
+                            already_built.add(tr_name)
+                        elif asm_name:
+                            already_built.add(asm_name)
         except Exception as e:
-            log.debug("_tool_calculate_build_options: assembly fetch failed: %s", e)
+            log.debug("_tool_calculate_build_options: assembly/network fetch failed: %s", e)
 
         # 3. L-point count — synchronous SQLite query
         lagrange_count = 0
@@ -1470,7 +1495,7 @@ class ToolRegistry:
             log.debug("_tool_calculate_build_options: galaxy_db query failed: %s", e)
 
         from src.build_calculator import calculate, format_text_block, format_structured
-        result = calculate(inventory, has_network, lagrange_count)
+        result = calculate(inventory, has_network, lagrange_count, already_built=already_built or None)
         target = inputs.get("target", "").strip()
 
         return {

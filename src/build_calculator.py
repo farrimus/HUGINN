@@ -45,6 +45,51 @@ def _norm(s: str) -> str:
     return s.strip().lower().rstrip("s")
 
 
+# Ordered substrings to check in a Move type_repr to identify the build tree name.
+# More specific patterns must come before less specific ones.
+_TYPE_REPR_HINTS: list[tuple[str, str]] = [
+    ("mini_storage",   "Mini Storage"),
+    ("heavy_storage",  "Heavy Storage"),
+    ("field_storage",  "Field Storage"),
+    ("mini_turret",    "Mini Turret"),
+    ("heavy_turret",   "Heavy Turret"),
+    ("small_gate",     "Small Gate"),
+    ("mini_printer",   "Mini Printer"),
+    ("heavy_printer",  "Heavy Printer"),
+    ("heavy_refinery", "Heavy Refinery"),
+    ("mini_berth",     "Mini Berth"),
+    ("heavy_berth",    "Heavy Berth"),
+    ("heavy_shelter",  "Heavy Shelter"),
+    ("field_refinery", "Field Refinery"),
+    ("field_printer",  "Field Printer"),
+    ("network_node",   "Network Node"),
+    ("nursery",        "Nursery"),
+    ("shelter",        "Shelter"),
+    ("refuge",         "Refuge"),
+    ("relay",          "Relay"),
+    ("totem",          "Totem"),
+    ("wall",           "Wall"),
+    ("nest",           "Nest"),
+    # Catch-all single-word types (must come after all heavy/mini variants)
+    ("storage_unit",   "Mini Storage"),   # default storage → assume smallest
+    ("turret",         "Mini Turret"),    # default turret → assume smallest
+    ("gate",           "Small Gate"),     # default gate → assume smallest
+    ("assembler",      "Assembler"),
+    ("berth",          "Mini Berth"),
+    ("refinery",       "Refinery"),
+    ("printer",        "Printer"),
+]
+
+
+def _type_repr_to_build_name(type_repr: str) -> Optional[str]:
+    """Best-effort: map a Move type repr string to a build tree structure name."""
+    lower = type_repr.lower()
+    for hint, name in _TYPE_REPR_HINTS:
+        if hint in lower:
+            return name
+    return None
+
+
 def _build_inv_lookup(inventory: dict) -> dict:
     """Return {normalized_name: quantity} for fast lookup."""
     return {_norm(k): v for k, v in inventory.items()}
@@ -76,6 +121,7 @@ def calculate(
     inventory: dict,
     has_network: bool,
     lagrange_count: int,
+    already_built: Optional[set] = None,
 ) -> dict:
     """
     Compute build options given current state.
@@ -84,6 +130,8 @@ def calculate(
         inventory:       {type_name: quantity} from SSU or cargo
         has_network:     True if a NetworkNode is online on this structure's network
         lagrange_count:  Number of L-points in the current system (from galaxy_db)
+        already_built:   Optional set of build-tree structure names already on this network.
+                         These are excluded from all output lists.
 
     Returns dict with keys:
         can_build_now       list[str]    — structures fully stocked
@@ -98,6 +146,8 @@ def calculate(
     structures = tree.get("structures", [])
     nn_recipe = tree.get("network_node", {})
     nn_materials = nn_recipe.get("materials", {})
+
+    _already_built_norm = {_norm(n) for n in (already_built or set())}
 
     inv_lookup = _build_inv_lookup(inventory)
 
@@ -120,6 +170,10 @@ def calculate(
         requires_network = s.get("requires_network", True)
         materials = s.get("materials", {})
         name = s["name"]
+
+        # Skip structures already built on this network
+        if _already_built_norm and _norm(name) in _already_built_norm:
+            continue
 
         # Skip network-dependent structures if no network and no prospect
         if requires_network and not has_network:

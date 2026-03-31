@@ -633,6 +633,7 @@ class EntityResolver:
                     "id":            aid,
                     "name":          display_name,
                     "assembly_type": display_type,
+                    "type_repr":     res.get("type_repr", ""),
                     "status":        _parse_status(res.get("status")),
                     "type_id":       str(res.get("type_id") or ""),
                     "key":           res.get("key"),
