@@ -94,7 +94,8 @@ export function RoutePanel({ data }: RoutePanelProps) {
         const dist    = hop.distance_ly > 0 ? `  ${hop.distance_ly.toFixed(1)} LY` : '';
         const hot     = data.hot_systems.includes(hop.to) ? '  HOT' : '';
         const refuel  = i === refuelHopIndex ? '  REFUEL' : '';
-        hopLines.push(`  ${num}. ${link(hop.to)}  ${typeTag}${dist}${hot}${refuel}`);
+        const temp    = hop.dest_temp >= 70 ? `  [${hop.dest_temp.toFixed(1)}°]` : '';
+        hopLines.push(`  ${num}. ${link(hop.to)}  ${typeTag}${dist}${hot}${refuel}${temp}`);
       });
     } else {
       data.path.forEach((name, i) => {
