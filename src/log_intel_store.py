@@ -37,16 +37,38 @@ def _known_types_path() -> str:
 
 
 def load_known_types() -> dict:
-    """Return global registry of all ore and hostile names seen across all uploads."""
+    """Return global registry of all ore, hostile, and item names seen across the network."""
     path = _known_types_path()
     if not os.path.exists(path):
-        return {"ores": [], "hostiles": []}
+        return {"ores": [], "hostiles": [], "items": []}
     try:
-        with open(path) as f:
-            return json.load(f)
+        data = json.load(open(path))
+        data.setdefault("items", [])
+        return data
     except Exception as e:
         log.warning("log_intel_store: load_known_types failed: %s", e)
-        return {"ores": [], "hostiles": []}
+        return {"ores": [], "hostiles": [], "items": []}
+
+
+def register_items(names: list) -> int:
+    """Add item names seen in any structure's inventory to the global registry. Returns new count."""
+    path = _known_types_path()
+    registry = load_known_types()
+    known: set = set(registry["items"])
+    new_count = sum(1 for n in names if n and n not in known)
+    for n in names:
+        if n:
+            known.add(n)
+    if new_count == 0:
+        return 0
+    registry["items"] = sorted(known)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(registry, f, indent=2)
+    except Exception as e:
+        log.warning("log_intel_store: register_items save failed: %s", e)
+    return new_count
 
 
 def _update_known_types(gamelog_events: list[dict]) -> None:

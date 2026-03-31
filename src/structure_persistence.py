@@ -43,6 +43,14 @@ class StructureProfile:
     services_total:         int             = 0
     # Routine alerts (queued for browser display)
     routine_alerts:         list            = field(default_factory=list)
+    # Cached inventory snapshot (updated on first-message enrichment)
+    cached_inventory:       Optional[dict]  = None
+    # Connected assembly IDs (polled from on-chain node fields)
+    connected_assembly_ids: list            = field(default_factory=list)
+    # Resolved connected assembly objects [{object_id, type_name, status}]
+    connected_assemblies:   list            = field(default_factory=list)
+    # SSU inventory snapshot [{type_name, quantity}]
+    ssu_inventory:          list            = field(default_factory=list)
 
     def __post_init__(self):
         if not self.structure_name:

@@ -56,40 +56,11 @@ def _ship_context_block(wallet_address: str = "") -> str:
             if ship_cat is None or v["category"] == ship_cat
         )
 
-        lines = ["\nSHIP PROFILE:"]
-
-        # Identity line — class if known
         class_name = ship_def.get("class_name", "")
         type_str   = f"{p.ship_type} [{class_name}]" if class_name else (p.ship_type or "unknown")
-        lines.append(f"  TYPE: {type_str} | MASS: {p.hull_mass:,.0f}kg hull + {p.extra_cargo_kg:,.0f}kg cargo")
-
-        # Fuel and jump performance
-        lines.append(f"  FUEL: {p.fuel_type} x {int(p.fuel_quantity)}u | quality={quality} mass={mass_kg}kg/unit")
-        lines.append(f"  JUMP RANGE: {r_ly:.0f} LY (cold) | FUEL BUDGET: {budget_ly:.0f} LY")
-        lines.append(f"  ADAPTIVE LEVEL: {p.adaptive_level}")
-        lines.append(f"  VALID FUEL TYPES: {fuel_list}")
-
-        # Combat / survivability (only if we have API data for this ship)
-        if ship_def.get("structure_hp"):
-            lines.append(f"  STRUCTURE HP: {ship_def['structure_hp']}")
-
-        # Fitting layout
-        slots = ship_def.get("slots")
-        if slots:
-            lines.append(
-                f"  SLOTS: {slots['high']}H / {slots['medium']}M / {slots['low']}L"
-                + (f" | CPU {ship_def['cpu_output']}tf  PG {ship_def['powergrid_output']}MW"
-                   if ship_def.get("cpu_output") else "")
-            )
-
-        # Mobility
-        if ship_def.get("max_velocity"):
-            lines.append(
-                f"  VELOCITY: {ship_def['max_velocity']} m/s | INERTIA: {ship_def['inertia_modifier']}"
-                + (f" | CONDUCTANCE: {ship_def['conductance']}" if ship_def.get("conductance") else "")
-            )
-
-        return "\n".join(lines)
+        ship_line  = (f"\nSHIP: {type_str} | {p.fuel_type} x {int(p.fuel_quantity)}u"
+                      f" | JUMP {r_ly:.0f} LY | BUDGET {budget_ly:.0f} LY | ADAPTIVE {p.adaptive_level}")
+        return ship_line
     except Exception:
         return ""
 
@@ -193,14 +164,10 @@ def _pilot_record_block(assembly_id: str, owner_address: str) -> str:
 
 
 def _build_context(profile: StructureProfile, req: CompanionChatRequest) -> str:
-    """Minimal context fallback (used when enrichment is unavailable)."""
+    """Minimal context (used on subsequent messages and as fallback)."""
     lines = [
-        f"STRUCTURE ID: {profile.assembly_id}",
-        f"STRUCTURE NAME: {profile.structure_name}",
-        f"TYPE: {profile.structure_type}",
+        f"STRUCTURE: {profile.structure_name} ({profile.structure_type})",
     ]
-    if profile.item_id:
-        lines.append(f"ITEM ID: {profile.item_id}")
     if profile.system_name:
         lines.append(f"SYSTEM: {profile.system_name}")
     if profile.region_name:
@@ -209,7 +176,53 @@ def _build_context(profile: StructureProfile, req: CompanionChatRequest) -> str:
         lines.append(f"SHELL: {req.character_name}")
     if req.owner_address:
         lines.append(f"SIGNATURE: {req.owner_address}")
-    return "\n".join(lines) + _ship_context_block(req.owner_address) + _pilot_record_block(profile.assembly_id, req.owner_address)
+
+    # Cached inventory (updated on first-message enrichment)
+    inv = profile.cached_inventory
+    if inv and inv.get("items"):
+        used = inv.get("used_m3", 0)
+        cap_pct = inv.get("capacity_percent")
+        pct_str = f" ({cap_pct:.1f}%)" if cap_pct is not None else ""
+        lines.append(f"\nINVENTORY: {inv.get('item_count', len(inv['items']))} types, {used:.0f} m³{pct_str}")
+        for item in inv["items"][:5]:
+            lines.append(f"  {item['quantity']}x {item['type_name']}")
+
+    lines.append(_ship_context_block(req.owner_address))
+
+    # Global network registry (all structures combined)
+    try:
+        from src.log_intel_store import load_known_types
+        kt = load_known_types()
+        registry_lines = []
+        if kt.get("items"):
+            registry_lines.append(f"  ITEMS: {', '.join(kt['items'][:30])}")
+        if kt.get("hostiles"):
+            registry_lines.append(f"  ENEMIES: {', '.join(kt['hostiles'][:20])}")
+        if kt.get("ores"):
+            registry_lines.append(f"  ORES: {', '.join(kt['ores'][:20])}")
+        if registry_lines:
+            lines.append("\nNETWORK REGISTRY:\n" + "\n".join(registry_lines))
+    except Exception:
+        pass
+
+    pilot_block = _pilot_record_block(profile.assembly_id, req.owner_address)
+    if pilot_block:
+        lines.append(pilot_block)
+
+    # Field reports — always included so intel persists across messages
+    try:
+        from src.intel_store import get_intel_store
+        intel = get_intel_store(profile.assembly_id)
+        recent = intel.get_recent(4)
+        if recent:
+            lines.append("\nFIELD REPORTS (pilot-logged):")
+            for r in recent:
+                by = r.get("reported_by", "unknown")
+                lines.append(f"  [{r['id']}] {by}: {r['content'][:120]}")
+    except Exception:
+        pass
+
+    return "\n".join(lines)
 
 
 async def _preload_context(req: CompanionChatRequest, profile: StructureProfile) -> str:
@@ -274,10 +287,9 @@ async def _preload_context(req: CompanionChatRequest, profile: StructureProfile)
                 sec  = sys_info.get("security") or sys_info.get("securityStatus") or ""
                 sec_str = f" | SEC {sec:.2f}" if isinstance(sec, (int, float)) else ""
                 region = sys_info.get("regionName") or ""
-                const  = sys_info.get("constellationName") or ""
                 lines.append(f"SYSTEM: {system_name}{sec_str}")
                 if region:
-                    lines.append(f"REGION: {region} | CONSTELLATION: {const}")
+                    lines.append(f"REGION: {region}")
             else:
                 lines.append(f"SYSTEM: {system_name}")
 
@@ -327,34 +339,62 @@ async def _preload_context(req: CompanionChatRequest, profile: StructureProfile)
                         conn_str = conn_str[:297] + "..."
                     lines.append(f"  CONNECTED ({len(connected_ids)}): {conn_str}")
 
-        # SSU inventory summary (brief)
+        # SSU inventory — fetch, display, cache in profile, update known items
         if asm.get("assembly_type") == "SmartStorageUnit":
             try:
                 inv = await resolver.get_inventory(req.assembly_id)
                 if inv and inv.get("items"):
                     cap_pct = inv.get("capacity_percent")
                     used    = inv.get("used_capacity", 0)
+                    top = sorted(inv["items"], key=lambda x: x["quantity"], reverse=True)[:5]
                     lines.append(
-                        f"\nINVENTORY (SSU): {len(inv['items'])} item types, "
-                        f"{used:.1f} m³ used"
+                        f"\nINVENTORY: {len(inv['items'])} types, {used:.0f} m³"
                         + (f" ({cap_pct:.1f}%)" if cap_pct is not None else "")
                     )
-                    top = sorted(inv["items"], key=lambda x: x["quantity"], reverse=True)[:5]
                     for item in top:
-                        desc = resolver.get_type_description(item.get("type_id", ""))
-                        desc_str = f" — {desc[:80]}" if desc else ""
-                        lines.append(f"  {item['quantity']}x {item['type_name']}{desc_str}")
+                        lines.append(f"  {item['quantity']}x {item['type_name']}")
+                    # Cache for subsequent messages
+                    profile.cached_inventory = {
+                        "item_count": len(inv["items"]),
+                        "used_m3": used,
+                        "capacity_percent": cap_pct,
+                        "items": [{"type_name": it["type_name"], "quantity": it["quantity"]}
+                                  for it in sorted(inv["items"], key=lambda x: x["quantity"], reverse=True)[:10]],
+                    }
+                    save_profile(profile)
+                    # Register items to global network registry
+                    try:
+                        from src.log_intel_store import register_items
+                        register_items([it["type_name"] for it in inv["items"] if it.get("type_name")])
+                    except Exception as e:
+                        log.debug("companion: register_items failed: %s", e)
             except Exception as e:
                 log.debug("companion: inventory preload failed: %s", e)
 
         lines.append(_ship_context_block(req.owner_address))
 
-        # Inject pilot record from memory_store
+        # Global network registry (all structures combined)
+        try:
+            from src.log_intel_store import load_known_types
+            kt = load_known_types()
+            registry_lines = []
+            if kt.get("items"):
+                registry_lines.append(f"  ITEMS: {', '.join(kt['items'][:30])}")
+            if kt.get("hostiles"):
+                registry_lines.append(f"  ENEMIES: {', '.join(kt['hostiles'][:20])}")
+            if kt.get("ores"):
+                registry_lines.append(f"  ORES: {', '.join(kt['ores'][:20])}")
+            if registry_lines:
+                lines.append("\nNETWORK REGISTRY:\n" + "\n".join(registry_lines))
+        except Exception as e:
+            log.debug("companion: network registry inject failed: %s", e)
+
+        # Pilot record
         pilot_block = _pilot_record_block(profile.assembly_id, req.owner_address)
         if pilot_block:
             lines.append(pilot_block)
 
-        # Inject recent field intel (pilot-reported facts)
+        # Field reports — injected here AND in _build_context so always present
         try:
             from src.intel_store import get_intel_store
             intel = get_intel_store(req.assembly_id)
@@ -367,18 +407,9 @@ async def _preload_context(req: CompanionChatRequest, profile: StructureProfile)
         except Exception as e:
             log.debug("companion: intel inject failed: %s", e)
 
-        # Inject game type knowledge (materials, ships) — auto-populated from Datahub at startup
-        try:
-            kb = resolver.get_knowledge_block(["Material", "Ship", "Asteroid"], max_chars=800)
-            if kb:
-                lines.append(f"\nGAME TYPE KNOWLEDGE:\n{kb}")
-        except Exception as e:
-            log.debug("companion: type knowledge inject failed: %s", e)
-
-        # Cap context at ~3000 chars (expanded to accommodate type knowledge)
         context = "\n".join(lines)
-        if len(context) > 3000:
-            context = context[:2997] + "..."
+        if len(context) > 3500:
+            context = context[:3497] + "..."
         return context
 
     try:
@@ -574,7 +605,7 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
     })
 
     from src.ai_tools import ai_tools
-    tools = ai_tools.get_tools_for_claude()
+    tools = ai_tools.get_tools_for_claude(disabled=req.disabled_tools or [])
 
     system_name = req.system_name or profile.system_name or ""
     system_id = req.system_id or profile.system_id or None
