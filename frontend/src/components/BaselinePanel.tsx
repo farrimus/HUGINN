@@ -11,7 +11,7 @@ const ART = [
   '  ⣇⣸ ⡇⢸ ⡎⠑ ⡇ ⡷⣸ ⡷⣸',
   '  ⠇⠸ ⠣⠜ ⠣⠝ ⠇ ⠇⠹ ⠇⠹',
 ];
-const ART_WIDTH = 22; // chars reserved for left art column (+ separator)
+const ART_WIDTH = 18; // chars reserved for left art column (+ separator)
 const SEP = '  │  ';
 
 function pad(label: string, width = 22): string {
