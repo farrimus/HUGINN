@@ -563,6 +563,7 @@ _TOOL_TO_PANEL = {
     "search_memory": "memory_search",
     "get_memory_summary": "memory_summary",
     "plan_route": "route_planned",
+    "calculate_build_options": "build_options",
 }
 
 

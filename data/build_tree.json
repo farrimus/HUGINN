@@ -1,0 +1,239 @@
+{
+  "network_node": {
+    "note": "Requires L-point anchor in current system",
+    "materials": {
+      "Thermal Composites": 10,
+      "Printed Circuits": 10,
+      "Carbon Weave": 10
+    }
+  },
+  "structures": [
+    {
+      "name": "Field Storage",
+      "category": "Storage",
+      "requires_network": false,
+      "materials": {"Feldspar Crystals": 50},
+      "build_time_s": 96,
+      "power_gj": 0
+    },
+    {
+      "name": "Field Refinery",
+      "category": "Industry",
+      "requires_network": false,
+      "materials": {"Feldspar Crystals": 50},
+      "build_time_s": 96,
+      "power_gj": 0
+    },
+    {
+      "name": "Field Printer",
+      "category": "Industry",
+      "requires_network": false,
+      "materials": {"Hydrated Sulfide Matrix": 50},
+      "build_time_s": 96,
+      "power_gj": 0
+    },
+    {
+      "name": "Refuge",
+      "category": "Hangar",
+      "requires_network": false,
+      "materials": {"Platinum-Palladium Matrix": 50},
+      "build_time_s": 96,
+      "power_gj": 0
+    },
+    {
+      "name": "Nursery",
+      "category": "Industry",
+      "requires_network": true,
+      "materials": {"Building Foams": 20},
+      "build_time_s": 192,
+      "power_gj": 100
+    },
+    {
+      "name": "Mini Printer",
+      "category": "Industry",
+      "requires_network": true,
+      "materials": {"Reinforced Alloys": 15, "Printed Circuits": 15},
+      "build_time_s": 48,
+      "power_gj": 50
+    },
+    {
+      "name": "Printer",
+      "category": "Industry",
+      "requires_network": true,
+      "materials": {"Building Foams": 20},
+      "build_time_s": 192,
+      "power_gj": 100
+    },
+    {
+      "name": "Heavy Printer",
+      "category": "Industry",
+      "requires_network": true,
+      "materials": {"Building Foams": 100},
+      "build_time_s": 2880,
+      "power_gj": 0
+    },
+    {
+      "name": "Refinery",
+      "category": "Industry",
+      "requires_network": true,
+      "materials": {"Refined Alloys": 15, "Thermal Composites": 15},
+      "build_time_s": 192,
+      "power_gj": 100
+    },
+    {
+      "name": "Heavy Refinery",
+      "category": "Industry",
+      "requires_network": true,
+      "materials": {"Building Foams": 100},
+      "build_time_s": 2880,
+      "power_gj": 200
+    },
+    {
+      "name": "Assembler",
+      "category": "Industry",
+      "requires_network": true,
+      "materials": {"Refined Alloys": 20, "Carbon Weave": 10, "Printed Circuits": 5},
+      "build_time_s": 192,
+      "power_gj": 200
+    },
+    {
+      "name": "Mini Berth",
+      "category": "Ship Production",
+      "requires_network": true,
+      "materials": {"Reinforced Alloys": 20, "Carbon Weave": 10, "Printed Circuits": 5},
+      "build_time_s": 192,
+      "power_gj": 100
+    },
+    {
+      "name": "Berth",
+      "category": "Ship Production",
+      "requires_network": true,
+      "materials": {"Building Foams": 20, "Exclave Technocore": 1},
+      "build_time_s": 1440,
+      "power_gj": 200
+    },
+    {
+      "name": "Heavy Berth",
+      "category": "Ship Production",
+      "requires_network": true,
+      "materials": {"Building Foams": 130, "Synod Technocore": 1},
+      "build_time_s": 2880,
+      "power_gj": 300
+    },
+    {
+      "name": "Relay",
+      "category": "Enterprise",
+      "requires_network": true,
+      "materials": {"Carbon Weave": 6, "Printed Circuits": 6, "Thermal Composites": 6},
+      "build_time_s": 48,
+      "power_gj": 1
+    },
+    {
+      "name": "Mini Storage",
+      "category": "Storage",
+      "requires_network": true,
+      "materials": {"Feldspar Crystals": 150, "Platinum-Palladium Matrix": 250},
+      "build_time_s": 96,
+      "power_gj": 0,
+      "capacity_m3": 20000
+    },
+    {
+      "name": "Storage",
+      "category": "Storage",
+      "requires_network": true,
+      "materials": {"Building Foams": 20},
+      "build_time_s": 192,
+      "power_gj": 0,
+      "capacity_m3": 200000
+    },
+    {
+      "name": "Heavy Storage",
+      "category": "Storage",
+      "requires_network": true,
+      "materials": {"Building Foams": 120},
+      "build_time_s": 1440,
+      "power_gj": 0,
+      "capacity_m3": 25000000
+    },
+    {
+      "name": "Small Gate",
+      "category": "Gate",
+      "requires_network": true,
+      "materials": {"Building Foams": 430},
+      "build_time_s": 2880,
+      "range_ly": 55
+    },
+    {
+      "name": "Smart Gate",
+      "category": "Gate",
+      "requires_network": true,
+      "materials": {"Building Foams": 4300},
+      "build_time_s": 51840,
+      "range_ly": 110
+    },
+    {
+      "name": "Mini Turret",
+      "category": "Defense",
+      "requires_network": true,
+      "materials": {"Reinforced Alloys": 20, "Carbon Weave": 20, "Thermal Composites": 20},
+      "build_time_s": 720,
+      "power_gj": 0
+    },
+    {
+      "name": "Turret",
+      "category": "Defense",
+      "requires_network": true,
+      "materials": {"Building Foams": 10},
+      "build_time_s": 1440,
+      "power_gj": 0
+    },
+    {
+      "name": "Heavy Turret",
+      "category": "Defense",
+      "requires_network": true,
+      "materials": {"Building Foams": 20},
+      "build_time_s": 2880,
+      "power_gj": 0
+    },
+    {
+      "name": "Nest",
+      "category": "Hangar",
+      "requires_network": true,
+      "materials": {"Building Foams": 20},
+      "build_time_s": 2880,
+      "power_gj": 0
+    },
+    {
+      "name": "Shelter",
+      "category": "Hangar",
+      "requires_network": true,
+      "materials": {"Building Foams": 20},
+      "build_time_s": 2880,
+      "power_gj": 0
+    },
+    {
+      "name": "Heavy Shelter",
+      "category": "Hangar",
+      "requires_network": true,
+      "materials": {"Building Foams": 130},
+      "build_time_s": 5760,
+      "power_gj": 0
+    },
+    {
+      "name": "Totem",
+      "category": "Misc",
+      "requires_network": true,
+      "materials": {"Building Foams": 20},
+      "build_time_s": 2880,
+      "power_gj": 0
+    },
+    {
+      "name": "Wall",
+      "category": "Misc",
+      "requires_network": true,
+      "materials": {"Building Foams": 20},
+      "build_time_s": 2880,
+      "power_gj": 0
+    }
+  ]
+}

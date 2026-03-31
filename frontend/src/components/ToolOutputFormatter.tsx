@@ -13,6 +13,7 @@ import {
   InventoryData,
   AssetMapData,
   RouteData,
+  BuildOptionsData,
 } from '../types/terminal';
 import { NetworkMapPanel } from './NetworkMapPanel';
 import { NodesListPanel } from './NodesListPanel';
@@ -135,6 +136,82 @@ function formatMemorySummary(data: MemorySummaryData): string {
   return lines.join('\n');
 }
 
+function formatBuildOptions(data: BuildOptionsData): string {
+  const lines: string[] = [DIVIDER];
+
+  // Single-target view
+  if (data.targetName) {
+    lines.push(padLabel('TARGET:') + data.targetName);
+    if (data.targetMaterials) {
+      for (const [item, qty] of Object.entries(data.targetMaterials)) {
+        lines.push(padLabel('  REQUIRES:') + `${qty}x ${item}`);
+      }
+    }
+    lines.push(
+      padLabel('STATUS:') +
+        (data.targetBuildable ? 'FULLY STOCKED' : 'MATERIALS SHORT')
+    );
+    if (data.almostBuildable.length > 0) {
+      const e = data.almostBuildable[0];
+      for (const [item, qty] of Object.entries(e.shortfalls)) {
+        lines.push(padLabel('  SHORT:') + `${qty}x ${item}`);
+      }
+    }
+    lines.push(DIVIDER);
+    return lines.join('\n');
+  }
+
+  // Full assessment view
+  const nnLabel =
+    data.networkNodeStatus === 'online'
+      ? 'ONLINE'
+      : data.networkNodeStatus === 'buildable'
+        ? 'CAN BUILD NOW'
+        : data.networkNodeStatus === 'no_anchor'
+          ? 'NO L-POINT ANCHOR'
+          : 'NEED MATERIALS';
+  lines.push(padLabel('NETWORK NODE:') + nnLabel);
+  lines.push(padLabel('L-POINTS:') + String(data.lagrangePoints));
+
+  if (
+    data.networkNodeStatus === 'need_materials' &&
+    Object.keys(data.networkNodeShortfalls).length > 0
+  ) {
+    for (const [item, qty] of Object.entries(data.networkNodeShortfalls)) {
+      lines.push(padLabel('  NODE NEEDS:') + `${qty}x ${item}`);
+    }
+  }
+
+  lines.push(DIVIDER);
+
+  if (data.canBuildNow.length > 0) {
+    const items = data.canBuildNow.join(', ');
+    lines.push(padLabel('CAN BUILD NOW:') + truncateValue(items, 60));
+  } else {
+    lines.push(padLabel('CAN BUILD NOW:') + 'none');
+  }
+
+  if (data.fieldDeployables.length > 0) {
+    lines.push(padLabel('FIELD DEPLOY:') + data.fieldDeployables.join(', '));
+  }
+
+  const top = data.almostBuildable.filter((e) => e.pctReady >= 0.4).slice(0, 5);
+  if (top.length > 0) {
+    lines.push(DIVIDER);
+    lines.push('ALMOST READY:');
+    for (const e of top) {
+      const pct = Math.round(e.pctReady * 100) + '%';
+      const shortEntries = Object.entries(e.shortfalls).slice(0, 2);
+      const sfStr = shortEntries.map(([item, qty]) => `${qty}x ${item}`).join(', ');
+      const extra = Object.keys(e.shortfalls).length > 2 ? ' +more' : '';
+      lines.push(`  ${e.name.padEnd(22)}${pct.padStart(4)}  (need ${sfStr}${extra})`);
+    }
+  }
+
+  lines.push(DIVIDER);
+  return lines.join('\n');
+}
+
 function copyText(text: string): boolean {
   // navigator.clipboard requires HTTPS — use execCommand fallback for HTTP
   try {
@@ -213,6 +290,9 @@ export function ToolOutputFormatter({
       return <RoutePanel data={data as RouteData} />;
     case 'nodes_list':
       return <NodesListPanel data={data as NodesListData} onPrint={onPrintNode ?? (() => {})} />;
+    case 'build_options':
+      formatted = formatBuildOptions(data as BuildOptionsData);
+      break;
     default:
       formatted = DIVIDER + '\n[UNKNOWN TOOL TYPE]\n' + DIVIDER;
   }

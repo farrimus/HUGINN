@@ -445,6 +445,32 @@ class ToolRegistry:
             handler=self._tool_lookup_item_type
         )
 
+        # --- Build Tools ---
+        self.register_tool(
+            name="calculate_build_options",
+            category="build",
+            description=(
+                "Calculate what structures the pilot can build with their current inventory. "
+                "Returns buildable structures, shortfalls for nearly-buildable ones, and "
+                "NetworkNode/L-point status. Use when the pilot asks about building, crafting, "
+                "upgrading, 'what next', 'what can I build', or construction."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "target": {
+                        "type": "string",
+                        "description": (
+                            "Optional: specific structure name to check (e.g. 'Smart Gate', 'Assembler'). "
+                            "If omitted, returns a full assessment of all buildable options."
+                        )
+                    }
+                },
+                "required": []
+            },
+            handler=self._tool_calculate_build_options
+        )
+
         # --- Info Tools (future) ---
         # self.register_tool(
         #     name="get_pilot_history",
@@ -1317,6 +1343,63 @@ class ToolRegistry:
         return {
             "text": "\n".join(lines),
             "structured": {"query": query, "matches": matches},
+        }
+
+
+    async def _tool_calculate_build_options(
+        self, inputs: Dict[str, Any], context: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        """Handler for calculate_build_options tool."""
+        structure_id = (context or {}).get("structure_id")
+        system_id = (context or {}).get("system_id")
+
+        # 1. Inventory — profile cache first, fresh fetch fallback
+        inventory: Dict[str, int] = {}
+        try:
+            from src.structure_persistence import load_profile
+            profile = load_profile(structure_id) if structure_id else None
+            if profile and profile.cached_inventory and profile.cached_inventory.get("items"):
+                for item in profile.cached_inventory["items"]:
+                    if item.get("type_name"):
+                        inventory[item["type_name"]] = item.get("quantity", 0)
+            elif structure_id:
+                from src.entity_resolver import get_entity_resolver
+                resolver = get_entity_resolver()
+                inv = await resolver.get_inventory(structure_id)
+                if inv and inv.get("items"):
+                    for item in inv["items"]:
+                        if item.get("type_name"):
+                            inventory[item["type_name"]] = item.get("quantity", 0)
+        except Exception as e:
+            log.debug("_tool_calculate_build_options: inventory fetch failed: %s", e)
+
+        # 2. NetworkNode check — energy_source present on assembly = network online
+        has_network = False
+        try:
+            from src.entity_resolver import get_entity_resolver
+            resolver = get_entity_resolver()
+            full = await resolver.get_assembly_full(structure_id)
+            has_network = bool(full and full.get("energy_source"))
+        except Exception as e:
+            log.debug("_tool_calculate_build_options: assembly fetch failed: %s", e)
+
+        # 3. L-point count — synchronous SQLite query
+        lagrange_count = 0
+        try:
+            from src.galaxy_db import galaxy_db
+            if system_id:
+                celestials = galaxy_db.get_celestials_in_system(int(system_id))
+                lagrange_count = len(celestials.get("lagrange_points", []))
+        except Exception as e:
+            log.debug("_tool_calculate_build_options: galaxy_db query failed: %s", e)
+
+        from src.build_calculator import calculate, format_text_block, format_structured
+        result = calculate(inventory, has_network, lagrange_count)
+        target = inputs.get("target", "").strip()
+
+        return {
+            "text": format_text_block(result, target=target),
+            "structured": format_structured(result, target=target),
         }
 
 

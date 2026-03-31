@@ -239,6 +239,23 @@ export interface HuginnNewsData {
   generated_at: string;
 }
 
+export interface BuildOptionsData {
+  canBuildNow: string[];
+  almostBuildable: Array<{
+    name: string;
+    shortfalls: Record<string, number>;
+    pctReady: number;
+  }>;
+  fieldDeployables: string[];
+  hasNetwork: boolean;
+  lagrangePoints: number;
+  networkNodeStatus: string;
+  networkNodeShortfalls: Record<string, number>;
+  targetName?: string;
+  targetMaterials?: Record<string, number>;
+  targetBuildable?: boolean;
+}
+
 export interface WatcherAlert {
   rule_id: string;
   ssu_id: string;
@@ -262,7 +279,8 @@ export type ToolOutputData =
   | AssetMapData
   | RouteData
   | HuginnNewsData
-  | NodesListData;
+  | NodesListData
+  | BuildOptionsData;
 
 export type ToolType =
   | 'baseline'
@@ -277,7 +295,8 @@ export type ToolType =
   | 'asset_map'
   | 'route_planned'
   | 'huginn_news'
-  | 'nodes_list';
+  | 'nodes_list'
+  | 'build_options';
 
 export interface ToolResult {
   toolName: ToolType;
