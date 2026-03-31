@@ -16,6 +16,7 @@ export interface BaselinePanelData {
   gameTypeCategory?: string;
   ownerCharacterName?: string;
   ownerTribeId?: string;
+  ownerTribeName?: string;
   networkNodeName?: string;
   fuelPercent?: string;
   fuelQuantity?: number;

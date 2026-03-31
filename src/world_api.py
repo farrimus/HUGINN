@@ -252,5 +252,10 @@ class WorldAPIClient:
             log.warning("get_killmails(%s) failed: %s", system_id, e)
             return []
 
+    async def get_tribe(self, tribe_id: int) -> Optional[str]:
+        """Fetch tribe name by ID from /v2/tribes/{id}. Returns None if not found."""
+        data = await self._cached_fetch(f"/v2/tribes/{tribe_id}")
+        return data.get("name") if data else None
+
 # Global singleton
 world_api = WorldAPIClient()

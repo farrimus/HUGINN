@@ -36,7 +36,7 @@ export function BaselinePanel({ data }: BaselinePanelProps) {
   // Header — art box left, assembly info right
   const assembly = trunc(data.assemblySignature || '[REDACTED]', 45);
   const owner    = data.ownerCharacterName || '[REDACTED]';
-  const tribe    = data.ownerTribeId       || '[REDACTED]';
+  const tribe    = data.ownerTribeName || data.ownerTribeId || '[REDACTED]';
   const location = trunc(data.location     || '[REDACTED]', 16);
 
   const rightRow1 = `ID  ${assembly}`;

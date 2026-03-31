@@ -18,6 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.entity_resolver import EntityResolver, get_entity_resolver
+from src.world_api import world_api
 
 _DEFAULT_TENANT = os.getenv("DEPLOYMENT_ENV", "utopia")
 
@@ -72,9 +73,12 @@ async def get_assembly_entity(
     # Owner
     owner = None
     if char:
+        tribe_id_val = char.get("tribe_id") or 0
+        tribe_name = await world_api.get_tribe(tribe_id_val) if tribe_id_val else None
         owner = {
             "character_name": char.get("name") or char.get("metadata", {}).get("name") or "",
-            "tribe_id":       char.get("tribe_id") or 0,
+            "tribe_id":       tribe_id_val,
+            "tribe_name":     tribe_name,
             "character_id":   char.get("id") or char.get("character_id") or "",
         }
 

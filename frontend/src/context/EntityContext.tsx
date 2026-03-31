@@ -72,6 +72,7 @@ export interface EnrichedAssembly {
   owner?: {
     character_name: string;
     tribe_id: number;
+    tribe_name?: string;
     character_id: string | number;
   };
   network_node?: {
