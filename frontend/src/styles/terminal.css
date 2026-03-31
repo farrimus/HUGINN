@@ -298,6 +298,186 @@ body {
   opacity: 0.85;
 }
 
+/* ── Admin panel ─────────────────────────────────────────────────────────── */
+
+.line-admin,
+.line-recon {
+  align-items: flex-start;
+}
+
+.admin-panel {
+  white-space: normal;
+  border: 1px solid var(--c-border);
+  padding: 10px 14px;
+  margin: 2px 0;
+  background: #080400;
+  max-width: 500px;
+}
+
+.admin-header {
+  color: var(--c-accent);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  margin-bottom: 10px;
+}
+
+.admin-cols {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.admin-section {
+  flex: 1;
+  min-width: 150px;
+}
+
+.admin-section-label {
+  color: var(--c-muted);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  margin-bottom: 5px;
+}
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 1px 0;
+  font-size: 11px;
+  color: var(--c-primary);
+}
+
+.admin-row input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--c-accent);
+}
+
+.admin-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  border-top: 1px solid var(--c-border);
+  padding-top: 8px;
+}
+
+.admin-btn {
+  background: transparent;
+  border: 1px solid var(--c-accent);
+  color: var(--c-accent);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+}
+
+.admin-btn:hover {
+  background: var(--c-accent);
+  color: #000;
+}
+
+.admin-note {
+  color: var(--c-muted);
+  font-size: 10px;
+}
+
+/* ── Recon form ───────────────────────────────────────────────────────────── */
+
+.recon-form {
+  white-space: normal;
+  border: 1px solid var(--c-border);
+  padding: 10px 14px;
+  margin: 2px 0;
+  background: #080400;
+  max-width: 360px;
+}
+
+.recon-header {
+  color: var(--c-accent);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  margin-bottom: 8px;
+}
+
+.recon-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.recon-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recon-label {
+  color: var(--c-muted);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  min-width: 46px;
+}
+
+.recon-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  padding: 2px 4px;
+  outline: none;
+  width: 180px;
+}
+
+.recon-input:focus {
+  border-bottom-color: var(--c-primary);
+}
+
+.recon-input-short {
+  width: 56px;
+}
+
+.recon-unit {
+  color: var(--c-muted);
+  font-size: 10px;
+}
+
+.recon-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.recon-btn {
+  background: transparent;
+  border: 1px solid var(--c-border);
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+}
+
+.recon-btn-primary {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+
+.recon-btn-primary:hover:not(:disabled) {
+  background: var(--c-accent);
+  color: #000;
+}
+
+.recon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── Trip Calculator inline form ─────────────────────────────────────────── */
 
 .line-form {

@@ -16,6 +16,7 @@ export interface CompanionStreamPayload {
   system_name?: string;
   system_id?: number;
   debug?: boolean;
+  disabled_tools?: string[];
 }
 
 export interface CompanionStreamCallbacks {

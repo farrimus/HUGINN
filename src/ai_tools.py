@@ -471,12 +471,16 @@ class ToolRegistry:
         }
         log.debug(f"Registered tool: {name} ({category})")
 
-    def get_tools_for_claude(self) -> List[Dict[str, Any]]:
+    def get_tools_for_claude(self, disabled: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        Get all tools formatted for Claude API tool_use.
+        Get tools formatted for Claude API tool_use.
+
+        Args:
+            disabled: Optional list of tool names to exclude.
 
         Returns list of tool definitions (without handlers).
         """
+        exclude = set(disabled or [])
         return [
             {
                 "name": tool["name"],
@@ -484,6 +488,7 @@ class ToolRegistry:
                 "input_schema": tool["input_schema"]
             }
             for tool in self.tools.values()
+            if tool["name"] not in exclude
         ]
 
     async def execute_tool(self, name: str, input_dict: Dict[str, Any], context: Dict[str, Any] = None) -> Optional[str]:

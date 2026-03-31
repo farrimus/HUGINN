@@ -15,6 +15,11 @@ import { useToolOutput } from '../hooks/useToolOutput';
 import { useCompanionStream } from '../hooks/useCompanionStream';
 import { useEntityContext } from '../context/EntityContext';
 import { InfoPanel } from './InfoPanel';
+import { AdminPanel } from './AdminPanel';
+import {
+  loadFeatureFlags, saveFeatureFlags, loadToolFlags, saveToolFlags,
+  getDisabledTools, getActiveNavItems, FeatureFlags, ToolFlags,
+} from '../features/featureFlags';
 import '../styles/terminal.css';
 import '../styles/gate.css';
 
@@ -22,9 +27,12 @@ const API_BASE_URL = window.location.origin;
 
 interface TerminalLog {
   text: string;
-  type: 'info' | 'user' | 'ai' | 'error' | 'warning' | 'command';
+  type: 'info' | 'user' | 'ai' | 'error' | 'warning' | 'command' | 'admin';
   timestamp: number;
   action?: string;
+  id?: string;
+  adminFeatureFlags?: FeatureFlags;
+  adminToolFlags?: ToolFlags;
 }
 
 interface ChatMessage {
@@ -69,6 +77,13 @@ export function GateUI() {
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [tier, setTier] = useState<string>('NONE');
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(
+    () => itemId ? loadFeatureFlags(itemId) : {}
+  );
+  const [toolFlags, setToolFlags] = useState<ToolFlags>(
+    () => itemId ? loadToolFlags(itemId) : {}
+  );
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreeted = useRef(false);
@@ -112,6 +127,19 @@ export function GateUI() {
     if (!isConnected && hasEveVault) handleConnect();
   }, [hasEveVault]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Session register — resolves tier (OWNER / TRIBE / GUEST)
+  useEffect(() => {
+    if (!walletAddress || !assemblyId) return;
+    fetch(`${API_BASE_URL}/session/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet_address: walletAddress, assembly_id: assemblyId }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.tier) setTier(data.tier); })
+      .catch(() => {});
+  }, [walletAddress, assemblyId]);
+
   useEffect(() => {
     if (!itemId) addLog('No itemId in URL — gate cannot be identified.', 'warning');
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,7 +179,22 @@ export function GateUI() {
     const parts = input.trim().split(/\s+/);
     const command = parts[0].toLowerCase();
 
-    if (command === '/online') {
+    if (command === '/admin') {
+      if (tier !== 'OWNER') {
+        addLog('Admin access restricted to OWNER.', 'warning');
+        return;
+      }
+      const adminId = `admin-${Date.now()}`;
+      setLogs(prev => [...prev, {
+        text: '',
+        type: 'admin' as const,
+        timestamp: Date.now(),
+        id: adminId,
+        adminFeatureFlags: { ...featureFlags },
+        adminToolFlags: { ...toolFlags },
+      }]);
+      return;
+    } else if (command === '/online') {
       if (!isReady || txPending) { addLog('Not ready.', 'warning'); return; }
       addLog('Submitting: BRING ONLINE...', 'info');
       await runTx(SponsoredTransactionActions.BRING_ONLINE, 'BRING ONLINE');
@@ -336,6 +379,7 @@ export function GateUI() {
         assembly_state: enrichedAssembly?.status ?? assembly?.state ?? '',
         system_name: assembly?.solarSystem?.name || '',
         system_id: assembly?.solarSystem?.id,
+        disabled_tools: getDisabledTools(toolFlags),
       },
       {
         onTextChunk: (text) => { textBuffer += text; },
@@ -405,20 +449,43 @@ export function GateUI() {
         isAnimating={isAnimating}
         onAnimationEnd={finishAnimation}
         onPrintNode={handlePrintNode}
+        onNavCommand={handleCommand}
+        activeNavItems={getActiveNavItems(featureFlags)}
       />
 
       {/* Chat log */}
       <div className="terminal-output">
         {logs.map((log, idx) => (
-          <div key={idx} className={`terminal-line line-${log.type}`}>
-            <span className="timestamp">
-              [{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}]
-            </span>
-            <span className="content">
-              {log.action
-                ? <span className="terminal-cmd-link" onClick={() => handleCommand(log.action!)}>{log.text}</span>
-                : log.text}
-            </span>
+          <div key={log.id ?? idx} className={`terminal-line line-${log.type}`}>
+            {log.type === 'admin' ? (
+              <AdminPanel
+                featureFlags={log.adminFeatureFlags ?? featureFlags}
+                toolFlags={log.adminToolFlags ?? toolFlags}
+                onApply={(newFeatures, newTools) => {
+                  setFeatureFlags(newFeatures);
+                  setToolFlags(newTools);
+                  if (itemId) {
+                    saveFeatureFlags(itemId, newFeatures);
+                    saveToolFlags(itemId, newTools);
+                  }
+                  const id = log.id;
+                  setLogs(prev => prev.map(l =>
+                    l.id === id ? { ...l, type: 'info' as const, text: '[ADMIN] Settings applied.' } : l
+                  ));
+                }}
+              />
+            ) : (
+              <>
+                <span className="timestamp">
+                  [{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}]
+                </span>
+                <span className="content">
+                  {log.action
+                    ? <span className="terminal-cmd-link" onClick={() => handleCommand(log.action!)}>{log.text}</span>
+                    : log.text}
+                </span>
+              </>
+            )}
           </div>
         ))}
         <div ref={terminalEndRef} />

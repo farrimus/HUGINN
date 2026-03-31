@@ -11,6 +11,12 @@ import { useEntityContext } from '../context/EntityContext';
 import { InfoPanel } from './InfoPanel';
 import { BoardPanel } from './BoardPanel';
 import { LogUploadPanel } from './LogUploadPanel';
+import { AdminPanel } from './AdminPanel';
+import { ReconForm } from './ReconForm';
+import {
+  loadFeatureFlags, saveFeatureFlags, loadToolFlags, saveToolFlags,
+  getDisabledTools, getActiveNavItems, FeatureFlags, ToolFlags,
+} from '../features/featureFlags';
 import type { WatchRule, WatcherAlert, RouteData, CourierContract, TribePresenceMember, TribePost } from '../types/terminal';
 import { SUBDIV } from '../constants/dividers';
 
@@ -23,11 +29,14 @@ interface HelpGroup {
 
 interface TerminalLog {
   text: string;
-  type: 'info' | 'user' | 'ai' | 'error' | 'warning' | 'command' | 'form' | 'help' | 'board' | 'upload';
+  type: 'info' | 'user' | 'ai' | 'error' | 'warning' | 'command' | 'form' | 'help' | 'board' | 'upload' | 'admin' | 'recon';
   timestamp: number;
   action?: string;
   id?: string;
   helpGroups?: HelpGroup[];
+  // Admin panel state
+  adminFeatureFlags?: FeatureFlags;
+  adminToolFlags?: ToolFlags;
   // Board state (type === 'board' entries only)
   boardPosts?: TribePost[];
   boardConfirmDeleteId?: string | null;
@@ -90,6 +99,14 @@ export function TerminalUI() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentSystem, setCurrentSystem] = useState<string>('');
   const [debugMode, setDebugMode] = useState(false);
+  // itemId from URL is available synchronously — use it to load flags on first render,
+  // before dapp-kit resolves assemblyId from the network.
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(
+    () => itemId ? loadFeatureFlags(itemId) : {}
+  );
+  const [toolFlags, setToolFlags] = useState<ToolFlags>(
+    () => itemId ? loadToolFlags(itemId) : {}
+  );
   const [tribeId, setTribeId] = useState<number | null>(null);
   const [visitorName, setVisitorName] = useState<string>('');
   const [tier, setTier] = useState<string>('NONE');
@@ -170,7 +187,8 @@ export function TerminalUI() {
     setTimeout(() => setSplashDone(true), 500);
   }, [setDirect]);
 
-  // Restore saved system from localStorage when assembly is known
+  // Restore saved system from localStorage when assembly is known.
+  // Feature/tool flags are already loaded synchronously from itemId above.
   useEffect(() => {
     if (!assemblyId || currentSystem) return;
     const saved = localStorage.getItem(`sys_${assemblyId}`);
@@ -318,6 +336,7 @@ export function TerminalUI() {
         assembly_state: enrichedAssembly?.status ?? assembly?.state ?? '',
         system_name: assembly?.solarSystem?.name || currentSystem,
         system_id: assembly?.solarSystem?.id,
+        disabled_tools: getDisabledTools(toolFlags),
       },
       {
         onTextChunk: (text) => {
@@ -358,7 +377,36 @@ export function TerminalUI() {
     const parts = input.trim().split(/\s+/);
     const command = parts[0].toLowerCase();
 
-    if (command === '/connect') {
+    // Returns true and prints a warning if the feature is disabled.
+    const isOff = (key: string): boolean => {
+      if (featureFlags[key] === false) {
+        addLog('Feature disabled. Enable in /admin.', 'warning');
+        return true;
+      }
+      return false;
+    };
+
+    if (command === '/recon') {
+      if (isOff('recon')) return;
+      const reconId = `recon-${Date.now()}`;
+      setLogs(prev => [...prev, { text: '', type: 'recon' as const, timestamp: Date.now(), id: reconId }]);
+      return;
+    } else if (command === '/admin') {
+      if (tier !== 'OWNER') {
+        addLog('Admin access restricted to OWNER.', 'warning');
+        return;
+      }
+      const adminId = `admin-${Date.now()}`;
+      setLogs(prev => [...prev, {
+        text: '',
+        type: 'admin' as const,
+        timestamp: Date.now(),
+        id: adminId,
+        adminFeatureFlags: { ...featureFlags },
+        adminToolFlags: { ...toolFlags },
+      }]);
+      return;
+    } else if (command === '/connect') {
       if (isConnected) {
         addLog('Already connected.', 'warning');
       } else {
@@ -419,6 +467,7 @@ export function TerminalUI() {
         addLog(`System lookup failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     } else if (command === '/network') {
+      if (isOff('network')) return;
       if (!networkData) {
         addLog('Network data not available.', 'warning');
       } else {
@@ -457,6 +506,7 @@ export function TerminalUI() {
         addLog('Network map loaded.', 'info');
       }
     } else if (command === '/nodes') {
+      if (isOff('nodes')) return;
       try {
         addLog('Scanning for network nodes...', 'info');
         const t = tenant || 'utopia';
@@ -479,6 +529,7 @@ export function TerminalUI() {
         addLog(`Nodes scan failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     } else if (command === '/inventory') {
+      if (isOff('inventory')) return;
       if (!inventoryData) {
         addLog('Inventory data not available. Structure may not be a SSU.', 'warning');
       } else {
@@ -553,6 +604,7 @@ export function TerminalUI() {
         addLog(`Intel scan failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     } else if (command === '/assets') {
+      if (isOff('assets')) return;
       if (!characterAssemblies) {
         addLog('Asset data not available. Wallet may not be connected.', 'warning');
       } else {
@@ -583,6 +635,7 @@ export function TerminalUI() {
         fuelBurning: nn ? nn.fuel_hours_remaining > 0 : undefined,
       });
     } else if (command === '/signal') {
+      if (isOff('signal')) return;
       if (tier !== 'OWNER' && tier !== 'TRIBE') {
         addLog('Signal access restricted to OWNER and TRIBE.', 'warning');
         return;
@@ -613,6 +666,7 @@ export function TerminalUI() {
         addLog(`Signal failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     } else if (command === '/help') {
+      const on = (key: string) => featureFlags[key] !== false;
       const helpGroups: HelpGroup[] = [
         {
           label: 'CONNECTION',
@@ -625,43 +679,49 @@ export function TerminalUI() {
           label: 'NAVIGATION',
           cmds: [
             { text: '/system <name>', action: '/system' },
-            { text: '/route [dest]',  action: '/route' },
-            { text: '/gate',          action: '/gate' },
+            ...(on('recon')  ? [{ text: '/recon',          action: '/recon' }] : []),
+            ...(on('route')  ? [{ text: '/route [dest]',   action: '/route' }] : []),
             { text: '/home',          action: '/home' },
           ],
         },
-        {
+        ...(on('network') || on('nodes') || on('inventory') || on('assets') || on('signal') || on('upload') ? [{
           label: 'INTEL',
           cmds: [
-            { text: '/intel [name]', action: '/intel' },
-            { text: '/network',      action: '/network' },
-            { text: '/nodes',        action: '/nodes' },
-            { text: '/inventory',    action: '/inventory' },
-            { text: '/assets',       action: '/assets' },
-            { text: '/signal',       action: '/signal' },
-            { text: '/upload',       action: '/upload' },
+            ...(on('network')   ? [{ text: '/network',      action: '/network' }] : []),
+            ...(on('nodes')     ? [{ text: '/nodes',         action: '/nodes' }] : []),
+            ...(on('inventory') ? [{ text: '/inventory',     action: '/inventory' }] : []),
+            ...(on('assets')    ? [{ text: '/assets',        action: '/assets' }] : []),
+            ...(on('signal')    ? [{ text: '/signal',        action: '/signal' }] : []),
+            ...(on('upload')    ? [{ text: '/upload',        action: '/upload' }] : []),
           ],
-        },
-        {
+        }] : []),
+        ...(on('watches') ? [{
           label: 'WATCHER',
           cmds: [
             { text: '/watches',           action: '/watches' },
             { text: '/unwatch <rule_id>', action: '/unwatch' },
           ],
-        },
-        {
+        }] : []),
+        ...(on('courier') || on('tribe') || on('board') ? [{
           label: 'SOCIAL',
           cmds: [
-            { text: '/courier',           action: '/courier' },
-            { text: '/claim-courier <id>', action: '/claim-courier' },
-            { text: '/tribe',             action: '/tribe' },
-            { text: '/board',             action: '/board' },
+            ...(on('courier') ? [
+              { text: '/courier',            action: '/courier' },
+              { text: '/claim-courier <id>', action: '/claim-courier' },
+            ] : []),
+            ...(on('tribe')   ? [{ text: '/tribe',           action: '/tribe' }] : []),
+            ...(on('board')   ? [{ text: '/board',           action: '/board' }] : []),
           ],
-        },
+        }] : []),
+        ...(tier === 'OWNER' ? [{
+          label: 'ADMIN',
+          cmds: [{ text: '/admin', action: '/admin' }],
+        }] : []),
       ];
       setLogs((prev) => [...prev, { text: '', type: 'help', timestamp: Date.now(), helpGroups }]);
       addLog('Anything else goes to HUGINN.', 'info');
     } else if (command === '/watches') {
+      if (isOff('watches')) return;
       if (!walletAddress) {
         addLog('Wallet not connected.', 'warning');
         return;
@@ -694,6 +754,7 @@ export function TerminalUI() {
         addLog(`Failed to load watches: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     } else if (command === '/unwatch') {
+      if (isOff('watches')) return;
       const ruleId = parts[1];
       if (!ruleId) {
         addLog('Usage: /unwatch <rule_id>', 'warning');
@@ -718,6 +779,7 @@ export function TerminalUI() {
         addLog(`Unwatch failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     } else if (command === '/courier') {
+      if (isOff('courier')) return;
       try {
         const res = await fetch(`${API_BASE_URL}/courier`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -774,6 +836,7 @@ export function TerminalUI() {
         addLog(`Claim failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     } else if (command === '/tribe') {
+      if (isOff('tribe')) return;
       if (!walletAddress) {
         addLog('Wallet not connected.', 'warning');
         return;
@@ -806,6 +869,7 @@ export function TerminalUI() {
         addLog(`Failed to load tribe board: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     } else if (command === '/board') {
+      if (isOff('board')) return;
       if (!walletAddress) {
         addLog('Wallet not connected.', 'warning');
         return;
@@ -1112,6 +1176,7 @@ export function TerminalUI() {
         showSplash={!splashDone}
         onSplashComplete={handleSplashComplete}
         onNavCommand={handleCommand}
+        activeNavItems={getActiveNavItems(featureFlags)}
       />
 
       <div className="terminal-output">
@@ -1179,6 +1244,40 @@ export function TerminalUI() {
                 onDismiss={() => {
                   const id = log.id;
                   setLogs(prev => prev.map(l => l.id === id ? { ...l, type: 'command' as const, text: '[upload]: cancelled' } : l));
+                }}
+              />
+            ) : log.type === 'admin' ? (
+              <AdminPanel
+                featureFlags={log.adminFeatureFlags ?? featureFlags}
+                toolFlags={log.adminToolFlags ?? toolFlags}
+                onApply={(newFeatures, newTools) => {
+                  setFeatureFlags(newFeatures);
+                  setToolFlags(newTools);
+                  if (itemId) {
+                    saveFeatureFlags(itemId, newFeatures);
+                    saveToolFlags(itemId, newTools);
+                  }
+                  const id = log.id;
+                  setLogs(prev => prev.map(l =>
+                    l.id === id ? { ...l, type: 'info' as const, text: '[ADMIN] Settings applied.' } : l
+                  ));
+                }}
+              />
+            ) : log.type === 'recon' ? (
+              <ReconForm
+                currentSystem={currentSystem}
+                onScan={(message) => {
+                  const id = log.id;
+                  setLogs(prev => prev.map(l =>
+                    l.id === id ? { ...l, type: 'command' as const, text: '[recon]: scanning...' } : l
+                  ));
+                  handleChatMessage(message);
+                }}
+                onDismiss={() => {
+                  const id = log.id;
+                  setLogs(prev => prev.map(l =>
+                    l.id === id ? { ...l, type: 'command' as const, text: '[recon]: cancelled' } : l
+                  ));
                 }}
               />
             ) : (

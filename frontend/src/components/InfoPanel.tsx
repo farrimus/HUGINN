@@ -20,17 +20,8 @@ interface InfoPanelProps {
   showSplash?: boolean;
   onSplashComplete?: () => void;
   onNavCommand?: (command: string) => void;
+  activeNavItems?: Array<{ label: string; command: string }>;
 }
-
-const NAV_ITEMS: Array<{ label: string; command: string }> = [
-  { label: 'HUGINN',        command: '/signal' },
-  { label: 'TRIBE',         command: '/board' },
-  { label: 'INVENTORY',     command: '/inventory' },
-  { label: 'NETWORK',       command: '/network' },
-  { label: 'ROUTE PLANNER', command: '/route' },
-  { label: 'UPLOAD DATA',   command: '/upload' },
-  { label: 'ASSETS',        command: '/assets' },
-];
 
 /**
  * Animated visual panel that displays tool outputs with slide transitions
@@ -50,6 +41,7 @@ export function InfoPanel({
   showSplash = false,
   onSplashComplete,
   onNavCommand,
+  activeNavItems,
 }: InfoPanelProps) {
   const [displayContent, setDisplayContent] = useState<React.ReactNode>(null);
   const [isSliding, setIsSliding] = useState(false);
@@ -99,9 +91,9 @@ export function InfoPanel({
           <SplashScreen onComplete={onSplashComplete} />
         )}
       </div>
-      {onNavCommand && (
+      {onNavCommand && activeNavItems && activeNavItems.length > 0 && (
         <div className="info-panel-nav">
-          {NAV_ITEMS.map(({ label, command }) => (
+          {activeNavItems.map(({ label, command }) => (
             <span
               key={command}
               className="info-panel-nav-item"

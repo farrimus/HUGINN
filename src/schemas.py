@@ -51,6 +51,7 @@ class LogEvent(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list = []
+    disabled_tools: List[str] = []
 
 
 # ── SEARCH & DISCOVERY ────────────────────────────────────────────────────────

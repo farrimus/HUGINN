@@ -11,9 +11,15 @@ Endpoints:
 import os
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 ui_router = APIRouter()
+
+_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
 
 
 @ui_router.get("/config")
@@ -25,7 +31,13 @@ async def get_config():
 @ui_router.get("/")
 async def index():
     """Serve the React CLI companion app."""
-    return FileResponse("frontend/dist/index.html")
+    return FileResponse("frontend/dist/index.html", headers=_NO_CACHE_HEADERS)
+
+
+@ui_router.get("/app")
+async def app_entry():
+    """SPA entry — served no-cache so browsers always pick up new JS bundles after rebuild."""
+    return FileResponse("frontend/dist/index.html", headers=_NO_CACHE_HEADERS)
 
 
 @ui_router.get("/legacy-cli")
