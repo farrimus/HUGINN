@@ -1,5 +1,5 @@
 # Runtime / generated data
-data/
+/data/
 
 # Secrets
 .env
