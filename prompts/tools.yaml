@@ -155,6 +155,19 @@ lookup_item_type:
     If multiple matches are returned, list them briefly by name and ask the shell which was
     meant before continuing.
 
+recon_scan:
+  description: |
+    Run a full area intelligence scan: spatial search (kill activity, resource potential,
+    player structures) plus threat assessment for the center system, in one call.
+    Use this — and only this — when the shell submits a recon scan with a center system
+    and radius. Do not call radius_search or assess_threat separately for recon requests.
+  response_guidance: |
+    Lead with the threat level for the center system: NONE / LOW / MEDIUM / HIGH.
+    If a threat is present, name the top aggressor and dominant victim class in one line.
+    Then list notable systems within the radius, grouped by: kill activity, resource potential,
+    player structures. For each system: name, distance in LY, relevant metric.
+    Maximum 10 lines total. Operational tone.
+
 calculate_build_options:
   description: |
     Calculate what structures the pilot can build with their current inventory. Returns

@@ -27,6 +27,7 @@ class CharacterSession:
     ship_profile: Optional[dict] = None
     interaction_memory: list = field(default_factory=list)
     watch_list: list = field(default_factory=list)
+    tier: str = "NONE"
     created_at: str = ""
     last_seen: str = ""
 

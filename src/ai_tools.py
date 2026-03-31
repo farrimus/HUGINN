@@ -475,6 +475,29 @@ class ToolRegistry:
             handler=self._tool_calculate_build_options
         )
 
+        # --- Recon Tool ---
+        self.register_tool(
+            name="recon_scan",
+            category="spatial",
+            description="Full area intelligence scan combining spatial search and threat assessment.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "center_system": {
+                        "type": "string",
+                        "description": "Center system name. Defaults to current system.",
+                    },
+                    "radius_ly": {
+                        "type": "number",
+                        "default": 100.0,
+                        "description": "Search radius in light-years.",
+                    },
+                },
+                "required": [],
+            },
+            handler=self._tool_recon_scan,
+        )
+
         # --- Info Tools (future) ---
         # self.register_tool(
         #     name="get_pilot_history",
@@ -990,6 +1013,33 @@ class ToolRegistry:
 
         return "\n".join(lines)
 
+    async def _tool_recon_scan(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Handler for recon_scan tool — aggregates radius_search + assess_threat in one call."""
+        center = inputs.get("center_system") or ((context or {}).get("system_name", ""))
+        radius = inputs.get("radius_ly", 100.0)
+        try:
+            radius_result, threat_result = await asyncio.gather(
+                self._tool_radius_search(
+                    {
+                        "center_system": center,
+                        "radius_ly": radius,
+                        "filters": ["killmails", "planets", "structures"],
+                        "killmail_hours": 24,
+                    },
+                    context,
+                ),
+                self._tool_assess_threat({"hours_lookback": 24}, context),
+            )
+            combined = (
+                f"=== AREA SCAN: {center} / {radius} LY ===\n"
+                f"{radius_result.get('text', '')}\n\n"
+                f"=== THREAT: {center} ===\n"
+                f"{threat_result.get('text', '')}"
+            )
+            return {"text": combined, "structured": threat_result.get("structured")}
+        except Exception as e:
+            log.warning(f"recon_scan failed: {e}")
+            return {"text": f"[recon_scan error: {type(e).__name__}]", "structured": None}
 
     async def _tool_plan_route(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Handler for plan_route tool."""

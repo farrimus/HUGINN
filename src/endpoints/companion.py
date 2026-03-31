@@ -571,6 +571,7 @@ _TOOL_TO_PANEL = {
     "get_memory_summary": "memory_summary",
     "plan_route": "route_planned",
     "calculate_build_options": "build_options",
+    "recon_scan": "threat_assessment",
 }
 
 
@@ -587,22 +588,19 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
     client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     context_str = await _preload_context(req, profile)
 
-    # Resolve pilot tier from on-chain AccessRegistry
+    # Resolve pilot tier from session (set at registration time by /session/register)
     tier = "NONE"
-    if profile.tier_registry_object_id and req.owner_address:
+    if req.owner_address:
+        from src.session_store import load_session as _load_session
+        _session = _load_session(req.owner_address)
+        if _session:
+            tier = _session.tier
         try:
-            from src.blockchain_queries import sui_rpc_client
-            registry = await sui_rpc_client.get_access_registry(profile.tier_registry_object_id)
-            if registry:
-                tier = sui_rpc_client.resolve_tier(req.owner_address, registry)
-                try:
-                    from src.memory_store import get_memory_store
-                    store = get_memory_store(profile.assembly_id)
-                    store.upsert_pilot(req.owner_address, req.character_name or "", 0, tier)
-                except Exception as e:
-                    log.debug("companion: upsert_pilot failed: %s", e)
+            from src.memory_store import get_memory_store
+            store = get_memory_store(profile.assembly_id)
+            store.upsert_pilot(req.owner_address, req.character_name or "", 0, tier)
         except Exception as e:
-            log.warning("companion: tier resolution failed: %s", e)
+            log.debug("companion: upsert_pilot failed: %s", e)
 
     if req.owner_address:
         context_str += f"\nTIER: {tier}"

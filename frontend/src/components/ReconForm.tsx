@@ -15,10 +15,7 @@ export function ReconForm({ currentSystem, onScan, onDismiss }: ReconFormProps) 
     if (!s) return;
     const r = parseFloat(radius);
     const ly = isNaN(r) || r <= 0 ? 100 : r;
-    onScan(
-      `Recon scan: center system ${s}, radius ${ly} LY. ` +
-      `Report kill activity in the last 24 hours, threat assessment, and any notable systems or contacts.`
-    );
+    onScan(`Run recon scan: center ${s}, radius ${ly} LY.`);
   };
 
   return (

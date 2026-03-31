@@ -72,8 +72,6 @@ async def register_session(req: RegisterRequest):
                      req.wallet_address[:12], session.character_name, req.character_name.strip())
             session.character_name = req.character_name.strip()
 
-    save_session(session)
-
     tier = "NONE"
     if req.assembly_id:
         try:
@@ -90,6 +88,9 @@ async def register_session(req: RegisterRequest):
                     log.info("session/register: %s tier=%s", req.wallet_address[:12], tier)
         except Exception as e:
             log.warning("session/register: tier resolution failed: %s", e)
+
+    session.tier = tier
+    save_session(session)
 
     from dataclasses import asdict
     return {"tier": tier, **asdict(session)}
