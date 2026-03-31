@@ -84,6 +84,7 @@ class CompanionChatRequest(BaseModel):
     system_name: str = ""       # solar system name (auto from solarSystem or /system command)
     system_id: int = 0          # solar system ID from SmartAssemblyResponse.solarSystem.id
     debug: bool = False         # set by /debug CLI command — triggers session dump
+    disabled_tools: List[str] = []
 
 
 def _authenticate(x_api_key: Optional[str]) -> None:
