@@ -58,7 +58,7 @@ Before writing any fetch, query, GraphQL call, parser, formatter, or data transf
 
 **This CLAUDE.md governs the Python backend and documentation.**
 
-**Frontend work:** See `/frontend/CLAUDE.md` for React dApp guidance.
+**Frontend work:** See `frontend/src/` for React dApp source. Architecture in `/docs/ARCHITECTURE.md`.
 
 ## Tech Stack
 
@@ -72,9 +72,9 @@ Before writing any fetch, query, GraphQL call, parser, formatter, or data transf
 
 ## Documentation
 
-**Start here:** `/docs/START_HERE.md`
+**Start here:** `/docs/SETUP.md`
 
-The docs are organized hierarchically. START_HERE.md explains the structure and guides you to what you need.
+For architecture: `/docs/ARCHITECTURE.md`. For data schemas: `/docs/DATA_REFERENCE.md`.
 
 ---
 

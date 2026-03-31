@@ -31,7 +31,7 @@ In-game browser
                     └── Galaxy DB (24,426 systems, gate topology)
 ```
 
-**Frontend:** React 19 + Vite, served as static files from FastAPI. Connects to the pilot's wallet via EVE Frontier Client Wallet (Wallet Standard / DApp Kit). No separate Node.js server.
+**Frontend:** React 19 + Vite, served as static files from FastAPI. Connects to the pilot's wallet via EVE Frontier Client Wallet (Wallet Standard / DApp Kit). Reads assembly state from the **Sui blockchain** via `@evefrontier/dapp-kit`. No separate Node.js server.
 
 **Backend:** FastAPI on Python 3.12. Handles session management, AI context building, route planning, structure monitoring, and live data from the World API.
 

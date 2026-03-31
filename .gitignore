@@ -42,8 +42,16 @@ archive/
 # Claude Code (machine-local settings)
 .claude/
 
+# Internal development documentation (preserved locally, not for public repo)
+docs/DAPP_KIT_BOUNDARY.md
+docs/DATA_LAYER_MAP.md
+docs/TRUTH_FACTS.md
+docs/AI_AGENT_REFERENCE.md
+docs/VISUAL_PANEL_GUIDE.md
+docs/ENTITY_GRAPH.md
+frontend/CLAUDE.md
+
 # Misc
 docs/archive/
 docs/message.txt
-intent.md
 server.log

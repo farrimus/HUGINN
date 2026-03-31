@@ -1331,7 +1331,7 @@ async function loadPlayerStructures(walletAddress: string) {
 import { getAdjustedBurnRate, getFuelEfficiencyForType } from '@evefrontier/dapp-kit';
 
 async function calculateFuelStats(assembly: NetworkNode) {
-  const baseTimeMsMass = assembly.fuel.burnTimeInMs;
+  const baseTimeMs = assembly.fuel.burnTimeInMs;
   const efficiency = await getFuelEfficiencyForType(assembly.fuel.typeId);
 
   const adjusted = getAdjustedBurnRate(baseTimeMs, efficiency);

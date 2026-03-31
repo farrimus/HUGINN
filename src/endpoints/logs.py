@@ -18,7 +18,7 @@ import re
 from typing import List, Optional
 
 from anthropic import Anthropic
-from fastapi import APIRouter, Form, HTTPException, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, Query, UploadFile, File
 
 from src.log_analysis import (
     extract_date_tag,
@@ -77,6 +77,15 @@ def _classify_file(filename: str, relative_path: str) -> Optional[str]:
     if _GAMELOG_NAME_RE.match(basename):
         return "gamelog"
     return None
+
+
+@logs_router.get("/logs/last-processed-date")
+async def get_last_processed_date_endpoint(wallet: str = Query(default="")):
+    """Return the most recent file date processed for a wallet, or null if none."""
+    w = wallet.strip().lower()
+    if not w:
+        return {"last_processed_date": None}
+    return {"last_processed_date": get_last_processed_date(w)}
 
 
 @logs_router.post("/logs/upload")
@@ -207,4 +216,5 @@ async def upload_logs(
         "files_skipped": skipped_date,
         "event_count": total_events,
         "systems_visited": systems_visited,
+        "last_processed_date": newest_file_date,
     }

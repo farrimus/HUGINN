@@ -5,7 +5,7 @@
 // Filters by subdirectory (Chatlogs/Local_* and Gamelogs/YYYYMMDD_*) and date cutoff.
 // Passes wallet address and webkitRelativePath per file for server-side tracking.
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface LogUploadPanelProps {
   apiBaseUrl: string;
@@ -52,7 +52,7 @@ function classifyByPath(name: string, relativePath: string): 'chatlog' | 'gamelo
   return null;
 }
 
-function filterFiles(fileList: FileList): MatchedFile[] {
+function filterFiles(fileList: FileList, lastDate: string | null): MatchedFile[] {
   const matched: MatchedFile[] = [];
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
@@ -62,6 +62,9 @@ function filterFiles(fileList: FileList): MatchedFile[] {
     // Date pre-filter
     const dateTag = extractDateTag(name);
     if (!dateTag || dateTag < DATE_CUTOFF) continue;
+
+    // Skip files already covered by a prior upload for this wallet
+    if (lastDate && dateTag <= lastDate) continue;
 
     const logType = classifyByPath(name, relativePath);
     if (!logType) continue;
@@ -77,17 +80,30 @@ export function LogUploadPanel({ apiBaseUrl, walletAddress, onResult, onDismiss 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const filesInputRef  = useRef<HTMLInputElement>(null);
 
-  const [state, setState]      = useState<PanelState>('idle');
-  const [matched, setMatched]  = useState<MatchedFile[]>([]);
-  const [statusMsg, setStatus] = useState('');
+  const [state, setState]             = useState<PanelState>('idle');
+  const [matched, setMatched]         = useState<MatchedFile[]>([]);
+  const [statusMsg, setStatus]        = useState('');
+  const [lastProcessedDate, setLastProcessedDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!walletAddress) return;
+    let cancelled = false;
+    fetch(`${apiBaseUrl}/logs/last-processed-date?wallet=${encodeURIComponent(walletAddress)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (!cancelled && data?.last_processed_date) setLastProcessedDate(data.last_processed_date); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [walletAddress, apiBaseUrl]);
 
   const handleFileSelection = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-    const found = filterFiles(fileList);
+    const found = filterFiles(fileList, lastProcessedDate);
     if (found.length === 0) {
       setStatus(
-        'No matching files found. Select the Gamelogs folder (contains Chatlogs/ and Gamelogs/ subfolders), ' +
-        'or individual Local_YYYYMMDD_* and YYYYMMDD_* files from 2026.03.11 onward.'
+        lastProcessedDate
+          ? `All files already transmitted (last processed: ${lastProcessedDate.replace(/(\d{4})(\d{2})(\d{2})/, '$1.$2.$3')}). No new logs to upload.`
+          : 'No matching files found. Select the Gamelogs folder (contains Chatlogs/ and Gamelogs/ subfolders), ' +
+            'or individual Local_YYYYMMDD_* and YYYYMMDD_* files from 2026.03.11 onward.'
       );
       return;
     }
@@ -122,6 +138,7 @@ export function LogUploadPanel({ apiBaseUrl, walletAddress, onResult, onDismiss 
       }
       const data = await res.json();
       setState('done');
+      if (data.last_processed_date) setLastProcessedDate(data.last_processed_date);
       onResult(data.analysis, {
         files:   data.files_processed,
         skipped: data.files_skipped ?? 0,
