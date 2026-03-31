@@ -501,21 +501,32 @@ class ToolRegistry:
         """
         Get tools formatted for Claude API tool_use.
 
+        Descriptions are loaded live from prompts/tools.md on each call so edits
+        to that file take effect on server restart without any code changes.
+        Falls back to the hardcoded description if a tool section is absent.
+
         Args:
             disabled: Optional list of tool names to exclude.
 
         Returns list of tool definitions (without handlers).
         """
+        from src.prompt_loader import load_tool_prompts
+        live = load_tool_prompts()
+
         exclude = set(disabled or [])
-        return [
-            {
+        result = []
+        for tool in self.tools.values():
+            if tool["name"] in exclude:
+                continue
+            desc = (live.get(tool["name"], {}).get("description") or "").strip()
+            if not desc:
+                desc = tool["description"]  # fallback to hardcoded
+            result.append({
                 "name": tool["name"],
-                "description": tool["description"],
-                "input_schema": tool["input_schema"]
-            }
-            for tool in self.tools.values()
-            if tool["name"] not in exclude
-        ]
+                "description": desc,
+                "input_schema": tool["input_schema"],
+            })
+        return result
 
     async def execute_tool(self, name: str, input_dict: Dict[str, Any], context: Dict[str, Any] = None) -> Optional[str]:
         """Execute a tool and return plain text result (backward compatible)."""
@@ -680,7 +691,9 @@ class ToolRegistry:
                 memory_events,
                 hours_lookback=hours_lookback
             )
-            text = threat_context or "No significant threat activity detected"
+            from src.prompt_loader import load_tool_prompts
+            _no_result = load_tool_prompts().get("assess_threat", {}).get("no_result", "")
+            text = threat_context or _no_result or "No significant threat activity detected"
 
             # Build structured data for ThreatAssessmentData panel
             now = datetime.now(timezone.utc)
@@ -1293,11 +1306,12 @@ class ToolRegistry:
             store = get_intel_store(structure_id)
             results = store.query_intel(keyword)
             if not results:
-                return {
-                    "text": f"No field reports found matching '{keyword}'. "
-                             "This unit has no logged intelligence on that topic.",
-                    "structured": None,
-                }
+                from src.prompt_loader import load_tool_prompts
+                _tmpl = (
+                    load_tool_prompts().get("query_intel", {}).get("no_result")
+                    or "No field reports found matching '{keyword}'. This unit has no logged intelligence on that topic."
+                )
+                return {"text": _tmpl.format(keyword=keyword), "structured": None}
             lines = [f"Field intelligence — '{keyword}' ({len(results)} report(s)):"]
             for r in results:
                 by = r.get("reported_by", "unknown")

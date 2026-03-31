@@ -654,6 +654,9 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
                     assistant_content = []
                     tool_results_for_claude = []
 
+                    from src.prompt_loader import load_tool_prompts
+                    live_prompts = load_tool_prompts()
+
                     for block in message.content:
                         if block.type == "text":
                             assistant_content.append({"type": "text", "text": block.text})
@@ -669,10 +672,15 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
                                 block.name, block.input, context=tool_context
                             )
 
+                            content = result.get("text", "")
+                            guidance = live_prompts.get(block.name, {}).get("response_guidance", "").strip()
+                            if guidance and not guidance.startswith("<!--"):
+                                content = f"{guidance}\n\n{content}"
+
                             tool_results_for_claude.append({
                                 "type": "tool_result",
                                 "tool_use_id": block.id,
-                                "content": result.get("text", ""),
+                                "content": content,
                             })
 
                             panel_type = _TOOL_TO_PANEL.get(block.name)

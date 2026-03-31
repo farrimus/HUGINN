@@ -1,0 +1,104 @@
+# HUGINN Tool Prompts
+# Edit freely — restart server to apply. No Python edits or frontend rebuild needed.
+#
+# Fields per tool:
+#   description       — shown to Claude before he decides to call this tool (required)
+#   response_guidance — prepended to the tool result so Claude knows how to use the data
+#                       leave blank to disable, fill in to guide HUGINN's response
+#   no_result         — what HUGINN says when the tool finds nothing
+#                       only used by: assess_threat, query_intel
+
+search_memory:
+  description: Search structure memory for recent events by keyword
+  response_guidance:
+
+get_memory_summary:
+  description: Get current memory summary (event tallies and key facts)
+  response_guidance:
+
+assess_threat:
+  description: Analyze recent kills in a system for threat patterns (aggressors, ship types, escalation)
+  no_result: No significant threat activity detected
+  response_guidance:
+
+get_system_intel:
+  description: "Get system information: security status, star type, planets, recent kill count, gate links"
+  response_guidance:
+
+get_pilot_profile:
+  description: "Get pilot profile: visit count, first visit, last visit, access tier"
+  response_guidance:
+
+radius_search:
+  description: Find systems within a distance and filter by criteria (planets, kills, heat, structures)
+  response_guidance:
+
+plan_route:
+  description: |
+    Calculate a route to a destination system using the route engine. Returns a full route
+    with jump-by-jump breakdown. Use when the shell asks to plot, calculate, or find a route,
+    course, or path to a destination. Accepts an optional specific_heat to model the ship's
+    jump capability. If the shell mentions their ship's jump range in LY, convert to
+    specific_heat using: specific_heat = jump_range_ly * HEAT_CONSTANT * mass / (T_MAX * hull_mass)
+    — or just pass the jump_range_ly and let the engine estimate. Always call this tool when
+    route planning is requested instead of trying to manually search systems.
+  response_guidance:
+
+manage_watcher:
+  description: |
+    Manage SSU inventory watch rules for the current shell. Use action='list' to see current
+    rules, action='add' to create a new rule (requires ssu_id in 0x... format; optional
+    ssu_name, item_filter, threshold, scope), action='remove' to delete a rule by rule_id.
+    Use this when the shell asks to watch, monitor, or track an SSU's inventory, or to list
+    or remove existing watch rules.
+  response_guidance:
+
+manage_courier:
+  description: |
+    Manage courier contracts on the shared contract board. Use action='list' to see open
+    contracts, action='post' to create a new contract (requires item_description,
+    from_location, to_location, reward_description), action='claim' to claim a contract by
+    contract_id. Use this when the shell asks to post a job, find courier work, claim a
+    delivery, or check the contract board.
+  response_guidance:
+
+manage_tribe:
+  description: |
+    Check the tribe presence board. Use action='list' to show online tribe members (requires
+    tribe_id). Use this when the shell asks who is online, where their tribe mates are, or
+    what tribe members are active.
+  response_guidance:
+
+log_intel:
+  description: |
+    Record a fact that a pilot has reported from outside this structure's sensor range. Use
+    this when a shell reports enemy behavior, resource locations, crafting knowledge, hazards,
+    lore discoveries, or any other factual intelligence gathered in the field. Do not log
+    speculation — only log what the pilot claims to have directly observed or verified. The
+    entry persists and will be available to future shells who ask about the same topic.
+  response_guidance:
+
+query_intel:
+  description: |
+    Search field intelligence logged by pilots who have visited this structure. Use this when
+    a shell asks what is known about enemies, resources, hazards, crafting, or any topic that
+    other pilots may have reported. Always query before saying you have no data.
+  no_result: "No field reports found matching '{keyword}'. This unit has no logged intelligence on that topic."
+  response_guidance:
+
+lookup_item_type:
+  description: |
+    Look up an item, ship, structure, material, or enemy type by name. Returns official
+    description, category, group, mass, and volume from the game database. Use this when a
+    shell mentions an unfamiliar item name, enemy designation, or ship class and you need to
+    identify what it is. Search partial names — e.g. 'Faulty Scout', 'Triglavian',
+    'Tritanium', 'Smart Storage'. Returns up to 5 matches ranked by relevance.
+  response_guidance:
+
+calculate_build_options:
+  description: |
+    Calculate what structures the pilot can build with their current inventory. Returns
+    buildable structures, shortfalls for nearly-buildable ones, and NetworkNode/L-point
+    status. Use when the pilot asks about building, crafting, upgrading, 'what next',
+    'what can I build', or construction.
+  response_guidance:
