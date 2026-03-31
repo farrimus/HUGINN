@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useConnection, useSmartObject, type SmartAssemblyResponse, getWalletCharacters, parseCharacterFromJson } from '@evefrontier/dapp-kit';
 import { useToolOutput } from '../hooks/useToolOutput';
-import { BaselinePanelData, HuginnNewsData } from '../types/terminal';
+import { BaselinePanelData, HuginnNewsData, BuildOptionsData } from '../types/terminal';
 import { TripCalculatorForm } from './TripCalculatorForm';
 import { BUILD_TIME } from '../main';
 import { useCompanionStream } from '../hooks/useCompanionStream';
@@ -1121,6 +1121,28 @@ export function TerminalUI() {
         }),
       ];
       addLog('[PRINT]: ' + lines.join('\n'), 'info');
+    } else if (currentToolType === 'build_options' && currentData) {
+      const bd = currentData as BuildOptionsData;
+      const steps = bd.buildOrder ?? [];
+      if (steps.length === 0) return;
+      const stepLines = steps.map(s => {
+        const stepLabel = `STEP ${s.step}`;
+        const name = s.name.slice(0, 20).padEnd(20);
+        let detail: string;
+        if (s.status === 'can_build') {
+          detail = 'READY';
+        } else if (s.status === 'blocked') {
+          detail = `BLOCKED  ${s.note}`;
+        } else {
+          const pct = (Math.round(s.pctReady * 100) + '%').padStart(4);
+          const entries = Object.entries(s.shortfalls);
+          const sfStr = entries.length > 0 ? `${entries[0][1]}x ${entries[0][0]}` : '';
+          const extra = entries.length > 1 ? ' +more' : '';
+          detail = `${pct}  need ${sfStr}${extra}`;
+        }
+        return `  ${stepLabel.padEnd(8)} ${name} ${detail}`;
+      });
+      addLog('[BUILD ORDER]\n' + stepLines.join('\n'), 'info');
     }
   };
 

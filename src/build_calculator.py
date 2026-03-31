@@ -166,6 +166,80 @@ def calculate(
     }
 
 
+def build_order(result: dict) -> list:
+    """
+    Convert calculate() result into a prioritized build step list.
+
+    Priority:
+      1. NetworkNode (if not online) — always first, unlocks everything
+      2. Field deployables that are ready (no network required)
+      3. Network structures that are ready (if network online)
+      4. Almost-buildable structures (sorted by pct_ready DESC), skipping network-blocked ones
+    """
+    steps = []
+
+    if not result["has_network"]:
+        nn_status = result["network_node_status"]
+        if nn_status == "no_anchor":
+            steps.append({
+                "name": "Network Node",
+                "status": "blocked",
+                "note": "no L-point anchor in this system",
+                "shortfalls": {},
+                "pct_ready": 0.0,
+            })
+        elif nn_status == "buildable":
+            steps.append({
+                "name": "Network Node",
+                "status": "can_build",
+                "note": "unlocks all network structures",
+                "shortfalls": {},
+                "pct_ready": 1.0,
+            })
+        else:
+            steps.append({
+                "name": "Network Node",
+                "status": "need_materials",
+                "note": "unlocks all network structures",
+                "shortfalls": result["network_node_shortfalls"],
+                "pct_ready": 0.0,
+            })
+
+    for name in result["field_deployables"]:
+        steps.append({
+            "name": name,
+            "status": "can_build",
+            "note": "no network required",
+            "shortfalls": {},
+            "pct_ready": 1.0,
+        })
+
+    for name in result["can_build_now"]:
+        steps.append({
+            "name": name,
+            "status": "can_build",
+            "note": "",
+            "shortfalls": {},
+            "pct_ready": 1.0,
+        })
+
+    for e in result["almost_buildable"]:
+        if e.get("requires_network") and not result["has_network"]:
+            continue
+        steps.append({
+            "name": e["name"],
+            "status": "need_materials",
+            "note": "",
+            "shortfalls": e["shortfalls"],
+            "pct_ready": e["pct_ready"],
+        })
+
+    for i, step in enumerate(steps):
+        step["step"] = i + 1
+
+    return steps
+
+
 def _fmt_shortfalls(shortfalls: dict, max_items: int = 3) -> str:
     """Format shortfall dict as compact string: 'need 5 Printed Circuits, 8 Carbon Weave'."""
     if not shortfalls:
@@ -180,11 +254,11 @@ def format_text_block(result: dict, target: str = "") -> str:
     Format calculate() result as a compact text block for Claude.
 
     If target is specified, focuses output on that structure only.
+    Otherwise, outputs a prioritized BUILD ORDER.
     """
     lines = []
 
     if target:
-        # Single-structure lookup
         target_norm = _norm(target)
         tree = _get_tree()
         match = next(
@@ -192,10 +266,8 @@ def format_text_block(result: dict, target: str = "") -> str:
             None,
         )
         if not match:
-            return f"[BUILD CALC] '{target}' not found in build tree."
+            return f"[BUILD ORDER] '{target}' not found in build tree."
 
-        inv_lookup = _build_inv_lookup({})  # empty — we'll reuse result
-        # Find in result
         all_entries = (
             [{"name": n, "shortfalls": {}, "pct_ready": 1.0} for n in result["can_build_now"]]
             + [{"name": n, "shortfalls": {}, "pct_ready": 1.0} for n in result["field_deployables"]]
@@ -203,7 +275,7 @@ def format_text_block(result: dict, target: str = "") -> str:
         )
         entry = next((e for e in all_entries if _norm(e["name"]) == target_norm), None)
 
-        lines.append(f"[BUILD CALC] {match['name']}")
+        lines.append(f"[BUILD ORDER] {match['name']}")
         mats = match.get("materials", {})
         for item, qty in mats.items():
             lines.append(f"  Required: {qty}x {item}")
@@ -217,42 +289,33 @@ def format_text_block(result: dict, target: str = "") -> str:
             lines.append("  BLOCKED: requires NetworkNode (not online)")
         return "\n".join(lines)
 
-    # Full assessment
-    nn_status = result["network_node_status"]
+    # Build order
+    steps = build_order(result)
     lp = result["lagrange_points"]
+    lines.append(f"[BUILD ORDER] L-points in system: {lp}")
 
-    if nn_status == "online":
-        lines.append(f"[BUILD CALC] NetworkNode: ONLINE | L-points: {lp}")
-    elif nn_status == "buildable":
-        lines.append(f"[BUILD CALC] NetworkNode: CAN BUILD NOW | L-points: {lp}")
-    elif nn_status == "need_materials":
-        sf = _fmt_shortfalls(result["network_node_shortfalls"])
-        lines.append(f"[BUILD CALC] NetworkNode: {sf} | L-points: {lp}")
-    else:
-        lines.append(f"[BUILD CALC] NetworkNode: NO L-POINT ANCHOR in system")
+    if not steps:
+        lines.append("Nothing to build — no inventory data or all structures built.")
+        return "\n".join(lines)
 
-    if result["can_build_now"]:
-        lines.append("CAN BUILD NOW: " + ", ".join(result["can_build_now"]))
-    else:
-        lines.append("CAN BUILD NOW: none")
-
-    if result["field_deployables"]:
-        lines.append("FIELD DEPLOYABLES: " + ", ".join(result["field_deployables"]))
-
-    top = [e for e in result["almost_buildable"] if e["pct_ready"] >= 0.5][:5]
-    if top:
-        lines.append("ALMOST READY:")
-        for e in top:
-            if e["shortfalls"]:
-                note = _fmt_shortfalls(e["shortfalls"])
-            elif e.get("requires_network") and not result["has_network"]:
-                note = "needs NetworkNode"
-            else:
-                note = "stocked"
-            lines.append(f"  {e['name']:20s} {e['pct_ready']*100:3.0f}%  ({note})")
+    for s in steps:
+        num = f"STEP {s['step']}"
+        name = s["name"]
+        if s["status"] == "can_build":
+            note = "READY" + (f" — {s['note']}" if s["note"] else "")
+        elif s["status"] == "blocked":
+            note = f"BLOCKED — {s['note']}"
+        else:
+            note = _fmt_shortfalls(s["shortfalls"])
+            if s.get("note"):
+                note = note + f" — {s['note']}" if note else s["note"]
+            pct = s["pct_ready"]
+            if pct > 0:
+                note = f"{pct*100:.0f}%  {note}"
+        lines.append(f"  {num:<8} {name:<22} {note}")
 
     if not result["inventory_item_count"]:
-        lines.append("NOTE: No inventory data available — showing full recipe requirements")
+        lines.append("NOTE: No inventory data — results assume empty inventory")
 
     return "\n".join(lines)
 
@@ -297,6 +360,7 @@ def format_structured(result: dict, target: str = "") -> dict:
                 "targetBuildable": entry is not None and not entry.get("shortfalls"),
             }
 
+    steps = build_order(result)
     return {
         "canBuildNow": result["can_build_now"],
         "almostBuildable": [
@@ -312,4 +376,15 @@ def format_structured(result: dict, target: str = "") -> dict:
         "lagrangePoints": result["lagrange_points"],
         "networkNodeStatus": result["network_node_status"],
         "networkNodeShortfalls": result["network_node_shortfalls"],
+        "buildOrder": [
+            {
+                "step": s["step"],
+                "name": s["name"],
+                "status": s["status"],
+                "note": s["note"],
+                "shortfalls": s["shortfalls"],
+                "pctReady": round(s["pct_ready"], 2),
+            }
+            for s in steps
+        ],
     }

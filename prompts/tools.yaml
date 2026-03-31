@@ -162,7 +162,8 @@ calculate_build_options:
     status. Use when the pilot asks about building, crafting, upgrading, 'what next',
     'what can I build', or construction.
   response_guidance: |
-    Lead with what can be built immediately.
-    For near-buildable options, list shortfall items only — example: "Short: 200x Tritanium."
-    Mention NetworkNode or L-point requirements only if relevant to the shell's target.
-    If a specific target was requested, focus only on that structure.
+    The panel shows a numbered BUILD ORDER — reference the steps directly in your response.
+    Example: "Step 1 is the Network Node (need 5x Thermal Composites to unlock everything).
+    Once that's up, Step 2 and 3 are ready to place immediately."
+    If a specific target was requested, find its step number and state its status and shortfalls.
+    Do not re-list all materials — the panel already shows them. Keep the chat response to 2-3 sentences.

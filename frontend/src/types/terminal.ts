@@ -255,6 +255,14 @@ export interface BuildOptionsData {
   targetName?: string;
   targetMaterials?: Record<string, number>;
   targetBuildable?: boolean;
+  buildOrder?: Array<{
+    step: number;
+    name: string;
+    status: 'can_build' | 'need_materials' | 'blocked';
+    note: string;
+    shortfalls: Record<string, number>;
+    pctReady: number;
+  }>;
 }
 
 export interface WatcherAlert {

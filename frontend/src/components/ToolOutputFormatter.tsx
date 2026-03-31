@@ -136,21 +136,35 @@ function formatMemorySummary(data: MemorySummaryData): string {
   return lines.join('\n');
 }
 
-function formatBuildOptions(data: BuildOptionsData): string {
-  const lines: string[] = [DIVIDER];
+function fmtBuildStep(s: NonNullable<BuildOptionsData['buildOrder']>[number]): string {
+  const stepLabel = `STEP ${s.step}`;
+  const name = s.name.slice(0, 20).padEnd(20);
+  let detail: string;
+  if (s.status === 'can_build') {
+    detail = 'READY';
+  } else if (s.status === 'blocked') {
+    detail = `BLOCKED  ${s.note}`;
+  } else {
+    const pct = (Math.round(s.pctReady * 100) + '%').padStart(4);
+    const entries = Object.entries(s.shortfalls);
+    const sfStr = entries.length > 0 ? `${entries[0][1]}x ${entries[0][0]}` : '';
+    const extra = entries.length > 1 ? ' +more' : '';
+    detail = `${pct}  need ${sfStr}${extra}`;
+  }
+  return `  ${stepLabel.padEnd(8)} ${name} ${detail}`;
+}
 
+function BuildOrderPanel({ data, onPrintToTerminal }: { data: BuildOptionsData; onPrintToTerminal?: () => void }) {
   // Single-target view
   if (data.targetName) {
+    const lines: string[] = [DIVIDER];
     lines.push(padLabel('TARGET:') + data.targetName);
     if (data.targetMaterials) {
       for (const [item, qty] of Object.entries(data.targetMaterials)) {
         lines.push(padLabel('  REQUIRES:') + `${qty}x ${item}`);
       }
     }
-    lines.push(
-      padLabel('STATUS:') +
-        (data.targetBuildable ? 'FULLY STOCKED' : 'MATERIALS SHORT')
-    );
+    lines.push(padLabel('STATUS:') + (data.targetBuildable ? 'FULLY STOCKED' : 'MATERIALS SHORT'));
     if (data.almostBuildable.length > 0) {
       const e = data.almostBuildable[0];
       for (const [item, qty] of Object.entries(e.shortfalls)) {
@@ -158,58 +172,49 @@ function formatBuildOptions(data: BuildOptionsData): string {
       }
     }
     lines.push(DIVIDER);
-    return lines.join('\n');
+    return <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>{lines.join('\n')}</pre>;
   }
 
-  // Full assessment view
-  const nnLabel =
-    data.networkNodeStatus === 'online'
-      ? 'ONLINE'
-      : data.networkNodeStatus === 'buildable'
-        ? 'CAN BUILD NOW'
-        : data.networkNodeStatus === 'no_anchor'
-          ? 'NO L-POINT ANCHOR'
-          : 'NEED MATERIALS';
-  lines.push(padLabel('NETWORK NODE:') + nnLabel);
-  lines.push(padLabel('L-POINTS:') + String(data.lagrangePoints));
+  const steps = data.buildOrder ?? [];
+  const CAP = 10;
+  const shown = steps.slice(0, CAP);
+  const rest = steps.length - CAP;
 
-  if (
-    data.networkNodeStatus === 'need_materials' &&
-    Object.keys(data.networkNodeShortfalls).length > 0
-  ) {
-    for (const [item, qty] of Object.entries(data.networkNodeShortfalls)) {
-      lines.push(padLabel('  NODE NEEDS:') + `${qty}x ${item}`);
-    }
-  }
+  const lines = [
+    DIVIDER,
+    `BUILD ORDER  L-POINTS: ${data.lagrangePoints}`,
+    DIVIDER,
+    ...shown.map(fmtBuildStep),
+    ...(rest > 0 ? [`  ... and ${rest} more steps`] : []),
+    DIVIDER,
+  ];
 
-  lines.push(DIVIDER);
-
-  if (data.canBuildNow.length > 0) {
-    const items = data.canBuildNow.join(', ');
-    lines.push(padLabel('CAN BUILD NOW:') + truncateValue(items, 60));
-  } else {
-    lines.push(padLabel('CAN BUILD NOW:') + 'none');
-  }
-
-  if (data.fieldDeployables.length > 0) {
-    lines.push(padLabel('FIELD DEPLOY:') + data.fieldDeployables.join(', '));
-  }
-
-  const top = data.almostBuildable.filter((e) => e.pctReady >= 0.4).slice(0, 5);
-  if (top.length > 0) {
-    lines.push(DIVIDER);
-    lines.push('ALMOST READY:');
-    for (const e of top) {
-      const pct = Math.round(e.pctReady * 100) + '%';
-      const shortEntries = Object.entries(e.shortfalls).slice(0, 2);
-      const sfStr = shortEntries.map(([item, qty]) => `${qty}x ${item}`).join(', ');
-      const extra = Object.keys(e.shortfalls).length > 2 ? ' +more' : '';
-      lines.push(`  ${e.name.padEnd(22)}${pct.padStart(4)}  (need ${sfStr}${extra})`);
-    }
-  }
-
-  lines.push(DIVIDER);
-  return lines.join('\n');
+  return (
+    <>
+      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+        {lines.join('\n')}
+      </pre>
+      {onPrintToTerminal && rest > 0 && (
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: 'linear-gradient(to bottom, transparent, #000 40%)',
+          paddingTop: '40px',
+          paddingBottom: '16px',
+          paddingLeft: '16px',
+        }}>
+          <span
+            onClick={onPrintToTerminal}
+            style={{ cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            {'  [ PRINT FULL LIST ]'}
+          </span>
+        </div>
+      )}
+    </>
+  );
 }
 
 function copyText(text: string): boolean {
@@ -291,8 +296,7 @@ export function ToolOutputFormatter({
     case 'nodes_list':
       return <NodesListPanel data={data as NodesListData} onPrint={onPrintNode ?? (() => {})} />;
     case 'build_options':
-      formatted = formatBuildOptions(data as BuildOptionsData);
-      break;
+      return <BuildOrderPanel data={data as BuildOptionsData} onPrintToTerminal={onPrintToTerminal} />;
     default:
       formatted = DIVIDER + '\n[UNKNOWN TOOL TYPE]\n' + DIVIDER;
   }
