@@ -308,9 +308,11 @@ async def _preload_context(req: CompanionChatRequest, profile: StructureProfile)
                 fuel = fuel.get("fields") or fuel
             qty      = int(fuel.get("quantity") or 0)
             cap      = int(fuel.get("max_capacity") or 0)
+            unit_vol = int(fuel.get("unit_volume") or 0)
             burn_ms  = int(fuel.get("burn_rate_in_ms") or 0)
             is_burning = bool(fuel.get("is_burning", False))
-            fuel_pct = round(qty * 100.0 / cap, 2) if cap > 0 else 0.0
+            eff_max  = cap // unit_vol if unit_vol > 0 else cap
+            fuel_pct = round(qty * 100.0 / eff_max, 2) if eff_max > 0 else 0.0
 
             if is_burning and burn_ms > 0:
                 units_per_hr    = 3_600_000.0 / burn_ms
