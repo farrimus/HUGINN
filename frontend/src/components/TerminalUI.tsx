@@ -75,8 +75,6 @@ export function TerminalUI() {
   const assemblyId = assembly?.id;
   const itemId = new URLSearchParams(window.location.search).get('itemId') || '';
 
-  const isReady = isConnected && !!assemblyId;
-
   // Splash screen: show once per session, gate baseline animations until it exits
   const splashAlreadyPlayed = sessionStorage.getItem('crud_splash') === '1';
   const [splashDone, setSplashDone] = useState(splashAlreadyPlayed);
@@ -110,11 +108,14 @@ export function TerminalUI() {
   const [tribeId, setTribeId] = useState<number | null>(null);
   const [visitorName, setVisitorName] = useState<string>('');
   const [tier, setTier] = useState<string>('NONE');
+  const [sessionRegistered, setSessionRegistered] = useState<boolean>(false);
   const [shipProfile, setShipProfile] = useState<Record<string, unknown> | null>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreeted = useRef(false);
   const activeBoardLogIdRef = useRef<string | null>(null);
+
+  const isReady = isConnected && !!assemblyId && sessionRegistered;
 
   const addLog = (text: string, type: TerminalLog['type'] = 'info', action?: string): void => {
     setLogs((prev) => [...prev, { text, type, timestamp: Date.now(), action }]);
@@ -226,8 +227,11 @@ export function TerminalUI() {
       .then(data => {
         if (data?.tier) setTier(data.tier);
         if (data?.ship_profile) setShipProfile(data.ship_profile);
+        setSessionRegistered(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        setSessionRegistered(true); // fail-open: unlock terminal even if backend is down
+      });
   }, [walletAddress, visitorName, assemblyId]);
 
   // Fetch the connected visitor's own tribe ID from chain (not the SSU owner's)
@@ -240,14 +244,19 @@ export function TerminalUI() {
       const charJson = (data as any)?.address?.objects?.nodes?.[0]?.contents?.extract?.asAddress?.asObject?.asMoveObject?.contents?.json;
       const char = parseCharacterFromJson(charJson);
       if (char?.name) setVisitorName(char.name);
+      else if (!cancelled) setVisitorName(walletAddress.slice(0, 10));
       if (char?.tribeId && char.tribeId > 0) {
         setTribeId(char.tribeId);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      if (!cancelled) setVisitorName(walletAddress.slice(0, 10));
+    });
     return () => { cancelled = true; };
   }, [walletAddress]);
 
-  // Tribe presence — POST /tribe/presence once on connect when wallet + tribeId known
+  // Tribe presence — POST exactly once when wallet + tribeId are first known.
+  // Location is read at call time (best-effort). Assembly and currentSystem are
+  // intentionally excluded from deps to prevent re-fires on location changes.
   useEffect(() => {
     if (!walletAddress || !tribeId) return;
     const location = assembly?.solarSystem?.name || currentSystem || 'unknown';
@@ -256,7 +265,8 @@ export function TerminalUI() {
       headers: { 'Content-Type': 'application/json', 'X-Wallet-Address': walletAddress },
       body: JSON.stringify({ tribe_id: tribeId, location, status: 'active' }),
     }).catch(() => {});
-  }, [walletAddress, tribeId, assembly?.solarSystem?.name, currentSystem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress, tribeId]);
 
   // Tribe board — SSE connection, routes events to the active board log entry
   useTribePosts(tribeId, (event: TribePostEvent) => {
@@ -1322,7 +1332,15 @@ export function TerminalUI() {
               {inputValue ? (
                 <span className="fake-input-text">{inputValue}</span>
               ) : (
-                !isReady && <span className="fake-input-placeholder">Waiting for wallet...</span>
+                !isReady && (
+                  <span className="fake-input-placeholder">
+                    {!isConnected
+                      ? 'Waiting for wallet...'
+                      : !assemblyId
+                        ? 'Waiting for structure...'
+                        : 'Identifying...'}
+                  </span>
+                )
               )}
               {isFocused && !isLoading && <span className="cursor-blink">_</span>}
             </div>

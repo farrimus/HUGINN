@@ -336,7 +336,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
 
       return { character_name: charInfo?.name ?? '', assemblies };
     },
-    enabled:  isConnected && !!walletAddress,
+    enabled:  isConnected && !!walletAddress && !!assemblyId,
     staleTime: STALE_MS,
     retry: 1,
   });
