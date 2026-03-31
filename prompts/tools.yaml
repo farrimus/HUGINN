@@ -9,40 +9,79 @@
 #                       only used by: assess_threat, query_intel
 
 search_memory:
-  description: Search structure memory for recent events by keyword
-  response_guidance:
+  description: |
+    Search this structure's sensor-logged event history by keyword. Returns up to 10 matching
+    events (dockings, combat detections, access changes) from the specified lookback window.
+    Use for questions about historical activity at this structure. Do not use for pilot-reported
+    field intelligence — use query_intel for that.
+  response_guidance: |
+    Report events chronologically. State event type (docking/combat/access) and date for each.
+    If multiple events match, summarize the pattern in one sentence before listing.
+    State the keyword and lookback window covered.
 
 get_memory_summary:
-  description: Get current memory summary (event tallies and key facts)
-  response_guidance:
+  description: |
+    Get this structure's operational summary for a time window: event tallies
+    (dockings, kills, access changes) and any key recorded facts. Use for broad
+    status questions like 'what's been happening here' or 'give me a summary'.
+  response_guidance: |
+    Present as operational status. Lead with the most notable count — flag anything
+    unusually high. State the period covered. Do not narrate the data source.
 
 assess_threat:
   description: Analyze recent kills in a system for threat patterns (aggressors, ship types, escalation)
   no_result: No significant threat activity detected
-  response_guidance:
+  response_guidance: |
+    State threat level first: NONE / LOW / MEDIUM / HIGH.
+    Follow with top aggressor entity and dominant victim ship class if known.
+    Add escalation note only if a pattern is active. Maximum 4 lines.
+    Do not narrate the analysis process.
 
 get_system_intel:
-  description: "Get system information: security status, star type, planets, recent kill count, gate links"
-  response_guidance:
+  description: |
+    Get system data: security status, star type, planet breakdown (HZ vs outer), Lagrange point
+    count, gate links, 24h kill count, and safe jump temperature. Use for location questions,
+    scouting reports, resource assessment, and jump planning.
+  response_guidance: |
+    Lead with what the query context demands: HZ planet count and Lagrange points for
+    scouting/resource questions; kill count and gates for threat/movement questions.
+    Do not list all fields if only one is relevant to the query.
 
 get_pilot_profile:
-  description: "Get pilot profile: visit count, first visit, last visit, access tier"
-  response_guidance:
+  description: |
+    Get a pilot's visit record at this structure: visit count, first/last visit, access tier.
+    The current pilot's profile is already pre-loaded in context — only call this for a
+    different pilot's address. Use when the shell explicitly asks about another pilot's
+    access history or visit count.
+  response_guidance: |
+    Surface profile data only when the shell explicitly asked for it.
+    Do not narrate that you retrieved a record.
+    If the stored tier conflicts with the active session tier, note: 'Record may be stale.'
 
 radius_search:
-  description: Find systems within a distance and filter by criteria (planets, kills, heat, structures)
-  response_guidance:
+  description: |
+    Search for systems within a radius in light-years, ranked by criteria. Filters:
+    'planets' (resource potential by HZ planet count), 'killmails' (recent kill activity),
+    'heat' (safe jump temperature in °F — lower is better for ship jumps),
+    'structures' (known player bases). Center defaults to current system.
+    Returns the top N systems per requested filter.
+  response_guidance: |
+    Group results by filter. For each system state: name, distance in LY, and the relevant
+    metric (planet count / kills / temperature). If skip_heat_traps was applied, note that
+    high-temperature systems were excluded from results.
 
 plan_route:
   description: |
-    Calculate a route to a destination system using the route engine. Returns a full route
-    with jump-by-jump breakdown. Use when the shell asks to plot, calculate, or find a route,
-    course, or path to a destination. Accepts an optional specific_heat to model the ship's
-    jump capability. If the shell mentions their ship's jump range in LY, convert to
-    specific_heat using: specific_heat = jump_range_ly * HEAT_CONSTANT * mass / (T_MAX * hull_mass)
-    — or just pass the jump_range_ly and let the engine estimate. Always call this tool when
-    route planning is requested instead of trying to manually search systems.
-  response_guidance:
+    Calculate a route to a destination system. Returns a full jump-by-jump breakdown.
+    Use when the shell asks to plot, calculate, or find a route, course, or path to a destination.
+    The shell's ship type and jump range are pre-loaded in context — use them if no range
+    is specified. If the shell states a jump range in LY, pass it as jump_range_ly.
+    Never attempt to manually search or estimate routes — always call this tool.
+  response_guidance: |
+    Lead with total jump count and breakdown (gate vs ship jumps) in one line.
+    If a warning is present, state it immediately after the jump summary.
+    Do not fabricate a waypoint list — the route text contains only the summary.
+    Ask the shell if they need more detail about a specific leg.
 
 manage_watcher:
   description: |
@@ -51,7 +90,10 @@ manage_watcher:
     ssu_name, item_filter, threshold, scope), action='remove' to delete a rule by rule_id.
     Use this when the shell asks to watch, monitor, or track an SSU's inventory, or to list
     or remove existing watch rules.
-  response_guidance:
+  response_guidance: |
+    add: confirm the rule as "Monitoring [SSU name] for [item_filter] below [threshold] (scope: [scope])."
+    remove: confirm deletion by rule ID.
+    list: one rule per line — SSU | filter | threshold | scope.
 
 manage_courier:
   description: |
@@ -60,14 +102,21 @@ manage_courier:
     from_location, to_location, reward_description), action='claim' to claim a contract by
     contract_id. Use this when the shell asks to post a job, find courier work, claim a
     delivery, or check the contract board.
-  response_guidance:
+  response_guidance: |
+    post: confirm contract ID and the full route/cargo/reward summary.
+    claim: state what was claimed and what must be delivered and where.
+    list: one contract per line — from→to | cargo | reward. Note expiry if set.
 
 manage_tribe:
   description: |
-    Check the tribe presence board. Use action='list' to show online tribe members (requires
-    tribe_id). Use this when the shell asks who is online, where their tribe mates are, or
-    what tribe members are active.
-  response_guidance:
+    Check the tribe presence board. Use action='list' to see which tribe members are currently
+    online (requires tribe_id). Tribe members are considered online if pinged in the last 5
+    minutes. If the shell's tribe_id is not known from context, ask them to provide it before
+    calling this tool.
+  response_guidance: |
+    List members by character name and last-known location, one per line.
+    If the list is empty, state that no tribe members are currently online.
+    If the call failed because tribe_id was missing, ask the shell to provide their tribe ID.
 
 log_intel:
   description: |
@@ -76,7 +125,10 @@ log_intel:
     lore discoveries, or any other factual intelligence gathered in the field. Do not log
     speculation — only log what the pilot claims to have directly observed or verified. The
     entry persists and will be available to future shells who ask about the same topic.
-  response_guidance:
+  response_guidance: |
+    Confirm in one line that the report was logged, citing the tags if any.
+    Example: "Filed under [drones, UTR-SN4, combat]."
+    Do not repeat the content back. Do not editorialize.
 
 query_intel:
   description: |
@@ -84,7 +136,11 @@ query_intel:
     a shell asks what is known about enemies, resources, hazards, crafting, or any topic that
     other pilots may have reported. Always query before saying you have no data.
   no_result: "No field reports found matching '{keyword}'. This unit has no logged intelligence on that topic."
-  response_guidance:
+  response_guidance: |
+    Cite source (pilot name + date) for every result returned.
+    Group by topic if multiple results match.
+    Do not expand, interpret, or add detail beyond what the records contain.
+    If entries are older than 24h, note their age.
 
 lookup_item_type:
   description: |
@@ -93,7 +149,11 @@ lookup_item_type:
     shell mentions an unfamiliar item name, enemy designation, or ship class and you need to
     identify what it is. Search partial names — e.g. 'Faulty Scout', 'Triglavian',
     'Tritanium', 'Smart Storage'. Returns up to 5 matches ranked by relevance.
-  response_guidance:
+  response_guidance: |
+    Describe the item naturally using its official category, group, and key stats (mass, volume).
+    Do not paste raw database fields verbatim.
+    If multiple matches are returned, list them briefly by name and ask the shell which was
+    meant before continuing.
 
 calculate_build_options:
   description: |
@@ -101,4 +161,8 @@ calculate_build_options:
     buildable structures, shortfalls for nearly-buildable ones, and NetworkNode/L-point
     status. Use when the pilot asks about building, crafting, upgrading, 'what next',
     'what can I build', or construction.
-  response_guidance:
+  response_guidance: |
+    Lead with what can be built immediately.
+    For near-buildable options, list shortfall items only — example: "Short: 200x Tritanium."
+    Mention NetworkNode or L-point requirements only if relevant to the shell's target.
+    If a specific target was requested, focus only on that structure.

@@ -213,7 +213,11 @@ class ToolRegistry:
                         "type": "number",
                         "description": (
                             "Ship specific heat capacity (determines jump range). "
-                            "Reflex=3.0 (~150 LY), Carom=8.5 (~370 LY). "
+                            "Wend=1.0 (~50 LY), Recurve=1.0 (~50 LY), Reiver=1.0 (~50 LY), "
+                            "USV=1.8 (~90 LY), Lai=2.5 (~125 LY), Lorha=2.5 (~125 LY), "
+                            "MCF=2.5 (~125 LY), HAF=2.5 (~125 LY), Tades=2.5 (~125 LY), "
+                            "Maul=2.5 (~125 LY), Chumaq=3.0 (~150 LY), Reflex=3.0 (~150 LY), "
+                            "Stride=8.0 (~400 LY), Carom=8.5 (~425 LY). "
                             "If the shell states a jump range in LY, omit this and use jump_range_ly instead."
                         )
                     },
@@ -991,7 +995,7 @@ class ToolRegistry:
         """Handler for plan_route tool."""
         try:
             from src.route_engine import route_engine
-            from src.ship_profile import load_profile, ShipProfile, T_MAX, HEAT_CONSTANT, FUEL_PROPERTIES
+            from src.ship_profile import load_profile, ShipProfile, T_MAX, HEAT_CONSTANT, FUEL_PROPERTIES, SHIPS
 
             destination = inputs.get("destination", "").strip()
             if not destination:
@@ -1009,6 +1013,14 @@ class ToolRegistry:
 
             # Build profile — prefer explicit parameters over stored
             base_profile = load_profile()
+
+            # Enrich from catalog — session only stores fuel/quantity, not hull physics
+            if base_profile.ship_type and base_profile.ship_type in SHIPS:
+                _cat = SHIPS[base_profile.ship_type]
+                base_profile = base_profile.with_overrides(
+                    hull_mass=_cat.get("mass"),
+                    specific_heat=_cat.get("specific_heat"),
+                )
 
             jump_range_ly = inputs.get("jump_range_ly")
             specific_heat = inputs.get("specific_heat")

@@ -81,7 +81,7 @@ SHIPS: dict[str, dict] = {
         "class_name":         "Shuttle",
         "fuel_category":      "basic",
         "mass":               6_800_000,
-        "specific_heat":      2.0,
+        "specific_heat":      1.0,
         "conductance":        1.5,
         "fuel_capacity":      200,
         "structure_hp":       750,

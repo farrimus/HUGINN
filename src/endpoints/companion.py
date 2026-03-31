@@ -40,6 +40,13 @@ def _ship_context_block(wallet_address: str = "") -> str:
                 p = ShipProfile(**{k: v for k, v in session.ship_profile.items() if k in valid})
         if p is None:
             p = load_ship_profile()
+        # Enrich from catalog — session only stores fuel/quantity, not hull physics
+        if p.ship_type and p.ship_type in SHIPS:
+            cat = SHIPS[p.ship_type]
+            p = p.with_overrides(
+                hull_mass=cat.get("mass"),
+                specific_heat=cat.get("specific_heat"),
+            )
         ship_def = SHIPS.get(p.ship_type or "", {}) if p.ship_type else {}
 
         fuel_props = FUEL_PROPERTIES.get(p.fuel_type, {})

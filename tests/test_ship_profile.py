@@ -61,9 +61,22 @@ def test_jump_range_at_temp():
     # At temp=90.0 should be zero (red zone)
     assert p.jump_range_at_temp(90.0) == 0.0
 
+def test_wend_jump_range_50ly():
+    # Wend: mass=6.8e6, specific_heat=1.0 → range = 150 * 1.0 / 3.0 = 50 LY (confirmed in-game)
+    p = ShipProfile(hull_mass=6_800_000, specific_heat=1.0, extra_cargo_kg=0,
+                    adaptive_level=0, external_temp=0.0)
+    assert abs(p.jump_range() - 50.0) < 0.01
+
 def test_ship_type_from_ships_table():
     from src.ship_profile import SHIPS
     carom = SHIPS["Carom"]
     assert carom["mass"] == 7_200_000
     assert carom["specific_heat"] == 8.5
     assert carom["fuel_category"] == "basic"
+
+def test_wend_in_ships_table():
+    from src.ship_profile import SHIPS
+    wend = SHIPS["Wend"]
+    assert wend["specific_heat"] == 1.0
+    assert wend["mass"] == 6_800_000
+    assert wend["fuel_category"] == "basic"
