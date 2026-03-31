@@ -69,18 +69,3 @@ Pilot jumps into UTR-SN4 for the first time and types "where am I?"
 Companion answers in three seconds with security rating, local drone types, and one line that feels like a warning from something that has lived here.
 Pilot undocks. No walkthrough — just a reason to explore.
 
----
-
-## For Anyone Touching the Code
-
-Before you commit, check:
-- Every response is grounded in actual log/API data (no invented facts)
-- No tool outside log buffer / World API / gate_graph.json
-- Voice stays 100% in-universe
-- Context block still ≤ 2000 chars
-- No data beyond what the logged-in pilot's client generates
-
-Most sensitive files:
-`src/claude_client.py` (voice) · `src/context_builder.py` (truth) · `src/world_api.py` (data) · `frontend/src/` (UI)
-
-Keep the companion alive, quiet when it should be, and always native.

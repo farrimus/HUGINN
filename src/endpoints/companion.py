@@ -567,13 +567,11 @@ async def companion_chat(
 # Maps Claude tool names → frontend ToolType strings (panel identifiers)
 _TOOL_TO_PANEL = {
     "get_system_intel": "system_intel",
-    "assess_threat": "threat_assessment",
     "get_pilot_profile": "pilot_profile",
     "search_memory": "memory_search",
     "get_memory_summary": "memory_summary",
     "plan_route": "route_planned",
     "calculate_build_options": "build_options",
-    "recon_scan": "threat_assessment",
 }
 
 

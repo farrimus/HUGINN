@@ -6,6 +6,21 @@ Built for the [EVE Frontier × Sui Hackathon 2026](https://evefrontier.com/en/ne
 
 ---
 
+## Live Demo
+
+The companion is deployed and running:
+
+```
+http://135.181.95.84:8745/app?itemId=<your-assembly-id>&tenant=utopia
+```
+
+Requires: EVE Frontier in-game browser + EVE Frontier Client Wallet.
+
+To explore without a live game session, the backend API is accessible at:
+`http://135.181.95.84:8745/docs` (FastAPI auto-docs, no wallet required).
+
+---
+
 ## What It Does
 
 The companion runs inside the EVE Frontier in-game browser. When a pilot connects their wallet, the companion:
@@ -31,13 +46,33 @@ In-game browser
                     └── Galaxy DB (24,426 systems, gate topology)
 ```
 
-**Frontend:** React 19 + Vite, served as static files from FastAPI. Connects to the pilot's wallet via EVE Frontier Client Wallet (Wallet Standard / DApp Kit). Reads assembly state from the **Sui blockchain** via `@evefrontier/dapp-kit`. No separate Node.js server.
+**Frontend:** React 19 + Vite, served as static files from FastAPI. Connects to the pilot's wallet via EVE Frontier Client Wallet (Wallet Standard / DApp Kit). Reads assembly state from the **Sui blockchain** via `@evefrontier/dapp-kit`. On-chain access tier enforced per request via the deployed Move contract. No separate Node.js server.
 
 **Backend:** FastAPI on Python 3.12. Handles session management, AI context building, route planning, structure monitoring, and live data from the World API.
 
 **AI:** Claude Sonnet (Anthropic). Receives a structured context block — current location, structure states, recent killmails, active alerts — and responds in character as the companion entity. Uses tool calls to query live data mid-conversation.
 
 **Data:** Solar system geography and gate topology are pre-built from CCP's public World API using the included build scripts (`build_universe.py`, `build_gate_graph.py`).
+
+---
+
+## On-Chain Access Control (Sui Move)
+
+Structure access is enforced by a Move smart contract deployed on the Sui Nova testnet.
+
+**Package:** `0xf33568afc1a24e7b5de4db95d01b5db1d0ef6a99269251fb9a355dde844255b9`
+**Source:** `move/access_registry/`
+
+Each structure owner deploys an `AccessRegistry` shared object that defines access tiers for their installation:
+
+| Tier | Who | Access |
+|------|-----|--------|
+| OWNER | Structure owner wallet | Full — all tools, admin, news feed |
+| TRIBE | Corp/tribe member addresses | Read — chat, structure state |
+| VETTED | Explicitly approved outsiders | Read — limited data |
+| NONE | Everyone else | Minimal public info only |
+
+On every pilot interaction — chat, session registration, news fetch — the Python backend queries the on-chain object via Sui JSON-RPC and resolves the tier in real time. The AI companion's available tools and response depth are gated on this tier.
 
 ---
 
@@ -75,8 +110,9 @@ cp .env.example .env
 # Edit .env — fill in ANTHROPIC_API_KEY and WORLD_API_URL
 
 # Build galaxy data (first time only)
-python build_universe.py
+python build_universe.py      # requires external CCP data files — see docs/SETUP.md
 python build_gate_graph.py
+python build_types.py
 
 # Start the server
 python main.py
@@ -113,6 +149,8 @@ Open `http://localhost:8745/static/companion/index.html` in a browser (or the in
 │   └── src/                 # React + TypeScript source
 ├── build_universe.py        # Builds galaxy DB from World API
 ├── build_gate_graph.py      # Builds gate topology
+├── move/
+│   └── access_registry/     # Sui Move smart contract (deployed on Nova testnet)
 └── docs/                    # Architecture and API reference
 ```
 

@@ -46,6 +46,9 @@ overlay/
 # Claude Code (machine-local settings)
 .claude/
 
+# Development governance — not a submission artifact
+CLAUDE.md
+
 # Internal development documentation (preserved locally, not for public repo)
 docs/DAPP_KIT_BOUNDARY.md
 docs/DATA_LAYER_MAP.md

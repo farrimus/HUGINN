@@ -39,6 +39,12 @@ python build_types.py         # Item type metadata
 
 The output (`data/eve_universe.db`, `data/gate_graph.json`) is gitignored and must be built locally.
 
+**Note on `build_universe.py`:** This script requires two input files sourced from CCP's
+eve-frontier-tools data export — `data/starmapcache.json` and `data/type_names_all.json` —
+which are not included in this repository. Place them in `data/` before running.
+`build_gate_graph.py` and `build_types.py` have no external dependencies and fetch live
+from the World API.
+
 ### 4. Start the server
 
 ```bash
