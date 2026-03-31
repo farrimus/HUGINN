@@ -2,22 +2,22 @@
 
 ## Overview
 
-The companion chat interface is a **React application** served as static files from the FastAPI backend. It connects to EVE Frontier wallets via **EIP-6963** standard and communicates with backend APIs to provide an in-game AI companion.
+The companion chat interface is a **React application** served as static files from the FastAPI backend. It connects to EVE Frontier wallets via **@evefrontier/dapp-kit** and communicates with backend APIs to provide an in-game AI companion.
 
 ---
 
 ## Technology Stack
 
 ### React + Vite
-- **React 18** — UI framework
+- **React 19** — UI framework
 - **Vite** — Build tool and dev server
 - **TypeScript** — Type-safe component development
 - **Plain CSS** — EVE Frontier gold/brown terminal styling (no framework)
 
 ### Wallet Connection
-- **EIP-6963 Standard** — Multi-wallet support (MetaMask, Eve Vault, others)
-- **window.ethereum** API — Standard Ethereum/EVM wallet interface
-- **No custom auth** — Uses backend's simpler token validation for internal endpoints
+- **@evefrontier/dapp-kit** — Official EVE Frontier React SDK for wallet integration
+- **EVE Frontier Client Wallet** — In-game browser wallet via Wallet Standard
+- **No custom auth** — DApp Kit handles all wallet discovery and connection
 
 ### Deployment
 - **StaticFiles mount** at `/static/companion/` on FastAPI backend
@@ -45,20 +45,18 @@ The app is **not** served by a separate Node.js server. Instead, the **compiled 
 - `src/App.css` — Styling
 - `vite.config.ts` — Build configuration
 
-### EIP-6963 Standard
+### DApp Kit Wallet Connection
 
-**What it is:** A web standard for wallet discovery that allows web pages to connect to any wallet (MetaMask, Eve Vault, Ledger Live, etc.) without hardcoding wallet detection.
+**What it is:** `@evefrontier/dapp-kit` is the official EVE Frontier React SDK. It handles wallet discovery and connection via the Wallet Standard — the in-game browser exposes the EVE Frontier Client Wallet this way.
 
 **How it works in the app:**
 ```typescript
-// In App.tsx, handleConnectWallet()
-const accounts = await (window as any).ethereum.request({
-  method: "eth_requestAccounts",
-});
-const address = accounts[0];
+// App is wrapped in EveFrontierProvider (main.tsx)
+// Components use the useConnection() hook
+const { connect, disconnect, currentAccount } = useConnection();
 ```
 
-This triggers the user's wallet provider to show a connection prompt. No custom auth code needed.
+DApp Kit resolves the wallet automatically in the in-game browser. No custom auth or `window.ethereum` calls needed.
 
 ### Backend Integration
 
@@ -301,20 +299,15 @@ Users see failures immediately in the terminal.
 
 ---
 
-## Why Not Use a Full DApp Kit?
+## DApp Kit Integration
 
-Early in development, we considered `@evefrontier/dapp-kit`, which provides:
-- Pre-built wallet connection UI
-- Account discovery
-- Sui-specific utilities
+The frontend uses `@evefrontier/dapp-kit` for all wallet interactions. The app is wrapped in `EveFrontierProvider` (see `main.tsx`), which makes wallet state available throughout the component tree via hooks.
 
-**Decision:** Use vanilla EIP-6963 instead because:
-1. **Simpler** — One HTTP API call vs. full SDK
-2. **Lighter** — No extra dependencies
-3. **Flexible** — Custom UI matches our terminal aesthetic
-4. **Sufficient** — EIP-6963 handles wallet discovery fully
+Key hooks used:
+- `useConnection()` — wallet connect/disconnect, current account
+- `useSmartObject()` — assembly data by object ID
 
-The official DApp Kit is excellent for full dApps (transactions, contracts). For a read-only companion chat, plain JavaScript is lighter and faster.
+The in-game browser exposes the EVE Frontier Client Wallet automatically. DApp Kit discovers it via the Wallet Standard — no manual injection or `window.ethereum` calls.
 
 ---
 
@@ -335,7 +328,7 @@ For development, use `npm run dev` to test locally with hot reload.
 
 - This is a **static React app**, not a Node.js server application
 - **Vite** is the build tool; it compiles everything to plain HTML/CSS/JS
-- **EIP-6963** handles wallet connection; no custom auth code needed
+- **@evefrontier/dapp-kit** handles wallet connection; no custom auth code needed
 - **FastAPI's StaticFiles** serves the compiled app; no additional server required
 - The app **targets the current server** via `window.location.origin`, so API calls work from any network
 - Build output **must** be copied to `/static/companion/` for the in-game browser to access it

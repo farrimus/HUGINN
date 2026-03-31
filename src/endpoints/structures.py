@@ -14,20 +14,17 @@ Endpoints:
 import os
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import jwt as pyjwt
 
-from src.utils import require_token
 from src.structure_persistence import StructureProfile, load_profile as load_structure_profile, save_profile as save_structure_profile
 from src.location_index import location_index
 from src.schemas import StructureProfileUpdate, LocationManualRequest, LocationRevealRequest, StructureChatRequest
 from src.deal_store import deal_store
 from src.world_api import world_api
-from src.threat_assessment import threat_assessment
 from src.structure_client import structure_client, lobby_client, build_structure_context, detect_alerts
 from src.memory_store import get_memory_store
 from src.tools import (
@@ -189,87 +186,8 @@ async def set_manual_location(assembly_id: str, request: LocationManualRequest):
 
 @structures_router.post("/structure/{assembly_id}/location/reveal")
 async def reveal_location(assembly_id: str, request: LocationRevealRequest):
-    """
-    Prove location via Sui wallet signature.
-
-    Calls Sui RPC endpoint to fetch player's current location.
-    Verifies JWT signature, saves location as proved.
-
-    TODO: Implement verify_jwt() call
-    TODO: Implement actual Sui RPC call for /me/jumps
-    """
-    try:
-        jwt_token = request.jwt_token
-
-        if not jwt_token:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "JWT token required"}
-            )
-
-        # TODO: Verify JWT token
-        try:
-            user_data = decode_jwt(jwt_token)
-            user_address = user_data.get("address")
-        except pyjwt.ExpiredSignatureError:
-            return JSONResponse(
-                status_code=401,
-                content={"error": "JWT token expired"}
-            )
-        except Exception as e:
-            log.debug(f"JWT decode error: {e}")
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Invalid JWT token"}
-            )
-
-        if not user_address:
-            return {"error": "Invalid JWT"}
-
-        # TODO: Query actual Sui RPC endpoint for player's current location
-        # For now, return placeholder
-        current_system = "UR8-K7K"
-
-        if not current_system:
-            return {"error": "Could not determine current location from Sui"}
-
-        # Get or create profile
-        profile = load_structure_profile(assembly_id)
-        if not profile:
-            profile = StructureProfile(
-                assembly_id=assembly_id,
-                owner_address="",
-                structure_name=assembly_id
-            )
-
-        # Record jump history (server-side, not displayed)
-        jump_history = getattr(profile, "jump_history", [])
-        jump_history.append({
-            "system": current_system,
-            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-        })
-        # Limit to last 10
-        setattr(profile, "jump_history", jump_history[-10:])
-
-        # Update location as proved
-        location = {
-            "system": current_system,
-            "proved": True,
-            "proved_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-        }
-        setattr(profile, "location", location)
-
-        # Save profile
-        save_structure_profile(profile)
-
-        return {
-            "success": True,
-            "location": location,
-            "assembly_id": assembly_id
-        }
-    except Exception as e:
-        log.exception(f"Error revealing location for {assembly_id}: {e}")
-        return {"error": str(e), "assembly_id": assembly_id}
+    """Prove location via Sui wallet signature. Not yet implemented."""
+    return JSONResponse(status_code=501, content={"error": "Location reveal not implemented"})
 
 
 @structures_router.post("/structure-chat")

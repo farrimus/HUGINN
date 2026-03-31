@@ -8,9 +8,9 @@
 
 ## What Is This?
 
-An AI companion chat interface for EVE Frontier players. Built with React, deployed as static files, uses `window.ethereum` for wallet connection.
+An AI companion chat interface for EVE Frontier players. Built with React, deployed as static files, connects wallet via EVE Frontier DApp Kit.
 
-**Key tech:** React 18 + Vite + EIP-6963 wallet standard + FastAPI static files
+**Key tech:** React 19 + Vite + @evefrontier/dapp-kit + FastAPI static files
 
 ---
 
@@ -135,7 +135,7 @@ Create new file in `src/`, import in `App.tsx`, render it.
 
 - **Static files only.** No Node.js server. Copy to `/static/companion/` and you're done.
 - **Vite is the compiler.** It translates TypeScript to JavaScript.
-- **EIP-6963 is the wallet standard.** No custom auth code, use `window.ethereum`.
+- **DApp Kit handles wallet connection.** `@evefrontier/dapp-kit` — no custom auth code needed.
 - **API base URL is dynamic.** `window.location.origin` makes it work from any network.
 - **Don't edit `/static/companion/` directly.** Always rebuild from `src/`.
 - **Vite needs the base path.** If you deploy to a different location, update `vite.config.ts`.
@@ -166,9 +166,6 @@ Create new file in `src/`, import in `App.tsx`, render it.
 
 **Q: Why Vite?**
 A: Fast builds, simple config, supports React, includes dev server.
-
-**Q: Why not the DApp Kit?**
-A: DApp Kit is for full dApps with transactions. This is read-only chat. Plain EIP-6963 is simpler.
 
 **Q: Why not a Node.js server?**
 A: No need. Vite compiles to static files. FastAPI serves them. Simpler, faster, fewer moving parts.
