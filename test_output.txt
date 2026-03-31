@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.3.0, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /opt/eve-frontier
+configfile: pytest.ini
+plugins: asyncio-0.23.8, anyio-4.12.1
+asyncio: mode=Mode.AUTO
+collecting ... collected 9 items
+
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_cache_path_creation PASSED [ 11%]
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_save_and_load_cache PASSED [ 22%]
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_load_cache_returns_none_when_missing PASSED [ 33%]
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_load_cache_handles_corrupted_json PASSED [ 44%]
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_build_cache PASSED [ 55%]
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_refresh_cache_kills PASSED [ 66%]
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_refresh_cache_kills_nonexistent PASSED [ 77%]
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_cache_directory_creation PASSED [ 88%]
+tests/test_radius_search_cache.py::TestRadiusSearchCache::test_build_cache_with_empty_systems PASSED [100%]
+
+============================== 9 passed in 0.17s ===============================

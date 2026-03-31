@@ -1,0 +1,673 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #000;
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+}
+
+/* Legacy layout (vanilla CLI) */
+.terminal-screen {
+  width: 100%;
+  height: calc(100vh - 50px);
+  max-height: 828px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#visual-area {
+  flex: 0 0 33%;
+  padding: 16px;
+  overflow: hidden;
+  position: relative;
+  font-size: 16px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+#chat-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-size: 16px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+#input-field {
+  flex-shrink: 0;
+  background: #000;
+  border: none;
+  color: var(--c-primary);
+  padding: 12px 16px;
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  outline: none;
+}
+
+#input-field::placeholder {
+  color: var(--c-dim);
+}
+
+/* React TerminalUI layout */
+.terminal-ui {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: var(--c-primary);
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 0 144px rgba(0, 0, 0, 0.54);
+}
+
+/* CRT scanlines overlay */
+.terminal-ui::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.12) 2px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
+
+.terminal-header {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.terminal-header h1 {
+  font-size: 19px;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 7.2px rgba(var(--c-primary-rgb), 0.84), 0 0 19.2px rgba(var(--c-primary-rgb), 0.36);
+}
+
+.header-status {
+  font-size: 14px;
+  color: var(--c-muted);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.header-status .status {
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.header-status .status.connected {
+  color: var(--c-success);
+}
+
+.header-status .status.disconnected {
+  color: var(--c-error);
+}
+
+.terminal-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-size: 16px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.terminal-line {
+  margin-bottom: 4px;
+  display: flex;
+  gap: 8px;
+}
+
+.terminal-line .content {
+  flex: 1;
+  word-wrap: break-word;
+}
+
+.line-info    { color: var(--c-primary); text-shadow: 0 0 6px rgba(var(--c-primary-rgb), 0.6); }
+.line-user    { color: var(--c-primary); text-shadow: 0 0 6px rgba(var(--c-primary-rgb), 0.6); }
+.line-ai      { color: var(--c-accent); text-shadow: 0 0 6px rgba(var(--c-accent-rgb), 0.6); }
+.line-error   { color: var(--c-error); text-shadow: 0 0 6px rgba(var(--c-error-rgb), 0.48); }
+.line-warning { color: var(--c-primary); text-shadow: 0 0 6px rgba(var(--c-primary-rgb), 0.6); }
+.line-command { color: var(--c-primary); text-shadow: 0 0 6px rgba(var(--c-primary-rgb), 0.6); }
+
+.chat-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.chat-message {
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+.chat-message.role-user {
+  color: var(--c-primary);
+}
+
+.chat-message.role-assistant {
+  color: var(--c-accent);
+}
+
+.terminal-input-area {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  background: #000;
+}
+
+.input-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.prompt {
+  color: var(--c-primary);
+  flex-shrink: 0;
+  font-weight: bold;
+  text-shadow: 0 0 7.2px rgba(var(--c-primary-rgb), 0.84);
+}
+
+.input-wrapper input {
+  flex: 1;
+  background: #000;
+  border: none;
+  color: var(--c-primary);
+  padding: 4px 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 17px;
+  outline: none;
+}
+
+.input-wrapper input:focus {
+  border-bottom: 1px solid var(--c-primary);
+}
+
+.input-wrapper input::placeholder {
+  color: var(--c-dim);
+}
+
+.submit-btn {
+  background: #1a1a1a;
+  border: 1px solid var(--c-border);
+  color: var(--c-primary);
+  padding: 4px 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: #2a2a2a;
+  border-color: var(--c-primary);
+}
+
+.submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loading-indicator {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 8px 12px;
+  background: #1a1a1a;
+  border: 1px solid var(--c-border);
+  color: var(--c-muted);
+  font-size: 14px;
+  border-radius: 2px;
+}
+
+/* Blinking cursor input */
+.input-field-wrapper {
+  flex: 1;
+  position: relative;
+  cursor: text;
+  padding: 4px 8px;
+}
+
+.fake-input {
+  font-family: 'Courier New', monospace;
+  font-size: 17px;
+  color: var(--c-primary);
+  white-space: pre;
+  min-height: 1.4em;
+  pointer-events: none;
+}
+
+.fake-input-placeholder {
+  color: var(--c-dim);
+}
+
+.hidden-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: 17px;
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: text;
+  padding: 4px 8px;
+}
+
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Clickable command keywords in terminal log */
+.terminal-cmd-link {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.terminal-cmd-link:hover {
+  text-shadow: 0 0 12px currentColor;
+  opacity: 0.85;
+}
+
+/* ── Trip Calculator inline form ─────────────────────────────────────────── */
+
+.line-form {
+  align-items: flex-start;
+}
+
+.trip-calc {
+  white-space: normal;
+  border: 1px solid var(--c-border);
+  padding: 10px 14px;
+  margin: 2px 0;
+  background: #080400;
+  max-width: 500px;
+}
+
+.tc-header {
+  color: var(--c-primary);
+  letter-spacing: 0.12em;
+  font-size: 13px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--c-border);
+  text-shadow: 0 0 9.6px rgba(var(--c-primary-rgb), 0.72);
+}
+
+.tc-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  min-height: 24px;
+}
+
+.tc-label {
+  color: var(--c-muted);
+  min-width: 110px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.tc-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.tc-dropdown-trigger {
+  background: #0c0500;
+  border: 1px solid var(--c-border);
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  padding: 2px 8px 2px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+  user-select: none;
+}
+
+.tc-dropdown-trigger:hover {
+  border-color: var(--c-muted);
+}
+
+.tc-dropdown-arrow {
+  font-size: 8px;
+  margin-left: auto;
+  color: var(--c-muted);
+}
+
+.tc-dropdown-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 200;
+  background: #0c0500;
+  border: 1px solid var(--c-muted);
+  min-width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tc-dropdown-option {
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tc-dropdown-option:hover {
+  background: var(--c-bg-hover);
+}
+
+.tc-dropdown-option-active {
+  color: var(--c-accent);
+}
+
+.tc-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  outline: none;
+  padding: 2px 4px;
+}
+
+.tc-input:focus {
+  border-bottom-color: var(--c-primary);
+}
+
+.tc-input-num   { width: 80px; text-align: right; }
+.tc-input-text  { width: 180px; }
+.tc-input-upper { text-transform: uppercase; }
+
+.tc-system-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.tc-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 200;
+  background: #0c0500;
+  border: 1px solid var(--c-muted);
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+.tc-suggestion {
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.tc-suggestion:hover,
+.tc-suggestion-active {
+  background: var(--c-bg-hover);
+  color: var(--c-accent);
+}
+
+.tc-hint {
+  color: var(--c-dim);
+  font-size: 11px;
+}
+
+.tc-stub {
+  font-style: italic;
+}
+
+.tc-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tc-step-btn {
+  background: transparent;
+  border: 1px solid var(--c-border);
+  color: var(--c-muted);
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  width: 22px;
+  height: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.tc-step-btn:hover {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
+
+.tc-step-val {
+  min-width: 20px;
+  text-align: center;
+  color: var(--c-primary);
+}
+
+.tc-checkbox-box {
+  color: var(--c-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tc-checkbox-box:hover {
+  text-shadow: 0 0 7.2px rgba(var(--c-primary-rgb), 0.84);
+}
+
+.tc-divider {
+  border-top: 1px solid var(--c-border);
+  margin: 8px 0;
+}
+
+.tc-error {
+  color: var(--c-error);
+  font-size: 12px;
+  margin-bottom: 6px;
+  text-shadow: 0 0 6px rgba(var(--c-error-rgb), 0.48);
+}
+
+.tc-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--c-border);
+}
+
+.tc-btn {
+  background: transparent;
+  border: 1px solid var(--c-border);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  padding: 4px 18px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+}
+
+.tc-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tc-btn-primary {
+  color: var(--c-primary);
+  border-color: var(--c-primary);
+}
+
+.tc-btn-primary:hover:not(:disabled) {
+  background: var(--c-bg-hover);
+  text-shadow: 0 0 9.6px rgba(var(--c-primary-rgb), 0.84);
+}
+
+.tc-btn-cancel {
+  color: var(--c-dim);
+  border-color: var(--c-border);
+}
+
+.tc-btn-cancel:hover:not(:disabled) {
+  color: var(--c-muted);
+  border-color: var(--c-dim);
+}
+
+/* ── /help command grid ──────────────────────────────────────────────────── */
+
+.line-help {
+  align-items: flex-start;
+}
+
+.help-grid {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+  margin: 4px 0;
+}
+
+.help-divider {
+  width: 1px;
+  background: var(--c-border);
+  align-self: stretch;
+  margin: 0 4px;
+}
+
+.help-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px;
+}
+
+.help-group:first-child {
+  padding-left: 0;
+}
+
+.help-group-label {
+  color: var(--c-dim);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  margin-bottom: 4px;
+}
+
+.help-cmd {
+  font-size: 18px;
+  color: var(--c-primary);
+  text-shadow: 0 0 6px rgba(var(--c-primary-rgb), 0.48);
+  display: block;
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+
+.help-cmd:hover {
+  color: var(--c-accent);
+  text-shadow: 0 0 12px rgba(var(--c-primary-rgb), 0.96);
+}
+
+/* ── Upload Panel ─────────────────────────────────────────────────────────── */
+
+.upload-panel {
+  margin: 4px 0;
+  font-size: 18px;
+  color: var(--c-primary);
+}
+
+.upload-title {
+  color: var(--c-accent);
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
+}
+
+.upload-divider {
+  border-top: 1px solid var(--c-border);
+  margin: 6px 0;
+}
+
+.upload-body {
+  margin-bottom: 2px;
+}
+
+.upload-dim {
+  color: var(--c-muted);
+  font-size: 16px;
+}
+
+.upload-status {
+  margin: 4px 0;
+}
+
+.upload-ok {
+  color: var(--c-success);
+}
+
+.upload-warn {
+  color: var(--c-error);
+}
+
+.upload-actions {
+  margin-top: 8px;
+}
+
+.upload-sep {
+  display: inline-block;
+  width: 8px;
+}
+
+.upload-cancel {
+  color: var(--c-muted);
+}
+
+.upload-cancel:hover {
+  color: var(--c-error);
+  text-shadow: none;
+}
+
+.upload-file-list {
+  margin: 4px 0;
+  font-size: 15px;
+  color: var(--c-muted);
+}
+
+.upload-file-entry {
+  line-height: 1.6;
+}

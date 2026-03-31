@@ -1,0 +1,66 @@
+/* Gate UI — landscape 782×686
+ *
+ * No header bar. Layout is two regions:
+ *   InfoPanel  — ~38% (~260px) at 13px font so all baseline lines fit
+ *   Chat + input — remaining ~426px
+ *
+ * Gate actions (online/offline/link/unlink) are slash commands listed
+ * in /help as clickable links, consistent with the rest of the terminal.
+ */
+
+.gate-ui {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: var(--c-primary);
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 0 144px rgba(0, 0, 0, 0.54);
+}
+
+/* CRT scanlines */
+.gate-ui::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.12) 2px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* InfoPanel — taller than SSU's 33% to compensate for no header,
+ * and smaller font so all baseline content (9-11 lines) fits cleanly. */
+.gate-ui .info-panel {
+  flex: 0 0 38%;
+  min-height: 0;
+  font-size: 13px;
+}
+
+/* Also shrink the pre inside the panel — baseline renders as <pre> */
+.gate-ui .info-panel pre,
+.gate-ui #visual-area pre {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* Chat output — inherits terminal-output from terminal.css */
+.gate-ui .terminal-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Input row — inherit terminal-input-area, just tighten padding slightly */
+.gate-ui .terminal-input-area {
+  flex-shrink: 0;
+}

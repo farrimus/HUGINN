@@ -1,0 +1,38 @@
+:root {
+  font-family: 'Courier New', monospace;
+  line-height: 1.4;
+  font-weight: 400;
+  color-scheme: dark;
+  color: #d4701a;
+  background-color: #000;
+
+  /* Colour palette */
+  --c-primary:     #d4701a;
+  --c-primary-rgb: 212, 112, 26;
+  --c-accent:      #f08030;
+  --c-accent-rgb:  240, 128, 48;
+  --c-muted:       #8a4818;
+  --c-dim:         #5a2e0c;
+  --c-border:      #3d1e08;
+  --c-error:       #ca6a6a;
+  --c-error-rgb:   202, 106, 106;
+  --c-success:     #6aca6a;
+  --c-bg-hover:    #1a0800;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: #000;
+  color: #d4701a;
+}

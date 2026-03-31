@@ -1,0 +1,59 @@
+/* Splash screen — absolutely positioned inside #visual-area */
+
+.splash-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding-block: calc(11 * 12px * 1.35);
+  padding-inline: 0;
+  overflow: hidden;
+  /* Exit: slide left */
+  transition: transform 500ms ease-in;
+}
+
+.splash-screen.splash-exit {
+  transform: translateX(-100%);
+}
+
+.splash-art {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--c-primary);
+  text-shadow: 0 0 9.6px rgba(var(--c-primary-rgb), 0.66);
+  white-space: pre;
+}
+
+.splash-art div {
+  min-height: 1.35em;
+}
+
+.splash-subtitle {
+  margin-top: 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: #2a1005;
+  text-align: center;
+  transition: color 400ms ease;
+}
+
+.splash-subtitle.splash-subtitle-lit {
+  color: #6a3010;
+}
+
+.splash-loading {
+  margin-top: 16px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #2a1005;
+  letter-spacing: 0.04em;
+  min-height: 1.4em;
+  text-align: center;
+  transition: color 200ms ease;
+}

@@ -1,0 +1,226 @@
+/* Turret UI — portrait 281×886, narrow button panel */
+
+.turret-ui {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: var(--c-primary);
+  overflow: hidden;
+  position: relative;
+  font-family: 'Courier New', monospace;
+  box-shadow: inset 0 0 96px rgba(0, 0, 0, 0.6);
+}
+
+.turret-ui::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.14) 2px,
+    rgba(0, 0, 0, 0.14) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* Header */
+.turret-header {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.turret-header h1 {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 7.2px rgba(var(--c-primary-rgb), 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.turret-header .turret-state-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  letter-spacing: 0.06em;
+}
+
+.turret-state-badge.online  { color: #4aaa4a; border-color: #4aaa4a; }
+.turret-state-badge.offline { color: #8a4010; border-color: var(--c-dim); }
+
+/* Status strip */
+.turret-status-strip {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  background: #080400;
+  border-bottom: 1px solid var(--c-border);
+  font-size: 11px;
+}
+
+.turret-status-strip .status-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.turret-status-strip .status-label {
+  color: var(--c-dim);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.turret-status-strip .status-value {
+  color: var(--c-primary);
+  font-size: 12px;
+}
+
+.turret-status-strip .status-value.active {
+  color: #d44a1a;
+  text-shadow: 0 0 7.2px rgba(212, 74, 26, 0.72);
+}
+
+/* Button panel */
+.turret-buttons {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.turret-btn {
+  width: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  background: #000;
+  color: var(--c-primary);
+  border: 1px solid var(--c-dim);
+  padding: 10px 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s, text-shadow 0.15s;
+  min-height: 38px;
+}
+
+.turret-btn:hover:not(:disabled) {
+  background: #0d0400;
+  border-color: var(--c-primary);
+  text-shadow: 0 0 7.2px rgba(var(--c-primary-rgb), 0.6);
+}
+
+.turret-btn:active:not(:disabled) {
+  background: var(--c-bg-hover);
+}
+
+.turret-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.turret-btn.primary {
+  border-color: #8a4010;
+}
+
+.turret-btn.danger {
+  color: #d44a1a;
+  border-color: #6a1a0c;
+}
+
+.turret-btn.danger:hover:not(:disabled) {
+  border-color: #d44a1a;
+  background: #0d0200;
+}
+
+.turret-btn.tx-pending {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* AI response area */
+.turret-response {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b85e14;
+  border-top: 1px solid var(--c-bg-hover);
+}
+
+.turret-response::-webkit-scrollbar {
+  width: 3px;
+}
+
+.turret-response::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+}
+
+.turret-response .response-line {
+  margin-bottom: 4px;
+}
+
+.turret-response .response-line.ai {
+  color: var(--c-primary);
+}
+
+.turret-response .response-line.error {
+  color: #d44a1a;
+}
+
+.turret-response .response-line.info {
+  color: var(--c-dim);
+}
+
+.turret-response .response-timestamp {
+  color: var(--c-border);
+  font-size: 10px;
+  margin-right: 6px;
+}
+
+/* Loading indicator */
+.turret-loading {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  padding: 4px;
+  color: var(--c-dim);
+  letter-spacing: 0.1em;
+  animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1; }
+}
+
+/* Wallet status bar */
+.turret-wallet-bar {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 10px;
+  color: var(--c-dim);
+  border-top: 1px solid var(--c-bg-hover);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.turret-wallet-bar .connected {
+  color: #8a4010;
+}
