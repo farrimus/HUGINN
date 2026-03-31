@@ -39,6 +39,10 @@ static/
 # Archive — all preserved locally, nothing tracked
 archive/
 
+# Local tooling — not part of the deployed backend
+log-agent/
+overlay/
+
 # Claude Code (machine-local settings)
 .claude/
 
