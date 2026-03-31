@@ -8,7 +8,7 @@ import heapq
 from collections import deque
 from typing import Optional
 
-from src.ship_profile import ShipProfile, T_MAX, HEAT_CONSTANT, NO_JUMP_TEMP
+from src.ship_profile import ShipProfile, T_MAX, HEAT_CONSTANT
 
 log = logging.getLogger(__name__)
 
@@ -130,8 +130,6 @@ class RouteEngine:
 
     def _range_at_temp(self, ship_temp: float, ambient_temp: float, profile: ShipProfile) -> float:
         """Compute direct-jump range (LY) given ship's current temperature and system ambient."""
-        if ambient_temp >= NO_JUMP_TEMP:
-            return 0.0
         effective = max(ship_temp, ambient_temp)
         if effective >= T_MAX:
             return 0.0
@@ -430,22 +428,32 @@ class RouteEngine:
                 f"({fuel_used - profile.fuel_quantity:.0f}u short). Refuel en route."
             )
 
-        # Heat trap: any stop where ambient floor >= NO_JUMP_TEMP means jump drive is inoperable
+        # Heat trap: check each stop — compute ship-specific range from floor, then
+        # ask the spatial index whether any system is actually reachable from there.
         dest_id = path_ids[-1]
         for sid in path_ids[1:]:
-            floor_temp = self._systems.get(sid, {}).get("safe_jump_temp", 0.0) or 0.0
-            if floor_temp >= NO_JUMP_TEMP:
-                sys_name = self._name(sid)
-                if sid == dest_id:
-                    warnings.append(
-                        f"Heat trap: {sys_name} floor {floor_temp:.1f}° — "
-                        f"jump drive inoperable on arrival. Departure requires gate travel or cooling module."
-                    )
-                else:
-                    warnings.append(
-                        f"Heat trap: {sys_name} floor {floor_temp:.1f}° — "
-                        f"cannot jump out en route. Gate exit required."
-                    )
+            sys_data   = self._systems.get(sid, {})
+            floor_temp = sys_data.get("safe_jump_temp", 0.0) or 0.0
+            range_from_floor = self._range_at_temp(0.0, floor_temp, profile)
+            if range_from_floor >= 0.1:
+                cx, cy, cz = self._pos_ly(sid)
+                reachable = [nb for nb in self._spatial.within_range(cx, cy, cz, range_from_floor) if nb != sid]
+                if reachable:
+                    continue  # ship can jump out — not a trap
+            gate_links = sys_data.get("gate_links", [])
+            sys_name   = self._name(sid)
+            label      = "Destination" if sid == dest_id else "Waypoint"
+            escape     = "gate escape only" if gate_links else "no escape route"
+            if range_from_floor < 0.1:
+                warnings.append(
+                    f"Heat trap: {label} {sys_name} floor {floor_temp:.1f}° — "
+                    f"jump drive inoperable ({escape})."
+                )
+            else:
+                warnings.append(
+                    f"Heat trap: {label} {sys_name} floor {floor_temp:.1f}° — "
+                    f"range {range_from_floor:.0f} LY but no systems in jump range ({escape})."
+                )
 
         # Per-hop breakdown: distance, dest system temp, dest planet count, jump type
         hops = []
