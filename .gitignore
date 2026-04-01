@@ -1,3 +1,7 @@
+# Local scripts — not tracked
+restart.sh
+start.sh
+
 # Runtime / generated data — static seed files are tracked, runtime state is not
 /data/eve_universe.db
 /data/starmapcache.json
