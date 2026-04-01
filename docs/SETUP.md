@@ -23,9 +23,11 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and fill in at minimum:
-- `ANTHROPIC_API_KEY` — from console.anthropic.com
-- `WORLD_API_URL` — EVE Frontier World API base URL
+Edit `.env` and fill in:
+- `ANTHROPIC_API_KEY` — from console.anthropic.com (required)
+- `JWT_SECRET` — random secret for session auth; generate with `python -c "import secrets; print(secrets.token_hex(16))"` (required)
+- `VPS_SUI_ADDRESS` — the Sui address of the HUGINN server wallet; required for on-chain tier checks in production
+- `DEPLOYMENT_ENV` — `utopia` (default) or `stillness`; automatically sets the World API URL, Sui RPC, and package IDs
 
 ### 3. Build galaxy data (first time only)
 
@@ -39,9 +41,13 @@ python build_types.py         # Item type metadata
 
 The output (`data/eve_universe.db`, `data/gate_graph.json`) is gitignored and must be built locally.
 
-**Note on `build_universe.py`:** This script requires two input files sourced from CCP's
-eve-frontier-tools data export — `data/starmapcache.json` and `data/type_names_all.json` —
-which are not included in this repository. Place them in `data/` before running.
+**Note on `build_universe.py`:** This script requires two input files not included in this repository.
+Run the pipeline from https://github.com/VULTUR-EveFrontier/eve-frontier-tools, then copy the outputs:
+
+```bash
+cp eve-frontier-tools/data/json/starmapcache.json data/
+cp eve-frontier-tools/data/extracted/type_names_all.json data/
+```
 `build_gate_graph.py` and `build_types.py` have no external dependencies and fetch live
 from the World API.
 
