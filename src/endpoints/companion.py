@@ -92,6 +92,7 @@ class CompanionChatRequest(BaseModel):
     system_id: int = 0          # solar system ID from SmartAssemblyResponse.solarSystem.id
     debug: bool = False         # set by /debug CLI command — triggers session dump
     disabled_tools: List[str] = []
+    tenant: str = ""            # forwarded from frontend EntityContext; falls back to DEPLOYMENT_ENV
 
 
 def _authenticate(x_api_key: Optional[str]) -> None:
@@ -251,8 +252,9 @@ async def _preload_context(req: CompanionChatRequest, profile: StructureProfile)
         return _build_context(profile, req)
 
     try:
-        from src.entity_resolver import get_entity_resolver
-        resolver = get_entity_resolver()
+        from src.entity_resolver import get_resolver_for_tenant
+        _tenant = req.tenant or os.getenv("DEPLOYMENT_ENV", "utopia")
+        resolver = get_resolver_for_tenant(_tenant)
     except RuntimeError:
         log.debug("companion: EntityResolver not initialized, using minimal context")
         return _build_context(profile, req)

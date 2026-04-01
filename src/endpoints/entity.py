@@ -17,7 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.entity_resolver import EntityResolver, get_entity_resolver
+from src.entity_resolver import EntityResolver, get_entity_resolver, get_resolver_for_tenant
 from src.world_api import world_api
 
 _DEFAULT_TENANT = os.getenv("DEPLOYMENT_ENV", "utopia")
@@ -31,6 +31,11 @@ _SUI_ID_RE = re.compile(r"^0x[0-9a-fA-F]{1,64}$")
 def _validate_sui_id(obj_id: str) -> None:
     if not _SUI_ID_RE.match(obj_id):
         raise HTTPException(status_code=400, detail="Invalid Sui object ID format")
+
+
+def get_resolver_by_tenant(tenant: str = Query(default=_DEFAULT_TENANT)) -> EntityResolver:
+    """FastAPI dependency: select EntityResolver by ?tenant= query param."""
+    return get_resolver_for_tenant(tenant)
 
 
 async def _resolve_with_timeout(coro, timeout: float = 10.0):
@@ -48,7 +53,7 @@ async def _resolve_with_timeout(coro, timeout: float = 10.0):
 async def get_assembly_entity(
     sui_object_id: str,
     tenant: str = Query(default=_DEFAULT_TENANT),
-    resolver: EntityResolver = Depends(get_entity_resolver),
+    resolver: EntityResolver = Depends(get_resolver_by_tenant),
 ):
     """
     Fetch enriched assembly data.
@@ -146,7 +151,7 @@ async def get_assembly_entity(
 async def get_network_entity(
     network_node_id: str,
     tenant: str = Query(default=_DEFAULT_TENANT),
-    resolver: EntityResolver = Depends(get_entity_resolver),
+    resolver: EntityResolver = Depends(get_resolver_by_tenant),
 ):
     """
     Fetch NetworkNode topology: fuel, energy, connected assemblies.
@@ -206,7 +211,7 @@ async def get_network_entity(
 async def get_all_nodes(
     tenant: str = Query(default=_DEFAULT_TENANT),
     wallet: Optional[str] = Query(default=None),
-    resolver: EntityResolver = Depends(get_entity_resolver),
+    resolver: EntityResolver = Depends(get_resolver_by_tenant),
 ):
     """
     Return summary list of NetworkNodes for this tenant.
@@ -225,7 +230,7 @@ async def get_all_nodes(
 async def get_inventory_entity(
     assembly_id: str,
     tenant: str = Query(default=_DEFAULT_TENANT),
-    resolver: EntityResolver = Depends(get_entity_resolver),
+    resolver: EntityResolver = Depends(get_resolver_by_tenant),
 ):
     """
     Fetch SSU inventory. Returns 404 for non-SSU assemblies.
@@ -252,7 +257,7 @@ async def get_inventory_entity(
 
 @entity_router.get("/entity/types/categories")
 async def get_type_categories(
-    resolver: EntityResolver = Depends(get_entity_resolver),
+    resolver: EntityResolver = Depends(get_resolver_by_tenant),
 ):
     """
     Return all Datahub type categories and the count of types in each.
@@ -267,7 +272,7 @@ async def get_type_categories(
 async def get_types_by_category(
     category: str,
     max_results: int = Query(default=50, le=500),
-    resolver: EntityResolver = Depends(get_entity_resolver),
+    resolver: EntityResolver = Depends(get_resolver_by_tenant),
 ):
     """
     Return all types in a given category with full Datahub records.

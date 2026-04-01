@@ -348,6 +348,7 @@ export function TerminalUI() {
         system_name: assembly?.solarSystem?.name || currentSystem,
         system_id: assembly?.solarSystem?.id,
         disabled_tools: getDisabledTools(toolFlags),
+        tenant: tenant || 'utopia',
       },
       {
         onTextChunk: (text) => {

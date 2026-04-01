@@ -113,12 +113,18 @@ async def lifespan(app):
     asyncio.create_task(world_api.load_or_build_index())
     log.info("World API index loaded")
 
-    # Step 5: Initialize EntityResolver
+    # Step 5: Initialize EntityResolvers (one per supported tenant)
+    from src.graphql_queries import TENANT_CONFIG as _TENANT_CONFIG
     deployment_env = config["deployment_env"]
-    resolver = EntityResolver(tenant=deployment_env)
-    _entity_resolver_module._resolver = resolver
-    asyncio.create_task(resolver.prewarm_types())
-    log.info("EntityResolver initialized (tenant=%s)", deployment_env)
+    _entity_resolver_module._default_tenant = deployment_env
+    for _tenant_name in ("utopia", "stillness"):
+        if _tenant_name not in _TENANT_CONFIG:
+            log.warning("EntityResolver: skipping unknown tenant %s", _tenant_name)
+            continue
+        _r = EntityResolver(tenant=_tenant_name)
+        _entity_resolver_module._resolvers[_tenant_name] = _r
+        asyncio.create_task(_r.prewarm_types())
+        log.info("EntityResolver initialized (tenant=%s)", _tenant_name)
 
     # Step 6: Start SSU watcher background task
     asyncio.create_task(_watcher_task.run_forever())
@@ -135,7 +141,8 @@ async def lifespan(app):
 
     yield
 
-    await resolver.close()
+    for _r in _entity_resolver_module._resolvers.values():
+        await _r.close()
 
 app = FastAPI(title="Ship AI Companion", lifespan=lifespan)
 

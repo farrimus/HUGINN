@@ -272,12 +272,14 @@ class EntityResolver:
         block = "\n".join(lines)
         return block[:max_chars]
 
-    def write_knowledge_file(self, path: str = "data/type_knowledge.json") -> None:
+    def write_knowledge_file(self, path: str = None) -> None:
         """
         Write all cached types grouped by category to a JSON file.
         Called once after prewarm as a persistent reference.
         """
         import json, os
+        if path is None:
+            path = f"data/type_knowledge_{self.tenant}.json"
         catalog: dict[str, list[dict]] = {}
         for cat, type_ids in self._category_index.items():
             catalog[cat] = [
@@ -1029,14 +1031,27 @@ def _parse_config_nodes(data: Optional[dict]) -> dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
-# Singleton accessor (injected in lifespan, retrieved via dependency)
+# Resolver registry (one instance per tenant, injected in lifespan)
 # ---------------------------------------------------------------------------
 
-_resolver: Optional[EntityResolver] = None
+_resolvers: dict[str, EntityResolver] = {}
+_default_tenant: str = "utopia"
+
+
+def get_resolver_for_tenant(tenant: str) -> EntityResolver:
+    """Return the EntityResolver for the given tenant.
+
+    Falls back to the default tenant if the requested tenant is unknown.
+    Raises RuntimeError if no resolvers have been registered yet (lifespan not run).
+    """
+    if not _resolvers:
+        raise RuntimeError("EntityResolver not initialized — lifespan not run")
+    if tenant in _resolvers:
+        return _resolvers[tenant]
+    log.warning("entity_resolver: unknown tenant %r, falling back to %s", tenant, _default_tenant)
+    return _resolvers[_default_tenant]
 
 
 def get_entity_resolver() -> EntityResolver:
-    """FastAPI dependency: returns the shared EntityResolver instance."""
-    if _resolver is None:
-        raise RuntimeError("EntityResolver not initialized — lifespan not run")
-    return _resolver
+    """Backward-compatible: returns the default-tenant resolver."""
+    return get_resolver_for_tenant(_default_tenant)
