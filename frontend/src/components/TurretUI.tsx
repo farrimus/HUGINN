@@ -80,7 +80,7 @@ export function TurretUI() {
       const result = await sendTx({
         txAction: action,
         assembly: assembly as AssemblyType<Assemblies>,
-        tenant: tenant || 'utopia',
+        tenant: tenant,
       });
       notify({ type: Severity.Success, txHash: result.digest });
       addResponse(`${label} confirmed. Tx: ${result.digest.slice(0, 10)}...`, 'info');

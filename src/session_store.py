@@ -13,7 +13,13 @@ log = logging.getLogger(__name__)
 _WALLET_RE = re.compile(r"^0x[0-9a-fA-F]{1,64}$")
 
 
-def _sessions_dir() -> str:
+def _sessions_dir(tenant: str = None) -> str:
+    import os
+    if tenant:
+        data_base = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data"))
+        path = os.path.join(data_base, tenant, "sessions")
+        os.makedirs(path, exist_ok=True)
+        return os.path.normpath(path)
     from src.config import get_data_path
     return get_data_path("sessions", env_specific=True)
 
@@ -28,6 +34,7 @@ class CharacterSession:
     interaction_memory: list = field(default_factory=list)
     watch_list: list = field(default_factory=list)
     tier: str = "NONE"
+    tenant: str = ""
     created_at: str = ""
     last_seen: str = ""
 
@@ -45,9 +52,9 @@ def session_path(wallet_address: str, base_dir: str = None) -> str:
     return os.path.join(base_dir, _wallet_filename(wallet_address))
 
 
-def load_session(wallet_address: str, base_dir: str = None) -> Optional[CharacterSession]:
+def load_session(wallet_address: str, base_dir: str = None, tenant: str = None) -> Optional[CharacterSession]:
     if base_dir is None:
-        base_dir = _sessions_dir()
+        base_dir = _sessions_dir(tenant)
     try:
         path = session_path(wallet_address, base_dir)
     except ValueError as e:
@@ -65,9 +72,9 @@ def load_session(wallet_address: str, base_dir: str = None) -> Optional[Characte
         return None
 
 
-def save_session(session: CharacterSession, base_dir: str = None):
+def save_session(session: CharacterSession, base_dir: str = None, tenant: str = None):
     if base_dir is None:
-        base_dir = _sessions_dir()
+        base_dir = _sessions_dir(tenant or session.tenant or None)
     path = session_path(session.wallet_address, base_dir)  # raises ValueError for invalid wallet
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)

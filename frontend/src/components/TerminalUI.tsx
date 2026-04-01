@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useConnection, useSmartObject, type SmartAssemblyResponse, getWalletCharacters, parseCharacterFromJson } from '@evefrontier/dapp-kit';
+import { useConnection, useSmartObject, type SmartAssemblyResponse, executeGraphQLQuery, GET_WALLET_CHARACTERS, parseCharacterFromJson } from '@evefrontier/dapp-kit';
 import { useToolOutput } from '../hooks/useToolOutput';
 import { BaselinePanelData, HuginnNewsData, BuildOptionsData } from '../types/terminal';
 import { TripCalculatorForm } from './TripCalculatorForm';
@@ -14,9 +14,10 @@ import { LogUploadPanel } from './LogUploadPanel';
 import { AdminPanel } from './AdminPanel';
 import { ReconForm } from './ReconForm';
 import {
-  loadFeatureFlags, saveFeatureFlags, loadToolFlags, saveToolFlags,
-  getDisabledTools, getActiveNavItems, FeatureFlags, ToolFlags,
+  getDisabledTools, FEATURES, FeatureFlags, ToolFlags, ToolRegistryEntry,
+  loadCachedAdminConfig, saveCachedAdminConfig, defaultFeatureFlags, defaultToolFlags,
 } from '../features/featureFlags';
+import { canAccess, getActiveNavItemsForTier } from '../features/tierCapabilities';
 import type { WatchRule, WatcherAlert, RouteData, CourierContract, TribePresenceMember, TribePost } from '../types/terminal';
 import { SUBDIV } from '../constants/dividers';
 
@@ -97,19 +98,19 @@ export function TerminalUI() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentSystem, setCurrentSystem] = useState<string>('');
   const [debugMode, setDebugMode] = useState(false);
-  // itemId from URL is available synchronously — use it to load flags on first render,
-  // before dapp-kit resolves assemblyId from the network.
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(
-    () => itemId ? loadFeatureFlags(itemId) : {}
+    () => loadCachedAdminConfig().features
   );
   const [toolFlags, setToolFlags] = useState<ToolFlags>(
-    () => itemId ? loadToolFlags(itemId) : {}
+    () => loadCachedAdminConfig().tools
   );
+  const [toolRegistry, setToolRegistry] = useState<ToolRegistryEntry[]>([]);
   const [tribeId, setTribeId] = useState<number | null>(null);
   const [visitorName, setVisitorName] = useState<string>('');
   const [tier, setTier] = useState<string>('NONE');
   const [sessionRegistered, setSessionRegistered] = useState<boolean>(false);
   const [shipProfile, setShipProfile] = useState<Record<string, unknown> | null>(null);
+  const [sessionTenant, setSessionTenant] = useState<string>('');
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreeted = useRef(false);
@@ -208,52 +209,100 @@ export function TerminalUI() {
   useEffect(() => {
     if (!itemId) {
       const base = window.location.origin + window.location.pathname;
-      const t = tenant || 'utopia';
+      const t = (sessionTenant || tenant);
       addLog('Structure not identified. No itemId in URL.', 'warning');
       addLog(`Change URL to: ${base}?itemId=<copy from top left corner>&tenant=${t}`, 'warning');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API_BASE_URL}/admin/config`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE_URL}/admin/tool-registry`).then(r => r.ok ? r.json() : []),
+    ]).then(([configData, registry]) => {
+      if (Array.isArray(registry) && registry.length > 0) {
+        setToolRegistry(registry);
+        const toolDefaults = Object.fromEntries(registry.map((t: ToolRegistryEntry) => [t.name, t.default_enabled]));
+        const merged = {
+          features: { ...defaultFeatureFlags(), ...(configData?.features || {}) },
+          tools:    { ...toolDefaults,           ...(configData?.tools    || {}) },
+        };
+        setFeatureFlags(merged.features);
+        setToolFlags(merged.tools);
+        saveCachedAdminConfig(merged);
+      } else if (configData) {
+        const merged = {
+          features: { ...defaultFeatureFlags(), ...(configData.features || {}) },
+          tools:    { ...defaultToolFlags(),    ...(configData.tools    || {}) },
+        };
+        setFeatureFlags(merged.features);
+        setToolFlags(merged.tools);
+        saveCachedAdminConfig(merged);
+      }
+    }).catch(() => { /* keep cached state on failure */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Register session when wallet + visitor name + assembly are all known.
-  // Response includes tier resolved from the on-chain AccessRegistry.
+  // Sends the current tenant so the backend routes to the correct tenant directory.
+  // Response confirms tier, ship_profile, and the stored tenant.
   useEffect(() => {
     if (!walletAddress || !visitorName || !assemblyId) return;
     fetch(`${API_BASE_URL}/session/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet_address: walletAddress, character_name: visitorName, assembly_id: assemblyId }),
+      body: JSON.stringify({
+        wallet_address: walletAddress,
+        character_name: visitorName,
+        assembly_id: assemblyId,
+        tenant: (sessionTenant || tenant),
+      }),
     })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.tier) setTier(data.tier);
         if (data?.ship_profile) setShipProfile(data.ship_profile);
+        if (data?.tenant) setSessionTenant(data.tenant);
         setSessionRegistered(true);
       })
       .catch(() => {
         setSessionRegistered(true); // fail-open: unlock terminal even if backend is down
       });
-  }, [walletAddress, visitorName, assemblyId]);
+  }, [walletAddress, visitorName, assemblyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch the connected visitor's own tribe ID from chain (not the SSU owner's)
+  // Tenant → package ID map (mirrors EntityContext TENANT_PACKAGE_MAP).
+  const TENANT_PACKAGE_MAP: Record<string, string> = {
+    utopia:    '0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75',
+    stillness: '0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c',
+    nebula:    '0x353988e063b4683580e3603dbe9e91fefd8f6a06263a646d43fd3a2f3ef6b8c1',
+  };
+
+  // Fetch the connected visitor's character name + tribe ID from chain.
+  // Uses a tenant-aware package ID so stillness and utopia characters both resolve.
   useEffect(() => {
-    if (!walletAddress) return;
+    if (!walletAddress || !tenant) return;
+    const pkgId = TENANT_PACKAGE_MAP[tenant];
+    if (!pkgId) return;
+    const profileType = `${pkgId}::character::PlayerProfile`;
     let cancelled = false;
-    getWalletCharacters(walletAddress).then(({ data }) => {
-      if (cancelled || !data) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const charJson = (data as any)?.address?.objects?.nodes?.[0]?.contents?.extract?.asAddress?.asObject?.asMoveObject?.contents?.json;
+    executeGraphQLQuery(GET_WALLET_CHARACTERS, {
+      owner: walletAddress,
+      characterPlayerProfileType: profileType,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }).then((result: any) => {
+      if (cancelled) return;
+      const charJson = result?.data?.address?.objects?.nodes?.[0]
+        ?.contents?.extract?.asAddress?.asObject?.asMoveObject?.contents?.json;
       const char = parseCharacterFromJson(charJson);
       if (char?.name) setVisitorName(char.name);
-      else if (!cancelled) setVisitorName(walletAddress.slice(0, 10));
-      if (char?.tribeId && char.tribeId > 0) {
-        setTribeId(char.tribeId);
-      }
+      else setVisitorName(walletAddress.slice(0, 10));
+      if (char?.tribeId && char.tribeId > 0) setTribeId(char.tribeId);
     }).catch(() => {
       if (!cancelled) setVisitorName(walletAddress.slice(0, 10));
     });
     return () => { cancelled = true; };
-  }, [walletAddress]);
+  }, [walletAddress, tenant]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tribe presence — POST exactly once when wallet + tribeId are first known.
   // Location is read at call time (best-effort). Assembly and currentSystem are
@@ -348,7 +397,7 @@ export function TerminalUI() {
         system_name: assembly?.solarSystem?.name || currentSystem,
         system_id: assembly?.solarSystem?.id,
         disabled_tools: getDisabledTools(toolFlags),
-        tenant: tenant || 'utopia',
+        tenant: (sessionTenant || tenant),
       },
       {
         onTextChunk: (text) => {
@@ -404,7 +453,7 @@ export function TerminalUI() {
       setLogs(prev => [...prev, { text: '', type: 'recon' as const, timestamp: Date.now(), id: reconId }]);
       return;
     } else if (command === '/admin') {
-      if (tier !== 'OWNER') {
+      if (!canAccess(tier, 'canAdmin')) {
         addLog('Admin access restricted to OWNER.', 'warning');
         return;
       }
@@ -522,7 +571,7 @@ export function TerminalUI() {
       if (isOff('nodes')) return;
       try {
         addLog('Scanning for network nodes...', 'info');
-        const t = tenant || 'utopia';
+        const t = (sessionTenant || tenant);
         const res = await fetch(`${API_BASE_URL}/entity/nodes?tenant=${t}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const raw = await res.json();
@@ -650,7 +699,7 @@ export function TerminalUI() {
       });
     } else if (command === '/signal') {
       if (isOff('signal')) return;
-      if (tier !== 'OWNER' && tier !== 'TRIBE') {
+      if (!canAccess(tier, 'canSignal')) {
         addLog('Signal access restricted to OWNER and TRIBE.', 'warning');
         return;
       }
@@ -727,7 +776,7 @@ export function TerminalUI() {
             ...(on('board')   ? [{ text: '/board',           action: '/board' }] : []),
           ],
         }] : []),
-        ...(tier === 'OWNER' ? [{
+        ...(canAccess(tier, 'canAdmin') ? [{
           label: 'ADMIN',
           cmds: [{ text: '/admin', action: '/admin' }],
         }] : []),
@@ -1149,7 +1198,7 @@ export function TerminalUI() {
 
   const handlePrintNode = async (nodeId: string): Promise<void> => {
     try {
-      const t = tenant || 'utopia';
+      const t = (sessionTenant || tenant);
       const res = await fetch(`${API_BASE_URL}/entity/network/${nodeId}?tenant=${t}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const net = await res.json();
@@ -1212,7 +1261,7 @@ export function TerminalUI() {
         showSplash={!splashDone}
         onSplashComplete={handleSplashComplete}
         onNavCommand={handleCommand}
-        activeNavItems={getActiveNavItems(featureFlags)}
+        activeNavItems={getActiveNavItemsForTier(tier, featureFlags, FEATURES)}
       />
 
       <div className="terminal-output">
@@ -1286,13 +1335,22 @@ export function TerminalUI() {
               <AdminPanel
                 featureFlags={log.adminFeatureFlags ?? featureFlags}
                 toolFlags={log.adminToolFlags ?? toolFlags}
+                walletAddress={walletAddress || ''}
+                apiBase={API_BASE_URL}
+                currentEnv={(sessionTenant || tenant)}
+                toolRegistry={toolRegistry}
                 onApply={(newFeatures, newTools) => {
                   setFeatureFlags(newFeatures);
                   setToolFlags(newTools);
-                  if (itemId) {
-                    saveFeatureFlags(itemId, newFeatures);
-                    saveToolFlags(itemId, newTools);
-                  }
+                  saveCachedAdminConfig({ features: newFeatures, tools: newTools });
+                  fetch(`${API_BASE_URL}/admin/config`, {
+                    method: 'PATCH',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-Wallet-Address': walletAddress || '',
+                    },
+                    body: JSON.stringify({ features: newFeatures, tools: newTools }),
+                  }).catch(() => console.warn('[ADMIN] Config save to server failed'));
                   const id = log.id;
                   setLogs(prev => prev.map(l =>
                     l.id === id ? { ...l, type: 'info' as const, text: '[ADMIN] Settings applied.' } : l

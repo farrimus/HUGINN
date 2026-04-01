@@ -23,6 +23,8 @@ import {
   getCharacterAndOwnedObjects,
   parseCharacterFromJson,
   getAssemblyType,
+  executeGraphQLQuery,
+  GET_WALLET_CHARACTERS,
   type SmartAssemblyResponse,
 } from '@evefrontier/dapp-kit';
 
@@ -34,6 +36,11 @@ const PACKAGE_TENANT_MAP: Record<string, string> = {
   '0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c': 'stillness',
   '0x353988e063b4683580e3603dbe9e91fefd8f6a06263a646d43fd3a2f3ef6b8c1': 'nebula',
 };
+
+// Tenant name → package ID (reverse of PACKAGE_TENANT_MAP).
+const TENANT_PACKAGE_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(PACKAGE_TENANT_MAP).map(([pkg, t]) => [t, pkg])
+);
 
 /**
  * Derive tenant from the assembly's on-chain Move type repr.
@@ -228,7 +235,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   });
 
   const assemblyTenant = deriveTeantFromAssembly(assembly);
-  const tenant = urlTenant ?? assemblyTenant ?? configQuery.data?.tenant ?? 'utopia';
+  const tenant = urlTenant ?? assemblyTenant ?? configQuery.data?.tenant ?? '';
 
   // --- Entity queries ---
 
@@ -261,15 +268,29 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     retry: 1,
   });
 
-  // 4. Character's assemblies — fetched directly from Sui GraphQL via dapp-kit
+  // 4. Character's assemblies — fetched directly from Sui GraphQL via dapp-kit.
+  // Character name uses a tenant-aware query (getWalletCharacters hardcodes VITE_EVE_WORLD_PACKAGE_ID).
+  // Owned assemblies use getCharacterAndOwnedObjects; may return empty on non-default tenant.
+  const pkgId = TENANT_PACKAGE_MAP[tenant] ?? null;
+  const characterProfileType = pkgId ? `${pkgId}::character::PlayerProfile` : null;
+
   const assetsQuery = useQuery<CharacterAssemblies>({
-    queryKey: ['entity', 'character', walletAddress, assemblyId],
+    queryKey: ['entity', 'character', walletAddress, assemblyId, tenant],
     queryFn:  async (): Promise<CharacterAssemblies> => {
+      // Tenant-aware character name lookup
+      const charNameResult = await executeGraphQLQuery(GET_WALLET_CHARACTERS, {
+        owner: walletAddress!,
+        characterPlayerProfileType: characterProfileType!,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const charNameJson = (charNameResult as any)?.data?.address?.objects?.nodes?.[0]
+        ?.contents?.extract?.asAddress?.asObject?.asMoveObject?.contents?.json;
+      const charInfo = parseCharacterFromJson(charNameJson);
+
+      // Owned assemblies: getCharacterAndOwnedObjects uses VITE_EVE_WORLD_PACKAGE_ID;
+      // will return empty on tenants that differ from the build-time env var.
       const result = await getCharacterAndOwnedObjects(walletAddress!);
       const charPath = result.data?.address?.objects?.nodes?.[0]?.contents?.extract?.asAddress;
-
-      const charJson = charPath?.asObject?.asMoveObject?.contents?.json;
-      const charInfo = parseCharacterFromJson(charJson);
 
       const ownedNodes = charPath?.objects?.nodes ?? [];
       const assemblies: CharacterAssembly[] = [];
@@ -337,7 +358,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
 
       return { character_name: charInfo?.name ?? '', assemblies };
     },
-    enabled:  isConnected && !!walletAddress && !!assemblyId,
+    enabled:  isConnected && !!walletAddress && !!assemblyId && !!characterProfileType,
     staleTime: STALE_MS,
     retry: 1,
   });

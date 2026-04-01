@@ -308,44 +308,48 @@ body {
 .admin-panel {
   white-space: normal;
   border: 1px solid var(--c-border);
-  padding: 10px 14px;
+  padding: 13px 19px;
   margin: 2px 0;
   background: #080400;
-  max-width: 500px;
+  max-width: 665px;
 }
 
 .admin-header {
   color: var(--c-accent);
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0.12em;
-  margin-bottom: 10px;
+  margin-bottom: 13px;
 }
 
 .admin-cols {
   display: flex;
-  gap: 24px;
+  gap: 32px;
   flex-wrap: wrap;
 }
 
 .admin-section {
   flex: 1;
-  min-width: 150px;
+  min-width: 200px;
 }
 
 .admin-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--c-muted);
-  font-size: 10px;
+  font-size: 13px;
   letter-spacing: 0.1em;
-  margin-bottom: 5px;
+  margin-bottom: 7px;
 }
 
 .admin-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
-  padding: 1px 0;
-  font-size: 11px;
+  padding: 2px 0;
+  font-size: 13px;
   color: var(--c-primary);
 }
 
@@ -357,10 +361,10 @@ body {
 .admin-footer {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 10px;
+  gap: 16px;
+  margin-top: 13px;
   border-top: 1px solid var(--c-border);
-  padding-top: 8px;
+  padding-top: 11px;
 }
 
 .admin-btn {
@@ -368,8 +372,8 @@ body {
   border: 1px solid var(--c-accent);
   color: var(--c-accent);
   font-family: 'Courier New', monospace;
-  font-size: 11px;
-  padding: 3px 10px;
+  font-size: 13px;
+  padding: 4px 13px;
   cursor: pointer;
   letter-spacing: 0.1em;
 }
@@ -379,9 +383,122 @@ body {
   color: #000;
 }
 
+.admin-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.admin-btn-sm {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
 .admin-note {
   color: var(--c-muted);
-  font-size: 10px;
+  font-size: 13px;
+}
+
+/* ── Admin vouches section ───────────────────────────────────────────────── */
+
+.admin-vouches {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--c-border);
+}
+
+.admin-vouches .admin-row {
+  cursor: default;
+}
+
+.admin-dd {
+  position: relative;
+  display: inline-block;
+}
+
+.admin-dd-trigger {
+  background: #080400;
+  border: 1px solid var(--c-border);
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-dd-trigger:hover {
+  border-color: var(--c-muted);
+}
+
+.admin-dd-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 300;
+  background: #080400;
+  border: 1px solid var(--c-muted);
+  min-width: 100%;
+}
+
+.admin-dd-option {
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 3px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-dd-option:hover {
+  background: var(--c-bg-hover);
+}
+
+.admin-dd-option-active {
+  color: var(--c-accent);
+}
+
+.admin-vouch-row {
+  cursor: default;
+}
+
+.admin-vouch-addr {
+  flex: 1;
+  font-size: 11px;
+  color: var(--c-muted);
+  font-family: 'Courier New', monospace;
+}
+
+.admin-vouch-tier {
+  font-size: 11px;
+  color: var(--c-accent);
+  min-width: 48px;
+}
+
+.admin-empty {
+  color: var(--c-muted);
+  font-size: 11px;
+  cursor: default;
+  font-style: italic;
+}
+
+.admin-vouch-add {
+  margin-top: 6px;
+  cursor: default;
+}
+
+.admin-input {
+  flex: 1;
+  background: #080400;
+  border: 1px solid var(--c-border);
+  color: var(--c-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  min-width: 0;
+}
+
+.admin-input:focus {
+  outline: 1px solid var(--c-accent);
 }
 
 /* ── Recon form ───────────────────────────────────────────────────────────── */

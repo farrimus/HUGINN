@@ -8,7 +8,6 @@ import {
   SponsoredTransactionActions,
   Severity,
   type SmartAssemblyResponse,
-  type DetailedSmartCharacterResponse,
   type AssemblyType,
 } from '@evefrontier/dapp-kit';
 import { useToolOutput } from '../hooks/useToolOutput';
@@ -17,8 +16,8 @@ import { useEntityContext } from '../context/EntityContext';
 import { InfoPanel } from './InfoPanel';
 import { AdminPanel } from './AdminPanel';
 import {
-  loadFeatureFlags, saveFeatureFlags, loadToolFlags, saveToolFlags,
-  getDisabledTools, getActiveNavItems, FeatureFlags, ToolFlags,
+  getDisabledTools, getActiveNavItems, FeatureFlags, ToolFlags, ToolRegistryEntry,
+  loadCachedAdminConfig, saveCachedAdminConfig, defaultFeatureFlags, defaultToolFlags,
 } from '../features/featureFlags';
 import '../styles/terminal.css';
 import '../styles/gate.css';
@@ -50,9 +49,8 @@ interface ChatMessage {
  */
 export function GateUI() {
   const { isConnected, walletAddress, handleConnect, handleDisconnect, hasEveVault } = useConnection();
-  const { assembly, assemblyOwner } = useSmartObject() as {
+  const { assembly } = useSmartObject() as {
     assembly: SmartAssemblyResponse | null;
-    assemblyOwner: DetailedSmartCharacterResponse | null;
   };
   const { notify } = useNotification();
   const { mutateAsync: sendTx, isPending: txPending } = useSponsoredTransaction();
@@ -61,7 +59,10 @@ export function GateUI() {
   const { enrichedAssembly, networkData, characterAssemblies, tenant } = useEntityContext();
 
   const assemblyId = assembly?.id;
-  const characterName = assemblyOwner?.name;
+  // Use visitor's character name from EntityContext (same source as TerminalUI's visitorName).
+  // assemblyOwner?.name falls back to wallet address in dapp-kit when name is unresolved —
+  // characterAssemblies?.character_name returns '' instead, so we fall back to truncated wallet.
+  const characterName = characterAssemblies?.character_name || walletAddress?.slice(0, 10) || null;
   const itemId = new URLSearchParams(window.location.search).get('itemId') || '';
   const isReady = isConnected && !!assemblyId;
 
@@ -79,11 +80,12 @@ export function GateUI() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [tier, setTier] = useState<string>('NONE');
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(
-    () => itemId ? loadFeatureFlags(itemId) : {}
+    () => loadCachedAdminConfig().features
   );
   const [toolFlags, setToolFlags] = useState<ToolFlags>(
-    () => itemId ? loadToolFlags(itemId) : {}
+    () => loadCachedAdminConfig().tools
   );
+  const [toolRegistry, setToolRegistry] = useState<ToolRegistryEntry[]>([]);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreeted = useRef(false);
@@ -134,7 +136,7 @@ export function GateUI() {
     fetch(`${API_BASE_URL}/session/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet_address: walletAddress, assembly_id: assemblyId }),
+      body: JSON.stringify({ wallet_address: walletAddress, assembly_id: assemblyId, character_name: walletAddress.slice(0, 10) }),
     })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.tier) setTier(data.tier); })
@@ -143,6 +145,34 @@ export function GateUI() {
 
   useEffect(() => {
     if (!itemId) addLog('No itemId in URL — gate cannot be identified.', 'warning');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API_BASE_URL}/admin/config`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE_URL}/admin/tool-registry`).then(r => r.ok ? r.json() : []),
+    ]).then(([configData, registry]) => {
+      if (Array.isArray(registry) && registry.length > 0) {
+        setToolRegistry(registry);
+        const toolDefaults = Object.fromEntries(registry.map((t: ToolRegistryEntry) => [t.name, t.default_enabled]));
+        const merged = {
+          features: { ...defaultFeatureFlags(), ...(configData?.features || {}) },
+          tools:    { ...toolDefaults,           ...(configData?.tools    || {}) },
+        };
+        setFeatureFlags(merged.features);
+        setToolFlags(merged.tools);
+        saveCachedAdminConfig(merged);
+      } else if (configData) {
+        const merged = {
+          features: { ...defaultFeatureFlags(), ...(configData.features || {}) },
+          tools:    { ...defaultToolFlags(),    ...(configData.tools    || {}) },
+        };
+        setFeatureFlags(merged.features);
+        setToolFlags(merged.tools);
+        saveCachedAdminConfig(merged);
+      }
+    }).catch(() => { /* keep cached state on failure */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -162,7 +192,7 @@ export function GateUI() {
       const result = await sendTx({
         txAction: action,
         assembly: assembly as AssemblyType<Assemblies>,
-        tenant: tenant || 'utopia',
+        tenant: tenant,
         metadata,
       });
       notify({ type: Severity.Success, txHash: result.digest });
@@ -289,7 +319,7 @@ export function GateUI() {
     } else if (command === '/nodes') {
       try {
         addLog('Scanning for network nodes...', 'info');
-        const t = tenant || 'utopia';
+        const t = tenant;
         const res = await fetch(`${API_BASE_URL}/entity/nodes?tenant=${t}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const raw = await res.json();
@@ -382,6 +412,7 @@ export function GateUI() {
         system_name: assembly?.solarSystem?.name || '',
         system_id: assembly?.solarSystem?.id,
         disabled_tools: getDisabledTools(toolFlags),
+        tenant: tenant,
       },
       {
         onTextChunk: (text) => { textBuffer += text; },
@@ -407,7 +438,7 @@ export function GateUI() {
 
   const handlePrintNode = async (nodeId: string): Promise<void> => {
     try {
-      const t = tenant || 'utopia';
+      const t = tenant;
       const res = await fetch(`${API_BASE_URL}/entity/network/${nodeId}?tenant=${t}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const net = await res.json();
@@ -463,13 +494,22 @@ export function GateUI() {
               <AdminPanel
                 featureFlags={log.adminFeatureFlags ?? featureFlags}
                 toolFlags={log.adminToolFlags ?? toolFlags}
+                walletAddress={walletAddress || ''}
+                apiBase={API_BASE_URL}
+                currentEnv={tenant}
+                toolRegistry={toolRegistry}
                 onApply={(newFeatures, newTools) => {
                   setFeatureFlags(newFeatures);
                   setToolFlags(newTools);
-                  if (itemId) {
-                    saveFeatureFlags(itemId, newFeatures);
-                    saveToolFlags(itemId, newTools);
-                  }
+                  saveCachedAdminConfig({ features: newFeatures, tools: newTools });
+                  fetch(`${API_BASE_URL}/admin/config`, {
+                    method: 'PATCH',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-Wallet-Address': walletAddress || '',
+                    },
+                    body: JSON.stringify({ features: newFeatures, tools: newTools }),
+                  }).catch(() => console.warn('[ADMIN] Config save to server failed'));
                   const id = log.id;
                   setLogs(prev => prev.map(l =>
                     l.id === id ? { ...l, type: 'info' as const, text: '[ADMIN] Settings applied.' } : l

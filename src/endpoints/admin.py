@@ -14,13 +14,16 @@ import json
 import asyncio
 import logging
 from collections import deque
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from src.utils import require_token
+from src.utils import require_token, require_session_owner
 from src.world_api import world_api
 from src.location_index import location_index
 from src.route_engine import route_engine
+from src.vouch_store import load_overrides
+from src.admin_config_store import load_admin_config, save_admin_config
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +106,46 @@ async def debug():
         "systems_indexed": len(world_api._system_index),
         "route_engine_ready": route_engine.ready(),
     }
+
+
+@admin_router.get("/admin/tool-registry")
+async def get_tool_registry():
+    """Return the live tool registry — all registered AI tools with default_enabled state.
+    Public — frontend reads on mount to build the /admin tool panel dynamically."""
+    from src.ai_tools import ai_tools
+    return [
+        {"name": t["name"], "category": t["category"], "default_enabled": t.get("default_enabled", True)}
+        for t in ai_tools.tools.values()
+    ]
+
+
+@admin_router.get("/admin/config")
+async def get_admin_config():
+    """Return global admin config. Public — frontend reads on mount."""
+    return load_admin_config()
+
+
+@admin_router.patch("/admin/config")
+async def patch_admin_config(
+    config: dict,
+    x_wallet_address: str = Header(default=""),
+):
+    """Replace global admin config. OWNER session required."""
+    require_session_owner(x_wallet_address)
+    features = config.get("features")
+    tools = config.get("tools")
+    if features is not None and not isinstance(features, dict):
+        raise HTTPException(status_code=400, detail="features must be an object")
+    if tools is not None and not isinstance(tools, dict):
+        raise HTTPException(status_code=400, detail="tools must be an object")
+    save_admin_config(config)
+    return config
+
+
+@admin_router.get("/admin/vouches")
+async def list_vouches(env: Optional[str] = Query(default=None)):
+    """List wallet tier overrides. Public read — env defaults to server's DEPLOYMENT_ENV."""
+    return {"overrides": load_overrides(env=env)}
 
 
 @admin_router.get("/logs/stream", dependencies=[Depends(require_token)])

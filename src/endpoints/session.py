@@ -14,7 +14,7 @@ import datetime
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi import APIRouter, HTTPException, Header, Query, Request
 from pydantic import BaseModel
 
 from src.session_store import (
@@ -23,6 +23,7 @@ from src.session_store import (
     save_session,
     _WALLET_RE,
 )
+from src.vouch_store import set_override, remove_override, apply_override, GRANTABLE_TIERS
 
 log = logging.getLogger(__name__)
 session_router = APIRouter()
@@ -33,6 +34,12 @@ _MAX_MEMORY = 200
 def _require_owner(wallet: str, x_wallet_address: Optional[str]) -> None:
     if x_wallet_address != wallet:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _require_session_owner(x_wallet_address: Optional[str]) -> str:
+    """Return caller's wallet if their stored session tier == OWNER. Raises 403 otherwise."""
+    from src.utils import require_session_owner
+    return require_session_owner(x_wallet_address or "")
 
 
 def _validate_wallet(wallet: str) -> None:
@@ -48,6 +55,7 @@ class RegisterRequest(BaseModel):
     wallet_address: str
     character_name: str
     assembly_id: Optional[str] = None
+    tenant: str = ""
 
 
 @session_router.post("/session/register")
@@ -59,23 +67,27 @@ async def register_session(req: RegisterRequest):
     if not req.character_name.strip():
         raise HTTPException(status_code=400, detail="character_name required")
 
-    session = load_session(req.wallet_address)
+    import os
+    _tenant = req.tenant.strip() or os.getenv("DEPLOYMENT_ENV", "utopia")
+
+    session = load_session(req.wallet_address, tenant=_tenant)
     if session is None:
         session = CharacterSession(
             wallet_address=req.wallet_address,
             character_name=req.character_name.strip(),
+            tenant=_tenant,
         )
-        log.info("session: new session for %s (%s)", req.wallet_address[:12], req.character_name)
+        log.info("session: new session for %s (%s) tenant=%s", req.wallet_address[:12], req.character_name, _tenant)
     else:
         if session.character_name != req.character_name.strip():
             log.info("session: name update %s: %r -> %r",
                      req.wallet_address[:12], session.character_name, req.character_name.strip())
             session.character_name = req.character_name.strip()
+        session.tenant = _tenant
 
     tier = "NONE"
     if req.assembly_id:
         try:
-            import os
             from src.structure_persistence import load_profile
             from src.blockchain_queries import sui_rpc_client
             profile = load_profile(req.assembly_id)
@@ -89,8 +101,11 @@ async def register_session(req: RegisterRequest):
         except Exception as e:
             log.warning("session/register: tier resolution failed: %s", e)
 
+    # Apply any server-side vouch override (elevation only)
+    tier = apply_override(tier, req.wallet_address)
+
     session.tier = tier
-    save_session(session)
+    save_session(session, tenant=_tenant)
 
     from dataclasses import asdict
     return {"tier": tier, **asdict(session)}
@@ -203,3 +218,77 @@ async def append_memory(
 
     save_session(session)
     return {"entry": entry, "total": len(session.interaction_memory)}
+
+
+# ---------------------------------------------------------------------------
+# POST /session/{wallet}/vouch
+# ---------------------------------------------------------------------------
+
+class VouchRequest(BaseModel):
+    tier: str = "VETTED"
+    env: Optional[str] = None
+
+
+@session_router.post("/session/{wallet}/vouch")
+async def vouch_wallet(
+    wallet: str,
+    req: VouchRequest,
+    x_wallet_address: Optional[str] = Header(default=None),
+):
+    """Grant a tier override to wallet. Caller must have an OWNER-tier session."""
+    _validate_wallet(wallet)
+    voucher_wallet = _require_session_owner(x_wallet_address)
+
+    tier = req.tier.upper()
+    if tier not in GRANTABLE_TIERS:
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid tier. Allowed: {sorted(GRANTABLE_TIERS)}")
+    if wallet.lower() == voucher_wallet.lower():
+        raise HTTPException(status_code=400, detail="Cannot vouch for yourself")
+
+    set_override(wallet, tier, env=req.env)
+    log.info("vouch: %s granted %s -> %s (env=%s)", voucher_wallet[:12], wallet[:12], tier, req.env or "current")
+
+    # Immediately update existing session — only if vouching into the current env
+    import os as _os
+    current_env = _os.getenv("DEPLOYMENT_ENV", "utopia")
+    updated_session = False
+    if not req.env or req.env == current_env:
+        target = load_session(wallet)
+        if target is not None:
+            new_tier = apply_override(target.tier, wallet)
+            if new_tier != target.tier:
+                target.tier = new_tier
+                save_session(target)
+                updated_session = True
+
+    return {"wallet": wallet, "tier": tier, "updated_session": updated_session}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /session/{wallet}/vouch
+# ---------------------------------------------------------------------------
+
+@session_router.delete("/session/{wallet}/vouch")
+async def revoke_vouch(
+    wallet: str,
+    env: Optional[str] = Query(default=None),
+    x_wallet_address: Optional[str] = Header(default=None),
+):
+    """Remove tier override for wallet. Resets session tier to NONE."""
+    _validate_wallet(wallet)
+    _require_session_owner(x_wallet_address)
+
+    revoked = remove_override(wallet, env=env)
+
+    # Reset session only if revoking from the current env
+    import os as _os
+    current_env = _os.getenv("DEPLOYMENT_ENV", "utopia")
+    if not env or env == current_env:
+        target = load_session(wallet)
+        if target is not None:
+            target.tier = "NONE"
+            save_session(target)
+            log.info("vouch: revoked override for %s, session reset to NONE", wallet[:12])
+
+    return {"wallet": wallet, "revoked": revoked}
