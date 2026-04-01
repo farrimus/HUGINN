@@ -1,5 +1,18 @@
-# Runtime / generated data
-/data/
+# Runtime / generated data — static seed files are tracked, runtime state is not
+/data/eve_universe.db
+/data/starmapcache.json
+/data/ship_profile.json
+/data/huginn_news.json
+/data/type_knowledge.json
+/data/cache/
+/data/courier/
+/data/deals/
+/data/memory/
+/data/tribe/
+/data/utopia/
+/data/stillness/
+/data/mainnet/
+/data/structures/
 
 # Secrets
 .env

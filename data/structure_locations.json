@@ -1,0 +1,19 @@
+{
+  "structure_locations": {
+    "struct-001": {
+      "system_name": "UR8-K7K",
+      "reported_by": "commander",
+      "tribe": "Serpentis",
+      "discovered_at": "2026-03-17T20:37:39.481664Z",
+      "source": "manual"
+    },
+    "struct-002": {
+      "system_name": "E4S-47K",
+      "reported_by": "scout",
+      "tribe": "Blood Raider",
+      "discovered_at": "2026-03-17T20:38:30.273100Z",
+      "source": "manual"
+    }
+  },
+  "built_at": 1773779910.2731807
+}
