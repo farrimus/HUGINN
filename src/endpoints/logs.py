@@ -35,6 +35,15 @@ from src.prompt_loader import load_prompt
 log = logging.getLogger(__name__)
 
 logs_router = APIRouter()
+
+_KNOWN_ENVS = {"utopia", "stillness"}
+
+
+def _resolve_env(tenant: str) -> str:
+    """Return a validated env name. Unknown/empty values fall back to DEPLOYMENT_ENV."""
+    if tenant in _KNOWN_ENVS:
+        return tenant
+    return os.getenv("DEPLOYMENT_ENV", "utopia")
 _client = Anthropic()
 
 # Accepted subdirectory names (case-insensitive)
@@ -80,12 +89,13 @@ def _classify_file(filename: str, relative_path: str) -> Optional[str]:
 
 
 @logs_router.get("/logs/last-processed-date")
-async def get_last_processed_date_endpoint(wallet: str = Query(default="")):
+async def get_last_processed_date_endpoint(wallet: str = Query(default=""), tenant: str = Query(default="")):
     """Return the most recent file date processed for a wallet, or null if none."""
     w = wallet.strip().lower()
     if not w:
         return {"last_processed_date": None}
-    return {"last_processed_date": get_last_processed_date(w)}
+    env = _resolve_env(tenant)
+    return {"last_processed_date": get_last_processed_date(w, env=env)}
 
 
 @logs_router.post("/logs/upload")
@@ -93,6 +103,7 @@ async def upload_logs(
     files: List[UploadFile] = File(...),
     wallet_address: str = Form(""),
     relative_paths: str = Form(""),  # JSON array of webkitRelativePath strings, one per file
+    tenant: str = Form(""),          # player's active tenant (utopia or stillness)
 ):
     import json as _json
 
@@ -107,7 +118,8 @@ async def upload_logs(
         rel_paths.append("")
 
     wallet = wallet_address.strip().lower()
-    last_date = get_last_processed_date(wallet) if wallet else None
+    env = _resolve_env(tenant)
+    last_date = get_last_processed_date(wallet, env=env) if wallet else None
 
     chatlog_events: list[dict] = []
     gamelog_events: list[dict] = []
@@ -179,13 +191,13 @@ async def upload_logs(
 
     # Persist intel and advance last_processed_date
     if wallet:
-        merge_upload(wallet, gamelog_events, ts_list, sys_list, newest_file_date)
+        merge_upload(wallet, gamelog_events, ts_list, sys_list, newest_file_date, env=env)
 
     # Build summary (structured fields only — no raw text)
     current_summary = summarize_for_huginn(gamelog_events, ts_list, sys_list, chatlog_events)
 
     # Historical context from prior uploads
-    historical = format_for_huginn(wallet) if wallet else ""
+    historical = format_for_huginn(wallet, env=env) if wallet else ""
 
     total_events = len(gamelog_events) + len(chatlog_events)
     systems_visited = list(dict.fromkeys(sys_list))

@@ -26,19 +26,19 @@ def _wallet_safe(wallet: str) -> bool:
     return bool(_WALLET_RE.match(wallet))
 
 
-def _store_path(wallet: str) -> str:
+def _store_path(wallet: str, env: str | None = None) -> str:
     from src.config import get_data_path
-    return get_data_path(f"log_intel/{wallet.lower()}.json", env_specific=True)
+    return get_data_path(f"log_intel/{wallet.lower()}.json", env_specific=True, env_override=env)
 
 
-def _known_types_path() -> str:
+def _known_types_path(env: str | None = None) -> str:
     from src.config import get_data_path
-    return get_data_path("log_intel/_known_types.json", env_specific=True)
+    return get_data_path("log_intel/_known_types.json", env_specific=True, env_override=env)
 
 
-def load_known_types() -> dict:
+def load_known_types(env: str | None = None) -> dict:
     """Return global registry of all ore, hostile, and item names seen across the network."""
-    path = _known_types_path()
+    path = _known_types_path(env=env)
     if not os.path.exists(path):
         return {"ores": [], "hostiles": [], "items": []}
     try:
@@ -71,10 +71,10 @@ def register_items(names: list) -> int:
     return new_count
 
 
-def _update_known_types(gamelog_events: list[dict]) -> None:
+def _update_known_types(gamelog_events: list[dict], env: str | None = None) -> None:
     """Add any new ore or hostile names from this upload to the global registry."""
-    path = _known_types_path()
-    registry = load_known_types()
+    path = _known_types_path(env=env)
+    registry = load_known_types(env=env)
     known_ores: set[str] = set(registry["ores"])
     known_hostiles: set[str] = set(registry["hostiles"])
 
@@ -102,11 +102,11 @@ def _update_known_types(gamelog_events: list[dict]) -> None:
         log.warning("log_intel_store: _update_known_types save failed: %s", e)
 
 
-def load(wallet: str) -> dict:
+def load(wallet: str, env: str | None = None) -> dict:
     """Load intel record for wallet. Returns empty record if not found."""
     if not _wallet_safe(wallet):
         return _empty(wallet)
-    path = _store_path(wallet)
+    path = _store_path(wallet, env=env)
     if not os.path.exists(path):
         return _empty(wallet)
     try:
@@ -117,11 +117,11 @@ def load(wallet: str) -> dict:
         return _empty(wallet)
 
 
-def save(wallet: str, record: dict) -> None:
+def save(wallet: str, record: dict, env: str | None = None) -> None:
     if not _wallet_safe(wallet):
         log.warning("log_intel_store: invalid wallet, not saving: %s", wallet)
         return
-    path = _store_path(wallet)
+    path = _store_path(wallet, env=env)
     try:
         with open(path, "w") as f:
             json.dump(record, f, indent=2)
@@ -140,9 +140,9 @@ def _empty(wallet: str) -> dict:
     }
 
 
-def get_last_processed_date(wallet: str) -> str | None:
+def get_last_processed_date(wallet: str, env: str | None = None) -> str | None:
     """Return YYYYMMDD of the most recent file date processed, or None."""
-    return load(wallet).get("last_processed_date")
+    return load(wallet, env=env).get("last_processed_date")
 
 
 def merge_upload(
@@ -151,6 +151,7 @@ def merge_upload(
     ts_list: list[str],
     sys_list: list[str],
     newest_file_date: str | None,
+    env: str | None = None,
 ) -> dict:
     """
     Merge new upload results into the existing intel record and return the updated record.
@@ -159,7 +160,7 @@ def merge_upload(
     - System visit counts are incremented from the timeline.
     - last_processed_date is advanced to newest_file_date if it's later.
     """
-    record = load(wallet)
+    record = load(wallet, env=env)
     systems: dict = record.setdefault("systems", {})
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -213,8 +214,12 @@ def merge_upload(
     if not record.get("first_upload_at"):
         record["first_upload_at"] = now
 
-    save(wallet, record)
-    _update_known_types(gamelog_events)
+    save(wallet, record, env=env)
+    _update_known_types(gamelog_events, env=env)
+
+    from src import system_knowledge
+    system_knowledge.record_from_upload(systems, reported_by=wallet, env=env)
+
     return record
 
 
@@ -222,12 +227,12 @@ def _empty_system() -> dict:
     return {"visit_count": 0, "last_seen": None, "ores": {}, "hostiles": []}
 
 
-def format_for_huginn(wallet: str) -> str:
+def format_for_huginn(wallet: str, env: str | None = None) -> str:
     """
     Return a compact historical context block for HUGINN's prompt.
     Only included if the wallet has prior upload history.
     """
-    record = load(wallet)
+    record = load(wallet, env=env)
     systems: dict = record.get("systems", {})
     if not systems:
         return ""

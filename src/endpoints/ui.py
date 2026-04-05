@@ -34,6 +34,12 @@ async def index():
     return FileResponse("frontend/dist/index.html", headers=_NO_CACHE_HEADERS)
 
 
+@ui_router.get("/demo")
+async def demo():
+    """Landing page for external visitors without an EVE Frontier wallet."""
+    return FileResponse("static/landing.html")
+
+
 @ui_router.get("/app")
 async def app_entry():
     """SPA entry — served no-cache so browsers always pick up new JS bundles after rebuild."""

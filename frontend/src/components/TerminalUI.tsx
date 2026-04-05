@@ -1318,6 +1318,7 @@ export function TerminalUI() {
               <LogUploadPanel
                 apiBaseUrl={API_BASE_URL}
                 walletAddress={walletAddress || null}
+                tenant={sessionTenant || tenant}
                 onResult={(analysis, meta) => {
                   const id = log.id;
                   const skipNote = meta.skipped > 0 ? ` (${meta.skipped} already-processed skipped)` : '';

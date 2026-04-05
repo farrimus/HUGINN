@@ -143,13 +143,12 @@ interface Props {
 }
 
 const SHIP_NAMES = Object.keys(SHIPS);
-const DEFAULT_SHIP = SHIP_NAMES.includes('Reflex') ? 'Reflex' : SHIP_NAMES[0];
 
 export function TripCalculatorForm({ currentSystem, apiBaseUrl, walletAddress, initialShipProfile, onResult, onDismiss }: Props) {
   const savedShip  = initialShipProfile?.ship_type as string;
-  const initShip   = SHIPS[savedShip] ? savedShip : DEFAULT_SHIP;
+  const initShip   = initialShipProfile ? (SHIPS[savedShip] ? savedShip : '') : '';
   const initFuel   = initialShipProfile?.fuel_type as string || '';
-  const initTank   = (initialShipProfile?.fuel_quantity as number) ?? SHIPS[initShip].fuel_capacity;
+  const initTank   = initialShipProfile ? ((initialShipProfile.fuel_quantity as number) ?? (SHIPS[initShip]?.fuel_capacity ?? 0)) : 0;
   const initAdapt  = (initialShipProfile?.adaptive_level as number) ?? 0;
   const initCargo  = (initialShipProfile?.extra_cargo_kg as number) ?? 0;
 
@@ -165,8 +164,8 @@ export function TripCalculatorForm({ currentSystem, apiBaseUrl, walletAddress, i
   const [isLoading, setIsLoading]   = useState(false);
   const [error, setError]           = useState('');
 
-  const ship = SHIPS[shipType];
-  const validFuels = fuelsForShip(ship);
+  const ship = SHIPS[shipType] ?? null;
+  const validFuels = ship ? fuelsForShip(ship) : [];
 
   // Skip the first render so initial state above is not overwritten by this effect.
   const isFirstRender = useRef(true);
@@ -189,6 +188,8 @@ export function TripCalculatorForm({ currentSystem, apiBaseUrl, walletAddress, i
   }, [apiBaseUrl, walletAddress, shipType, fuelType, tankFuel, adaptive, cargoKg]);
 
   const handleSubmit = async () => {
+    if (!shipType || !ship) { setError('SHIP is required.'); return; }
+    if (!fuelType)          { setError('FUEL TYPE is required.'); return; }
     if (!from.trim()) { setError('FROM is required.'); return; }
     if (!to.trim())   { setError('TO is required.');   return; }
     setError('');
@@ -242,9 +243,9 @@ export function TripCalculatorForm({ currentSystem, apiBaseUrl, walletAddress, i
         <CustomSelect
           value={shipType}
           onChange={setShipType}
-          options={SHIP_NAMES.map(s => ({ value: s, label: `${s} — ${SHIPS[s].class_name}` }))}
+          options={[{ value: '', label: '— SELECT SHIP —' }, ...SHIP_NAMES.map(s => ({ value: s, label: `${s} — ${SHIPS[s].class_name}` }))]}
         />
-        <span className="tc-hint">tank max: {ship.fuel_capacity.toLocaleString()}</span>
+        <span className="tc-hint">{ship ? `tank max: ${ship.fuel_capacity.toLocaleString()}` : ''}</span>
       </div>
 
       <div className="tc-field">
@@ -264,10 +265,10 @@ export function TripCalculatorForm({ currentSystem, apiBaseUrl, walletAddress, i
           className="tc-input tc-input-num"
           value={tankFuel}
           min={0}
-          max={ship.fuel_capacity}
-          onChange={e => setTankFuel(Math.min(Math.max(0, Number(e.target.value)), ship.fuel_capacity))}
+          max={ship?.fuel_capacity ?? 0}
+          onChange={e => setTankFuel(Math.min(Math.max(0, Number(e.target.value)), ship?.fuel_capacity ?? 0))}
         />
-        <span className="tc-hint">/ {ship.fuel_capacity.toLocaleString()}</span>
+        <span className="tc-hint">{ship ? `/ ${ship.fuel_capacity.toLocaleString()}` : ''}</span>
       </div>
 
       <div className="tc-field">

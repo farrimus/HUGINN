@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 interface LogUploadPanelProps {
   apiBaseUrl: string;
   walletAddress: string | null;
+  tenant?: string;
   onResult: (analysis: string, meta: { files: number; skipped: number; events: number; systems: string[] }) => void;
   onDismiss: () => void;
 }
@@ -76,7 +77,7 @@ function filterFiles(fileList: FileList, lastDate: string | null): MatchedFile[]
 
 type PanelState = 'idle' | 'ready' | 'uploading' | 'done' | 'error';
 
-export function LogUploadPanel({ apiBaseUrl, walletAddress, onResult, onDismiss }: LogUploadPanelProps) {
+export function LogUploadPanel({ apiBaseUrl, walletAddress, tenant, onResult, onDismiss }: LogUploadPanelProps) {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const filesInputRef  = useRef<HTMLInputElement>(null);
 
@@ -88,12 +89,13 @@ export function LogUploadPanel({ apiBaseUrl, walletAddress, onResult, onDismiss 
   useEffect(() => {
     if (!walletAddress) return;
     let cancelled = false;
-    fetch(`${apiBaseUrl}/logs/last-processed-date?wallet=${encodeURIComponent(walletAddress)}`)
+    const tenantParam = tenant ? `&tenant=${encodeURIComponent(tenant)}` : '';
+    fetch(`${apiBaseUrl}/logs/last-processed-date?wallet=${encodeURIComponent(walletAddress)}${tenantParam}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (!cancelled && data?.last_processed_date) setLastProcessedDate(data.last_processed_date); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [walletAddress, apiBaseUrl]);
+  }, [walletAddress, apiBaseUrl, tenant]);
 
   const handleFileSelection = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
@@ -125,6 +127,9 @@ export function LogUploadPanel({ apiBaseUrl, walletAddress, onResult, onDismiss 
     form.append('relative_paths', JSON.stringify(matched.map(m => m.relativePath)));
     if (walletAddress) {
       form.append('wallet_address', walletAddress);
+    }
+    if (tenant) {
+      form.append('tenant', tenant);
     }
 
     try {

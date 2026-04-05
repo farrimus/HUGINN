@@ -97,13 +97,15 @@ def validate_startup_config(config: dict) -> list[str]:
     return errors
 
 
-def get_data_path(filename: str, env_specific: bool = False) -> str:
+def get_data_path(filename: str, env_specific: bool = False, env_override: str | None = None) -> str:
     """Get path to data file, respecting environment separation.
 
     Args:
         filename: Relative path within data directory (e.g., "systems.json" or "structures/keep-7a.json")
         env_specific: If True, path includes environment subdirectory (data/{env}/filename)
                       If False, path is at root level (data/filename)
+        env_override: If set and env_specific=True, use this env instead of DEPLOYMENT_ENV.
+                      Must be a validated value — callers are responsible for whitelisting.
 
     Returns:
         Absolute path to file. Parent directories are auto-created.
@@ -111,7 +113,7 @@ def get_data_path(filename: str, env_specific: bool = False) -> str:
     data_base = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data"))
 
     if env_specific:
-        env = os.getenv("DEPLOYMENT_ENV", "utopia")
+        env = env_override or os.getenv("DEPLOYMENT_ENV", "utopia")
         path = os.path.join(data_base, env, filename)
     else:
         path = os.path.join(data_base, filename)

@@ -605,7 +605,8 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
             log.debug("companion: upsert_pilot failed: %s", e)
 
     if req.owner_address:
-        context_str += f"\nTIER: {tier}"
+        from src.tier_capabilities import ai_instruction, blocked_tools as _blocked_tools
+        context_str += f"\nTIER: {tier} — {ai_instruction(tier)}"
 
     messages = list(req.history[-20:])
     messages.append({
@@ -614,7 +615,11 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
     })
 
     from src.ai_tools import ai_tools
-    tools = ai_tools.get_tools_for_claude(disabled=req.disabled_tools or [])
+    from src.tier_capabilities import blocked_tools as _blocked_tools
+    all_tool_names = list(ai_tools.tools.keys())
+    tier_blocked = _blocked_tools(tier, all_tool_names)
+    combined_disabled = list(set((req.disabled_tools or []) + tier_blocked))
+    tools = ai_tools.get_tools_for_claude(disabled=combined_disabled)
 
     system_name = req.system_name or profile.system_name or ""
     system_id = req.system_id or profile.system_id or None

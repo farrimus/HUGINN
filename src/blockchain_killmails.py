@@ -100,6 +100,20 @@ async def refresh_killmails_incremental(env: str = None) -> int:
         for event in new_events:
             f.write(json.dumps(event) + "\n")
 
+    # Record system visit counts in the global knowledge graph
+    try:
+        from src.galaxy_db import galaxy_db
+        from src import system_knowledge
+        for event in new_events:
+            raw_sys = event.get("solar_system_id", {})
+            system_id_str = _extract_tenant_item_id(raw_sys) if isinstance(raw_sys, dict) else str(raw_sys)
+            if system_id_str and system_id_str.isdigit():
+                row = galaxy_db.get_system(int(system_id_str))
+                if row and row.get("name"):
+                    system_knowledge.record_system_visit(row["name"])
+    except Exception as e:
+        log.warning("refresh_killmails_incremental: system_knowledge wiring failed: %s", e)
+
     log.info("refresh_killmails_incremental: appended %d new killmails to %s", len(new_events), jsonl_path)
     return len(new_events)
 

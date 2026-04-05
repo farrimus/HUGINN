@@ -38,6 +38,7 @@ assess_threat:
     Do not narrate the analysis process.
 
 get_system_intel:
+  no_system: "System location is not set. Instruct the SHELL to run /system \"<name>\" to establish their current location."
   description: |
     Get system data: security status, star type, planet breakdown (HZ vs outer), Lagrange point
     count, gate links, 24h kill count, and safe jump temperature. Use for location questions,
@@ -59,6 +60,7 @@ get_pilot_profile:
     If the stored tier conflicts with the active session tier, note: 'Record may be stale.'
 
 radius_search:
+  no_system: "System location is not set. Instruct the SHELL to run /system \"<name>\" to establish their current location."
   description: |
     Search for systems within a radius in light-years, ranked by criteria. Filters:
     'planets' (resource potential by HZ planet count), 'killmails' (recent kill activity),
@@ -71,6 +73,7 @@ radius_search:
     high-temperature systems were excluded from results.
 
 plan_route:
+  no_system: "System location is not set. Instruct the SHELL to run /system \"<name>\" to establish their current location."
   description: |
     Calculate a route to a destination system. Returns a full jump-by-jump breakdown.
     Use when the shell asks to plot, calculate, or find a route, course, or path to a destination.

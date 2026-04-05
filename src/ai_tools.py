@@ -295,7 +295,8 @@ class ToolRegistry:
                 },
                 "required": ["action"]
             },
-            handler=self._tool_manage_watcher
+            handler=self._tool_manage_watcher,
+            default_enabled=False,
         )
 
         # --- Courier Tools ---
@@ -345,7 +346,8 @@ class ToolRegistry:
                 },
                 "required": ["action"]
             },
-            handler=self._tool_manage_courier
+            handler=self._tool_manage_courier,
+            default_enabled=False,
         )
 
         # --- Tribe Tools ---
@@ -373,7 +375,8 @@ class ToolRegistry:
                 },
                 "required": ["action"]
             },
-            handler=self._tool_manage_tribe
+            handler=self._tool_manage_tribe,
+            default_enabled=False,
         )
 
         # --- Intel Tools ---
@@ -449,6 +452,59 @@ class ToolRegistry:
             handler=self._tool_lookup_item_type
         )
 
+        self.register_tool(
+            name="record_field_observation",
+            category="intel",
+            description=(
+                "Record enemy types or ore types found in a specific solar system. "
+                "Call this when a pilot explicitly reports what enemies or ores they encountered "
+                "in a named system. This writes to the global knowledge graph shared across all "
+                "pilots and all time. Use log_intel for unstructured notes instead."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "system_name": {
+                        "type": "string",
+                        "description": "Exact solar system name where the sighting occurred.",
+                    },
+                    "enemies": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Enemy or NPC names encountered in the system.",
+                    },
+                    "ores": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Ore types found in the system.",
+                    },
+                },
+                "required": ["system_name"],
+            },
+            handler=self._tool_record_field_observation,
+        )
+
+        self.register_tool(
+            name="query_system_knowledge",
+            category="intel",
+            description=(
+                "Query the global knowledge graph for what is known about a solar system — "
+                "confirmed enemy types and ore types reported by all pilots across all time. "
+                "Call this before saying a system has no known data."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "system_name": {
+                        "type": "string",
+                        "description": "Solar system name to query.",
+                    },
+                },
+                "required": ["system_name"],
+            },
+            handler=self._tool_query_system_knowledge,
+        )
+
         # --- Build Tools ---
         self.register_tool(
             name="calculate_build_options",
@@ -512,7 +568,8 @@ class ToolRegistry:
         category: str,
         description: str,
         input_schema: Dict[str, Any],
-        handler: callable
+        handler: callable,
+        default_enabled: bool = True,
     ):
         """Register a new tool."""
         self.tools[name] = {
@@ -520,7 +577,8 @@ class ToolRegistry:
             "category": category,
             "description": description,
             "input_schema": input_schema,
-            "handler": handler
+            "handler": handler,
+            "default_enabled": default_enabled,
         }
         log.debug(f"Registered tool: {name} ({category})")
 
@@ -771,7 +829,9 @@ class ToolRegistry:
 
             system_id = inputs.get("system_id") or (context.get("system_id") if context else None)
             if not system_id:
-                return {"text": "[get_system_intel requires system_id in input or context]", "structured": None}
+                from src.prompt_loader import load_tool_prompts
+                _no_system = load_tool_prompts().get("get_system_intel", {}).get("no_system", "[get_system_intel: system not set]")
+                return {"text": _no_system, "structured": None}
 
             system_name = None
             system_info = None
@@ -925,7 +985,9 @@ class ToolRegistry:
             skip_heat_traps = inputs.get("skip_heat_traps", False)
 
             if not center_system:
-                return {"text": "[radius_search requires center_system in input or context]", "structured": None}
+                from src.prompt_loader import load_tool_prompts
+                _no_system = load_tool_prompts().get("radius_search", {}).get("no_system", "[radius_search: system not set]")
+                return {"text": _no_system, "structured": None}
 
             if radius_ly <= 0:
                 return {"text": "[radius_ly must be > 0]", "structured": None}
@@ -1056,7 +1118,9 @@ class ToolRegistry:
             if not origin and context:
                 origin = (context.get("system_name") or context.get("current_system") or "").strip()
             if not origin:
-                return {"text": "[plan_route: no origin known — set current system first]", "structured": None}
+                from src.prompt_loader import load_tool_prompts
+                _no_system = load_tool_prompts().get("plan_route", {}).get("no_system", "[plan_route: system not set]")
+                return {"text": _no_system, "structured": None}
 
             if not route_engine.ready():
                 return {"text": "[plan_route: route engine not ready — systems.json missing]", "structured": None}
@@ -1383,6 +1447,84 @@ class ToolRegistry:
         except Exception as e:
             log.warning("_tool_query_intel failed: %s", e)
             return {"text": "Intel query failed.", "structured": None}
+
+    def _tool_record_field_observation(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Handler for record_field_observation tool. Writes enemy/ore sightings to the global knowledge graph."""
+        system_name = (inputs.get("system_name") or "").strip()
+        if not system_name:
+            return {"text": "system_name is required.", "structured": None}
+
+        enemies = inputs.get("enemies") or []
+        ores = inputs.get("ores") or []
+
+        if not enemies and not ores:
+            return {"text": "No enemies or ores provided — nothing recorded.", "structured": None}
+
+        pilot_name = (context or {}).get("pilot_name") or (context or {}).get("character_name") or ""
+
+        try:
+            from src import system_knowledge
+            for name in enemies:
+                if name and name.strip():
+                    system_knowledge.record_sighting(system_name, "enemy", name.strip(), "ai_tool", pilot_name or None)
+            for name in ores:
+                if name and name.strip():
+                    system_knowledge.record_sighting(system_name, "ore", name.strip(), "ai_tool", pilot_name or None)
+        except Exception as e:
+            log.warning("_tool_record_field_observation failed: %s", e)
+            return {"text": "Failed to record observation.", "structured": None}
+
+        parts = []
+        if enemies:
+            parts.append(f"enemies: {', '.join(enemies)}")
+        if ores:
+            parts.append(f"ores: {', '.join(ores)}")
+        return {
+            "text": f"Recorded in {system_name} — {'; '.join(parts)}.",
+            "structured": None,
+        }
+
+    def _tool_query_system_knowledge(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Handler for query_system_knowledge tool. Returns global sightings data for a system."""
+        system_name = (inputs.get("system_name") or "").strip()
+        if not system_name:
+            return {"text": "system_name is required.", "structured": None}
+
+        try:
+            from src import system_knowledge
+            result = system_knowledge.query_system(system_name)
+        except Exception as e:
+            log.warning("_tool_query_system_knowledge failed: %s", e)
+            return {"text": "Knowledge graph unavailable.", "structured": None}
+
+        if not result.get("found"):
+            return {
+                "text": f"No data in knowledge graph for '{system_name}'. No pilot has reported this system yet.",
+                "structured": {"found": False, "system_name": system_name},
+            }
+
+        lines = [f"System knowledge — {system_name}:"]
+        if result.get("region"):
+            lines.append(f"  Region: {result['region']}")
+        lines.append(f"  Visits recorded: {result['visit_count']}")
+
+        enemies = result.get("enemies", [])
+        if enemies:
+            lines.append(f"  Known enemies ({len(enemies)}):")
+            for e in enemies:
+                lines.append(f"    {e['value']} (seen {e['sighting_count']}x, last {e['last_seen'][:10]})")
+        else:
+            lines.append("  Known enemies: none reported")
+
+        ores = result.get("ores", [])
+        if ores:
+            lines.append(f"  Known ores ({len(ores)}):")
+            for o in ores:
+                lines.append(f"    {o['value']} (seen {o['sighting_count']}x, last {o['last_seen'][:10]})")
+        else:
+            lines.append("  Known ores: none reported")
+
+        return {"text": "\n".join(lines), "structured": result}
 
     def _tool_lookup_item_type(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Handler for lookup_item_type tool. Searches game type database by name."""
