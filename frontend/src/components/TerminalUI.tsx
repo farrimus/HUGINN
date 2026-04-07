@@ -248,13 +248,13 @@ export function TerminalUI() {
   // Sends the current tenant so the backend routes to the correct tenant directory.
   // Response confirms tier, ship_profile, and the stored tenant.
   useEffect(() => {
-    if (!walletAddress || !visitorName || !assemblyId) return;
+    if (!walletAddress || !assemblyId) return;
     fetch(`${API_BASE_URL}/session/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         wallet_address: walletAddress,
-        character_name: visitorName,
+        character_name: visitorName || walletAddress.slice(0, 10),
         assembly_id: assemblyId,
         tenant: (sessionTenant || tenant),
       }),
@@ -389,7 +389,7 @@ export function TerminalUI() {
         history: chatHistory,
         debug: debugMode,
         owner_address: walletAddress || '',
-        character_name: visitorName,
+        character_name: visitorName || walletAddress?.slice(0, 10) || '',
         item_id: itemId,
         assembly_name: enrichedAssembly?.name ?? assembly?.name ?? '',
         assembly_type: enrichedAssembly?.assembly_type ?? assembly?.typeDetails?.name ?? '',

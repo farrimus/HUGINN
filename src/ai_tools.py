@@ -19,9 +19,29 @@ Each tool has:
 import logging
 import asyncio
 import json
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 log = logging.getLogger(__name__)
+
+
+def _relative_time(iso_str: str) -> str:
+    """Return a human-readable relative time string from an ISO timestamp."""
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        delta = datetime.now(timezone.utc) - dt
+        days = delta.days
+        if days == 0:
+            hours = delta.seconds // 3600
+            return f"{hours}h ago" if hours > 0 else "today"
+        if days == 1:
+            return "yesterday"
+        if days < 30:
+            return f"{days} days ago"
+        months = days // 30
+        return f"{months} month{'s' if months != 1 else ''} ago"
+    except Exception:
+        return iso_str[:10]
 
 # Lazy import to avoid circular dependency
 _radius_search = None
@@ -490,17 +510,18 @@ class ToolRegistry:
             description=(
                 "Query the global knowledge graph for what is known about a solar system — "
                 "confirmed enemy types and ore types reported by all pilots across all time. "
-                "Call this before saying a system has no known data."
+                "system_name is optional — defaults to the pilot's current system. "
+                "Call this automatically when discussing enemies, resources, or conditions in any system."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "system_name": {
                         "type": "string",
-                        "description": "Solar system name to query.",
+                        "description": "Solar system name. Omit to use current system.",
                     },
                 },
-                "required": ["system_name"],
+                "required": [],
             },
             handler=self._tool_query_system_knowledge,
         )
@@ -1487,8 +1508,10 @@ class ToolRegistry:
     def _tool_query_system_knowledge(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Handler for query_system_knowledge tool. Returns global sightings data for a system."""
         system_name = (inputs.get("system_name") or "").strip()
+        if not system_name and context:
+            system_name = (context.get("system_name") or "").strip()
         if not system_name:
-            return {"text": "system_name is required.", "structured": None}
+            return {"text": "No system name provided and current system is unknown.", "structured": None}
 
         try:
             from src import system_knowledge
@@ -1499,30 +1522,38 @@ class ToolRegistry:
 
         if not result.get("found"):
             return {
-                "text": f"No data in knowledge graph for '{system_name}'. No pilot has reported this system yet.",
+                "text": f"No field data recorded for '{system_name}'. No pilot has reported this system yet.",
                 "structured": {"found": False, "system_name": system_name},
             }
 
-        lines = [f"System knowledge — {system_name}:"]
+        lines = [f"Field data — {system_name}:"]
         if result.get("region"):
             lines.append(f"  Region: {result['region']}")
-        lines.append(f"  Visits recorded: {result['visit_count']}")
+        lines.append(f"  Total visits recorded: {result['visit_count']}")
 
         enemies = result.get("enemies", [])
         if enemies:
-            lines.append(f"  Known enemies ({len(enemies)}):")
+            lines.append(f"  Confirmed hostiles ({len(enemies)}):")
             for e in enemies:
-                lines.append(f"    {e['value']} (seen {e['sighting_count']}x, last {e['last_seen'][:10]})")
+                count = e["sighting_count"]
+                reporters = e.get("reporter_count", 1)
+                last = _relative_time(e["last_seen"])
+                pilot_str = f", {reporters} pilot{'s' if reporters != 1 else ''}" if reporters > 1 else ""
+                lines.append(f"    {e['value']} — {count} sighting{'s' if count != 1 else ''}{pilot_str}, last {last}")
         else:
-            lines.append("  Known enemies: none reported")
+            lines.append("  Confirmed hostiles: none on record")
 
         ores = result.get("ores", [])
         if ores:
-            lines.append(f"  Known ores ({len(ores)}):")
+            lines.append(f"  Known ore types ({len(ores)}):")
             for o in ores:
-                lines.append(f"    {o['value']} (seen {o['sighting_count']}x, last {o['last_seen'][:10]})")
+                count = o["sighting_count"]
+                reporters = o.get("reporter_count", 1)
+                last = _relative_time(o["last_seen"])
+                pilot_str = f", {reporters} pilot{'s' if reporters != 1 else ''}" if reporters > 1 else ""
+                lines.append(f"    {o['value']} — {count} report{'s' if count != 1 else ''}{pilot_str}, last {last}")
         else:
-            lines.append("  Known ores: none reported")
+            lines.append("  Known ore types: none on record")
 
         return {"text": "\n".join(lines), "structured": result}
 

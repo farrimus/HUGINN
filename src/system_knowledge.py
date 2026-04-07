@@ -164,13 +164,16 @@ def record_sighting(
 
 def record_from_upload(systems_dict: dict, reported_by: str | None = None, env: str | None = None) -> None:
     """Batch-record from log upload format: {system_name: {ores: {name: qty}, hostiles: [name, ...]}}."""
+    # Use wallet-prefixed source key so distinct pilots accumulate in sources[]
+    # len(sources) on any sighting row gives distinct reporter count
+    source_key = f"pilot:{reported_by[:10]}" if reported_by else "log_upload"
     for system_name, data in (systems_dict or {}).items():
         if not system_name or system_name.strip().lower() in _SKIP_NAMES:
             continue
         for ore_name in (data.get("ores") or {}).keys():
-            record_sighting(system_name, "ore", ore_name, "log_upload", reported_by, env=env)
+            record_sighting(system_name, "ore", ore_name, source_key, reported_by, env=env)
         for hostile_name in (data.get("hostiles") or []):
-            record_sighting(system_name, "enemy", hostile_name, "log_upload", reported_by, env=env)
+            record_sighting(system_name, "enemy", hostile_name, source_key, reported_by, env=env)
 
 
 def record_system_visit(system_name: str) -> None:
@@ -208,15 +211,17 @@ def query_system(system_name: str) -> dict:
                 return {"found": False}
 
             enemies = [
-                dict(r) for r in conn.execute(
-                    "SELECT value, sighting_count, first_seen, last_seen FROM sightings "
+                {**dict(r), "reporter_count": len(json.loads(r["sources"] or "[]"))}
+                for r in conn.execute(
+                    "SELECT value, sighting_count, first_seen, last_seen, sources FROM sightings "
                     "WHERE system_name=? AND entry_type='enemy' ORDER BY sighting_count DESC",
                     (system_name,),
                 ).fetchall()
             ]
             ores = [
-                dict(r) for r in conn.execute(
-                    "SELECT value, sighting_count, first_seen, last_seen FROM sightings "
+                {**dict(r), "reporter_count": len(json.loads(r["sources"] or "[]"))}
+                for r in conn.execute(
+                    "SELECT value, sighting_count, first_seen, last_seen, sources FROM sightings "
                     "WHERE system_name=? AND entry_type='ore' ORDER BY sighting_count DESC",
                     (system_name,),
                 ).fetchall()
