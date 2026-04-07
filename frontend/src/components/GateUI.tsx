@@ -19,6 +19,7 @@ import {
   getDisabledTools, getActiveNavItems, FeatureFlags, ToolFlags, ToolRegistryEntry,
   loadCachedAdminConfig, saveCachedAdminConfig, defaultFeatureFlags, defaultToolFlags,
 } from '../features/featureFlags';
+import type { ChatMessage } from '../types/terminal';
 import '../styles/terminal.css';
 import '../styles/gate.css';
 
@@ -32,11 +33,6 @@ interface TerminalLog {
   id?: string;
   adminFeatureFlags?: FeatureFlags;
   adminToolFlags?: ToolFlags;
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
 }
 
 /**

@@ -38,7 +38,7 @@ const PACKAGE_TENANT_MAP: Record<string, string> = {
 };
 
 // Tenant name → package ID (reverse of PACKAGE_TENANT_MAP).
-const TENANT_PACKAGE_MAP: Record<string, string> = Object.fromEntries(
+export const TENANT_PACKAGE_MAP: Record<string, string> = Object.fromEntries(
   Object.entries(PACKAGE_TENANT_MAP).map(([pkg, t]) => [t, pkg])
 );
 

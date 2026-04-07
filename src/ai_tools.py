@@ -878,7 +878,7 @@ class ToolRegistry:
             kill_count = len(killmails) if killmails else 0
 
             # Star class, planets, and Lagrange points come from galaxy_db
-            from src.structure_client import _spectral_label, _count_planets
+            from src.galaxy_db import spectral_label as _spectral_label, count_planets as _count_planets
             star_type = "Unknown"
             planets_summary = "0"
             lagrange_count = 0

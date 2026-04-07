@@ -163,3 +163,30 @@ class GalaxyDB:
 
 # Module-level singleton
 galaxy_db = GalaxyDB()
+
+
+# ---------------------------------------------------------------------------
+# Star and planet classification utilities
+# ---------------------------------------------------------------------------
+
+def spectral_label(code: str) -> str:
+    """Convert spectral class code to human-readable label."""
+    _MAP = {
+        "G": "G (Yellow)", "G2": "G2 (Yellow)",
+        "K": "K (Orange)", "K7": "K7 (Orange)",
+        "M": "M (Red)", "F": "F (White-Yellow)",
+        "A": "A (White)", "B": "B (Blue-White)",
+        "O": "O (Blue)",
+    }
+    if not code:
+        return "Unknown"
+    return _MAP.get(code, _MAP.get(code[:1], code))
+
+
+def count_planets(planets: list) -> dict:
+    """Count planets by typeDescription. Returns {type: count} dict."""
+    counts: dict = {}
+    for p in planets:
+        ptype = p.get("typeDescription") or "Unknown"
+        counts[ptype] = counts.get(ptype, 0) + 1
+    return counts

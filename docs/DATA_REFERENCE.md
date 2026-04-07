@@ -133,6 +133,10 @@ db.get_celestials_in_system(system_id) # → {planets, moons, stations, lagrange
 db.search_systems(pattern)             # LIKE search on name
 db.get_jumps_from_system(system_id)    # → list of adjacent system IDs
 db.run_sql(sql, params)                # → list of dicts
+
+# Module-level utility functions (also importable from galaxy_db):
+spectral_label(code: str) -> str       # "G2" → "G2 (Yellow Dwarf)"
+count_planets(planets: list) -> dict   # list of planet dicts → {"Barren": 3, "Temperate": 1, ...}
 ```
 
 ### Common Queries

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useConnection, useSmartObject, type SmartAssemblyResponse, executeGraphQLQuery, GET_WALLET_CHARACTERS, parseCharacterFromJson } from '@evefrontier/dapp-kit';
+import { useConnection, useSmartObject, type SmartAssemblyResponse } from '@evefrontier/dapp-kit';
 import { useToolOutput } from '../hooks/useToolOutput';
 import { BaselinePanelData, HuginnNewsData, BuildOptionsData } from '../types/terminal';
 import { TripCalculatorForm } from './TripCalculatorForm';
@@ -7,7 +7,8 @@ import { BUILD_TIME } from '../main';
 import { useCompanionStream } from '../hooks/useCompanionStream';
 import { useWatcherAlerts } from '../hooks/useWatcherAlerts';
 import { useTribePosts, TribePostEvent } from '../hooks/useTribePosts';
-import { useEntityContext } from '../context/EntityContext';
+import { useEntityContext, type EnrichedAssembly } from '../context/EntityContext';
+import { useSession } from '../hooks/useSession';
 import { InfoPanel } from './InfoPanel';
 import { BoardPanel } from './BoardPanel';
 import { LogUploadPanel } from './LogUploadPanel';
@@ -15,10 +16,10 @@ import { AdminPanel } from './AdminPanel';
 import { ReconForm } from './ReconForm';
 import {
   getDisabledTools, FEATURES, FeatureFlags, ToolFlags, ToolRegistryEntry,
-  loadCachedAdminConfig, saveCachedAdminConfig, defaultFeatureFlags, defaultToolFlags,
+  saveCachedAdminConfig,
 } from '../features/featureFlags';
 import { canAccess, getActiveNavItemsForTier } from '../features/tierCapabilities';
-import type { WatchRule, WatcherAlert, RouteData, CourierContract, TribePresenceMember, TribePost } from '../types/terminal';
+import type { WatchRule, WatcherAlert, RouteData, CourierContract, TribePresenceMember, TribePost, ChatMessage } from '../types/terminal';
 import { SUBDIV } from '../constants/dividers';
 
 const API_BASE_URL = window.location.origin;
@@ -47,9 +48,33 @@ interface TerminalLog {
   copyText?: string;
 }
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
+function buildBaselineData(
+  walletAddress: string | null,
+  assemblyId: string | undefined,
+  visitorName: string,
+  tier: string,
+  location: string,
+  enrichedAssembly: EnrichedAssembly | null,
+): BaselinePanelData {
+  const en = enrichedAssembly;
+  const nn = en?.network_node;
+  return {
+    crudVersion: 'HUGINN - Version',
+    signature: walletAddress || '[REDACTED]',
+    shellName: visitorName || '[REDACTED]',
+    accessLevel: tier,
+    assemblySignature: assemblyId || '[REDACTED]',
+    location,
+    ownerCharacterName: en?.owner?.character_name,
+    ownerTribeId: en?.owner?.tribe_id ? String(en.owner.tribe_id) : undefined,
+    ownerTribeName: en?.owner?.tribe_name || undefined,
+    networkNodeName: nn?.name,
+    fuelPercent: nn ? `${nn.fuel_percent.toFixed(0)}%` : undefined,
+    fuelQuantity: nn?.fuel_quantity,
+    fuelEffectiveMax: nn?.fuel_effective_max,
+    fuelDaysRemaining: nn ? `${(nn.fuel_hours_remaining / 24).toFixed(1)}d` : undefined,
+    fuelBurning: nn ? nn.fuel_hours_remaining > 0 : undefined,
+  };
 }
 
 /**
@@ -98,19 +123,17 @@ export function TerminalUI() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentSystem, setCurrentSystem] = useState<string>('');
   const [debugMode, setDebugMode] = useState(false);
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(
-    () => loadCachedAdminConfig().features
-  );
-  const [toolFlags, setToolFlags] = useState<ToolFlags>(
-    () => loadCachedAdminConfig().tools
-  );
-  const [toolRegistry, setToolRegistry] = useState<ToolRegistryEntry[]>([]);
-  const [tribeId, setTribeId] = useState<number | null>(null);
-  const [visitorName, setVisitorName] = useState<string>('');
-  const [tier, setTier] = useState<string>('NONE');
-  const [sessionRegistered, setSessionRegistered] = useState<boolean>(false);
-  const [shipProfile, setShipProfile] = useState<Record<string, unknown> | null>(null);
-  const [sessionTenant, setSessionTenant] = useState<string>('');
+  const {
+    featureFlags, setFeatureFlags,
+    toolFlags, setToolFlags,
+    toolRegistry,
+    tier,
+    shipProfile,
+    sessionTenant,
+    sessionRegistered,
+    visitorName,
+    tribeId,
+  } = useSession(walletAddress, assemblyId, tenant, assembly?.solarSystem?.name || currentSystem);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreeted = useRef(false);
@@ -132,39 +155,7 @@ export function TerminalUI() {
   // handleSplashComplete applies the latest data directly via setDirect.
   useEffect(() => {
     const location = assembly?.solarSystem?.name || currentSystem || '[REDACTED]';
-
-    // Enrichment fields (optional)
-    const en = enrichedAssembly;
-    const nn = en?.network_node;
-
-    let fuelPercent: string | undefined;
-    let fuelDaysRemaining: string | undefined;
-    let fuelBurning: boolean | undefined;
-
-    if (nn) {
-      fuelPercent = `${nn.fuel_percent.toFixed(0)}%`;
-      const hours = nn.fuel_hours_remaining;
-      fuelDaysRemaining = (hours / 24).toFixed(1) + 'd';
-      fuelBurning = hours > 0;
-    }
-
-    const baselineData: BaselinePanelData = {
-      crudVersion: 'HUGINN - Version',
-      signature: walletAddress || '[REDACTED]',
-      shellName: visitorName || '[REDACTED]',
-      accessLevel: tier,
-      assemblySignature: assemblyId || '[REDACTED]',
-      location,
-      ownerCharacterName: en?.owner?.character_name,
-      ownerTribeId: en?.owner?.tribe_id ? String(en.owner.tribe_id) : undefined,
-      ownerTribeName: en?.owner?.tribe_name || undefined,
-      networkNodeName: nn?.name,
-      fuelPercent,
-      fuelQuantity: nn?.fuel_quantity,
-      fuelEffectiveMax: nn?.fuel_effective_max,
-      fuelDaysRemaining,
-      fuelBurning,
-    };
+    const baselineData = buildBaselineData(walletAddress, assemblyId, visitorName, tier, location, enrichedAssembly);
 
     latestBaselineRef.current = baselineData;
 
@@ -215,108 +206,6 @@ export function TerminalUI() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    Promise.all([
-      fetch(`${API_BASE_URL}/admin/config`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE_URL}/admin/tool-registry`).then(r => r.ok ? r.json() : []),
-    ]).then(([configData, registry]) => {
-      if (Array.isArray(registry) && registry.length > 0) {
-        setToolRegistry(registry);
-        const toolDefaults = Object.fromEntries(registry.map((t: ToolRegistryEntry) => [t.name, t.default_enabled]));
-        const merged = {
-          features: { ...defaultFeatureFlags(), ...(configData?.features || {}) },
-          tools:    { ...toolDefaults,           ...(configData?.tools    || {}) },
-        };
-        setFeatureFlags(merged.features);
-        setToolFlags(merged.tools);
-        saveCachedAdminConfig(merged);
-      } else if (configData) {
-        const merged = {
-          features: { ...defaultFeatureFlags(), ...(configData.features || {}) },
-          tools:    { ...defaultToolFlags(),    ...(configData.tools    || {}) },
-        };
-        setFeatureFlags(merged.features);
-        setToolFlags(merged.tools);
-        saveCachedAdminConfig(merged);
-      }
-    }).catch(() => { /* keep cached state on failure */ });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Register session when wallet + visitor name + assembly are all known.
-  // Sends the current tenant so the backend routes to the correct tenant directory.
-  // Response confirms tier, ship_profile, and the stored tenant.
-  useEffect(() => {
-    if (!walletAddress || !assemblyId) return;
-    fetch(`${API_BASE_URL}/session/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wallet_address: walletAddress,
-        character_name: visitorName || walletAddress.slice(0, 10),
-        assembly_id: assemblyId,
-        tenant: (sessionTenant || tenant),
-      }),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.tier) setTier(data.tier);
-        if (data?.ship_profile) setShipProfile(data.ship_profile);
-        if (data?.tenant) setSessionTenant(data.tenant);
-        setSessionRegistered(true);
-      })
-      .catch(() => {
-        setSessionRegistered(true); // fail-open: unlock terminal even if backend is down
-      });
-  }, [walletAddress, visitorName, assemblyId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Tenant → package ID map (mirrors EntityContext TENANT_PACKAGE_MAP).
-  const TENANT_PACKAGE_MAP: Record<string, string> = {
-    utopia:    '0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75',
-    stillness: '0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c',
-    nebula:    '0x353988e063b4683580e3603dbe9e91fefd8f6a06263a646d43fd3a2f3ef6b8c1',
-  };
-
-  // Fetch the connected visitor's character name + tribe ID from chain.
-  // Uses a tenant-aware package ID so stillness and utopia characters both resolve.
-  useEffect(() => {
-    if (!walletAddress || !tenant) return;
-    const pkgId = TENANT_PACKAGE_MAP[tenant];
-    if (!pkgId) return;
-    const profileType = `${pkgId}::character::PlayerProfile`;
-    let cancelled = false;
-    executeGraphQLQuery(GET_WALLET_CHARACTERS, {
-      owner: walletAddress,
-      characterPlayerProfileType: profileType,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }).then((result: any) => {
-      if (cancelled) return;
-      const charJson = result?.data?.address?.objects?.nodes?.[0]
-        ?.contents?.extract?.asAddress?.asObject?.asMoveObject?.contents?.json;
-      const char = parseCharacterFromJson(charJson);
-      if (char?.name) setVisitorName(char.name);
-      else setVisitorName(walletAddress.slice(0, 10));
-      if (char?.tribeId && char.tribeId > 0) setTribeId(char.tribeId);
-    }).catch(() => {
-      if (!cancelled) setVisitorName(walletAddress.slice(0, 10));
-    });
-    return () => { cancelled = true; };
-  }, [walletAddress, tenant]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Tribe presence — POST exactly once when wallet + tribeId are first known.
-  // Location is read at call time (best-effort). Assembly and currentSystem are
-  // intentionally excluded from deps to prevent re-fires on location changes.
-  useEffect(() => {
-    if (!walletAddress || !tribeId) return;
-    const location = assembly?.solarSystem?.name || currentSystem || 'unknown';
-    fetch(`${API_BASE_URL}/tribe/presence`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Wallet-Address': walletAddress },
-      body: JSON.stringify({ tribe_id: tribeId, location, status: 'active' }),
-    }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletAddress, tribeId]);
 
   // Tribe board — SSE connection, routes events to the active board log entry
   useTribePosts(tribeId, (event: TribePostEvent) => {
@@ -433,88 +322,81 @@ export function TerminalUI() {
     );
   };
 
-  // Commands
-  const handleCommand = async (input: string): Promise<void> => {
-    const parts = input.trim().split(/\s+/);
-    const command = parts[0].toLowerCase();
+  // Feature flag guard — returns true and warns if feature is disabled
+  const isOff = (key: string): boolean => {
+    if (featureFlags[key] === false) {
+      addLog('Feature disabled. Enable in /admin.', 'warning');
+      return true;
+    }
+    return false;
+  };
 
-    // Returns true and prints a warning if the feature is disabled.
-    const isOff = (key: string): boolean => {
-      if (featureFlags[key] === false) {
-        addLog('Feature disabled. Enable in /admin.', 'warning');
-        return true;
-      }
-      return false;
-    };
-
-    if (command === '/recon') {
-      if (isOff('recon')) return;
-      const reconId = `recon-${Date.now()}`;
-      setLogs(prev => [...prev, { text: '', type: 'recon' as const, timestamp: Date.now(), id: reconId }]);
-      return;
-    } else if (command === '/admin') {
-      if (!canAccess(tier, 'canAdmin')) {
-        addLog('Admin access restricted to OWNER.', 'warning');
-        return;
-      }
-      const adminId = `admin-${Date.now()}`;
-      setLogs(prev => [...prev, {
-        text: '',
-        type: 'admin' as const,
-        timestamp: Date.now(),
-        id: adminId,
-        adminFeatureFlags: { ...featureFlags },
-        adminToolFlags: { ...toolFlags },
-      }]);
-      return;
-    } else if (command === '/connect') {
-      if (isConnected) {
-        addLog('Already connected.', 'warning');
-      } else {
-        handleConnect();
-        addLog('Initiating wallet connection...', 'command');
-      }
+  // --- Connection + help ---
+  const handleConnectionCommands = (command: string): void => {
+    if (command === '/connect') {
+      if (isConnected) { addLog('Already connected.', 'warning'); }
+      else { handleConnect(); addLog('Initiating wallet connection...', 'command'); }
     } else if (command === '/disconnect') {
-      if (!isConnected) {
-        addLog('Not connected.', 'warning');
-      } else {
-        handleDisconnect();
-        addLog('Wallet disconnected.', 'info');
-      }
-    } else if (command === '/system') {
+      if (!isConnected) { addLog('Not connected.', 'warning'); }
+      else { handleDisconnect(); addLog('Wallet disconnected.', 'info'); }
+    } else if (command === '/help') {
+      const on = (key: string) => featureFlags[key] !== false;
+      const helpGroups: HelpGroup[] = [
+        {
+          label: 'CONNECTION',
+          cmds: [{ text: '/connect', action: '/connect' }, { text: '/disconnect', action: '/disconnect' }],
+        },
+        {
+          label: 'NAVIGATION',
+          cmds: [
+            { text: '/system <name>', action: '/system' },
+            ...(on('recon') ? [{ text: '/recon', action: '/recon' }] : []),
+            ...(on('route') ? [{ text: '/route [dest]', action: '/route' }] : []),
+            { text: '/home', action: '/home' },
+          ],
+        },
+        ...(on('network') || on('nodes') || on('inventory') || on('assets') || on('signal') || on('upload') ? [{
+          label: 'INTEL',
+          cmds: [
+            ...(on('network')   ? [{ text: '/network',   action: '/network' }]   : []),
+            ...(on('nodes')     ? [{ text: '/nodes',     action: '/nodes' }]     : []),
+            ...(on('inventory') ? [{ text: '/inventory', action: '/inventory' }] : []),
+            ...(on('assets')    ? [{ text: '/assets',    action: '/assets' }]    : []),
+            ...(on('signal')    ? [{ text: '/signal',    action: '/signal' }]    : []),
+            ...(on('upload')    ? [{ text: '/upload',    action: '/upload' }]    : []),
+          ],
+        }] : []),
+        ...(on('watches') ? [{
+          label: 'WATCHER',
+          cmds: [{ text: '/watches', action: '/watches' }, { text: '/unwatch <rule_id>', action: '/unwatch' }],
+        }] : []),
+        ...(on('courier') || on('tribe') || on('board') ? [{
+          label: 'SOCIAL',
+          cmds: [
+            ...(on('courier') ? [{ text: '/courier', action: '/courier' }, { text: '/claim-courier <id>', action: '/claim-courier' }] : []),
+            ...(on('tribe')   ? [{ text: '/tribe',   action: '/tribe' }]   : []),
+            ...(on('board')   ? [{ text: '/board',   action: '/board' }]   : []),
+          ],
+        }] : []),
+        ...(canAccess(tier, 'canAdmin') ? [{ label: 'ADMIN', cmds: [{ text: '/admin', action: '/admin' }] }] : []),
+      ];
+      setLogs(prev => [...prev, { text: '', type: 'help', timestamp: Date.now(), helpGroups }]);
+      addLog('Anything else goes to HUGINN.', 'info');
+    }
+  };
+
+  // --- Navigation ---
+  const handleNavigationCommands = async (command: string, parts: string[]): Promise<void> => {
+    if (command === '/system') {
       const systemName = parts.slice(1).join(' ').trim();
-      if (!systemName) {
-        addLog('Usage: /system <system name>', 'warning');
-        return;
-      }
+      if (!systemName) { addLog('Usage: /system <system name>', 'warning'); return; }
       try {
         const res = await fetch(`${API_BASE_URL}/galaxy/system/${encodeURIComponent(systemName)}`);
-        if (res.status === 404) {
-          addLog(`Unknown system: "${systemName}"`, 'error');
-          return;
-        }
+        if (res.status === 404) { addLog(`Unknown system: "${systemName}"`, 'error'); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const canonical = data.name as string;
-        const en = enrichedAssembly;
-        const nn = en?.network_node;
-        displayToolOutput('baseline', {
-          crudVersion: 'HUGINN - Version',
-          signature: walletAddress || '[REDACTED]',
-          shellName: visitorName || '[REDACTED]',
-          accessLevel: tier,
-          assemblySignature: assemblyId || '[REDACTED]',
-          location: canonical,
-          ownerCharacterName: en?.owner?.character_name,
-          ownerTribeId: en?.owner?.tribe_id ? String(en.owner.tribe_id) : undefined,
-          ownerTribeName: en?.owner?.tribe_name || undefined,
-          networkNodeName: nn?.name,
-          fuelPercent: nn ? `${nn.fuel_percent.toFixed(0)}%` : undefined,
-          fuelQuantity: nn?.fuel_quantity,
-          fuelEffectiveMax: nn?.fuel_effective_max,
-          fuelDaysRemaining: nn ? `${(nn.fuel_hours_remaining / 24).toFixed(1)}d` : undefined,
-          fuelBurning: nn ? nn.fuel_hours_remaining > 0 : undefined,
-        });
+        displayToolOutput('baseline', buildBaselineData(walletAddress, assemblyId, visitorName, tier, canonical, enrichedAssembly));
         setCurrentSystem(canonical);
         addLog(`Location set: ${canonical}`, 'info');
         if (assemblyId) {
@@ -525,102 +407,17 @@ export function TerminalUI() {
             body: JSON.stringify({ system_name: canonical }),
           }).catch((e) => console.warn('Failed to persist system to profile:', e));
         }
-      } catch (err) {
-        addLog(`System lookup failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
-    } else if (command === '/network') {
-      if (isOff('network')) return;
-      if (!networkData) {
-        addLog('Network data not available.', 'warning');
-      } else {
-        displayToolOutput('network_map', {
-          nodeId:              networkData.id,
-          nodeName:            networkData.name,
-          nodeStatus:          networkData.status,
-          currentAssemblyId:   assemblyId || '',
-          currentAssemblyName: enrichedAssembly?.name ?? assemblyId?.slice(0, 10) ?? '',
-          fuel: {
-            quantity:           networkData.fuel.quantity,
-            maxCapacity:        networkData.fuel.max_capacity,
-            fuelPercent:        networkData.fuel.fuel_percent,
-            hoursRemaining:     networkData.fuel.hours_remaining,
-            burnRateUnitsPerHr: networkData.fuel.burn_rate_units_per_hr,
-            isBurning:          networkData.fuel.is_burning,
-          },
-          energy: {
-            currentEnergyProduction: networkData.energy.current_energy_production,
-            maxEnergyProduction:     networkData.energy.max_energy_production,
-            totalReservedEnergy:     networkData.energy.total_reserved_energy,
-            energyPercent:           networkData.energy.energy_percent,
-          },
-          connectedAssemblies: (networkData.connected_assemblies ?? []).map(a => ({
-            id:           a.id,
-            name:         a.name,
-            assemblyType: a.assembly_type,
-            status:       a.status,
-            typeId:       a.type_id,
-            key:          a.key,
-            groupName:    a.group_name,
-            categoryName: a.category_name,
-          })),
-          truncated: networkData.truncated,
-        });
-        addLog('Network map loaded.', 'info');
-      }
-    } else if (command === '/nodes') {
-      if (isOff('nodes')) return;
-      try {
-        addLog('Scanning for network nodes...', 'info');
-        const t = (sessionTenant || tenant);
-        const res = await fetch(`${API_BASE_URL}/entity/nodes?tenant=${t}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const raw = await res.json();
-        const nodes = (raw.nodes ?? []).map((n: any) => ({
-          id:              n.id,
-          name:            n.name,
-          status:          n.status,
-          fuelPercent:     n.fuel_percent,
-          hoursRemaining:  n.hours_remaining,
-          isBurning:       n.is_burning,
-          connectedCount:  n.connected_count,
-          systemName:      n.system_name,
-        }));
-        displayToolOutput('nodes_list', { nodes, count: nodes.length });
-        addLog(`${nodes.length} network node${nodes.length !== 1 ? 's' : ''} found.`, 'info');
-      } catch (err) {
-        addLog(`Nodes scan failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
-    } else if (command === '/inventory') {
-      if (isOff('inventory')) return;
-      if (!inventoryData) {
-        addLog('Inventory data not available. Structure may not be a SSU.', 'warning');
-      } else {
-        displayToolOutput('inventory', inventoryData);
-        addLog('Inventory loaded.', 'info');
-      }
-    } else if (command === '/gate') {
-      if (!enrichedAssembly || enrichedAssembly.assembly_type !== 'SmartGate') {
-        addLog('Not a SmartGate assembly.', 'warning');
-      } else {
-        displayToolOutput('gate_info', {
-          gateId:          enrichedAssembly.id,
-          gateName:        enrichedAssembly.name,
-          gateStatus:      enrichedAssembly.status,
-          destinationGate: enrichedAssembly.destination_gate
-            ? {
-                id:     enrichedAssembly.destination_gate.id,
-                name:   enrichedAssembly.destination_gate.name ?? null,
-                status: enrichedAssembly.destination_gate.status ?? null,
-              }
-            : null,
-        });
-        addLog('Gate info loaded.', 'info');
-      }
+      } catch (err) { addLog(`System lookup failed: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+    } else if (command === '/home') {
+      displayToolOutput('baseline', buildBaselineData(
+        walletAddress, assemblyId, visitorName, tier,
+        assembly?.solarSystem?.name || currentSystem || '[REDACTED]',
+        enrichedAssembly,
+      ));
     } else if (command === '/route') {
       const destination = parts.slice(1).join(' ').trim();
       if (!destination) {
-        const formId = `tripcalc-${Date.now()}`;
-        setLogs(prev => [...prev, { text: '', type: 'form', timestamp: Date.now(), id: formId }]);
+        setLogs(prev => [...prev, { text: '', type: 'form', timestamp: Date.now(), id: `tripcalc-${Date.now()}` }]);
         return;
       }
       try {
@@ -628,10 +425,7 @@ export function TerminalUI() {
         const res = await fetch(`${API_BASE_URL}/route`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            destination,
-            origin: currentSystem || undefined,
-          }),
+          body: JSON.stringify({ destination, origin: currentSystem || undefined }),
         });
         if (res.status === 404 || res.status === 400) {
           const err = await res.json();
@@ -642,338 +436,224 @@ export function TerminalUI() {
         const routeData = await res.json();
         displayToolOutput('route_planned', routeData);
         addLog(`Route: ${routeData.jumps} jump${routeData.jumps !== 1 ? 's' : ''} to ${destination}.`, 'info');
-      } catch (err) {
-        addLog(`Route failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
+      } catch (err) { addLog(`Route failed: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
     } else if (command === '/intel') {
       const target = parts.slice(1).join(' ').trim() || currentSystem;
-      if (!target) {
-        addLog('Usage: /intel <system name>  (or set location with /system first)', 'warning');
-        return;
-      }
+      if (!target) { addLog('Usage: /intel <system name>  (or set location with /system first)', 'warning'); return; }
       try {
         addLog(`Scanning ${target}...`, 'info');
         const res = await fetch(`${API_BASE_URL}/galaxy/system/${encodeURIComponent(target)}/intel`);
-        if (res.status === 404) {
-          addLog(`Unknown system: "${target}"`, 'error');
-          return;
-        }
+        if (res.status === 404) { addLog(`Unknown system: "${target}"`, 'error'); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const intelData = await res.json();
-        displayToolOutput('system_intel', intelData);
+        displayToolOutput('system_intel', await res.json());
         addLog('System intel loaded.', 'info');
-      } catch (err) {
-        addLog(`Intel scan failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
+      } catch (err) { addLog(`Intel scan failed: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+    }
+  };
+
+  // --- Network / intel panels ---
+  const handleNetworkCommands = async (command: string): Promise<void> => {
+    if (command === '/network') {
+      if (isOff('network')) return;
+      if (!networkData) { addLog('Network data not available.', 'warning'); return; }
+      displayToolOutput('network_map', {
+        nodeId:              networkData.id,
+        nodeName:            networkData.name,
+        nodeStatus:          networkData.status,
+        currentAssemblyId:   assemblyId || '',
+        currentAssemblyName: enrichedAssembly?.name ?? assemblyId?.slice(0, 10) ?? '',
+        fuel: {
+          quantity:           networkData.fuel.quantity,
+          maxCapacity:        networkData.fuel.max_capacity,
+          fuelPercent:        networkData.fuel.fuel_percent,
+          hoursRemaining:     networkData.fuel.hours_remaining,
+          burnRateUnitsPerHr: networkData.fuel.burn_rate_units_per_hr,
+          isBurning:          networkData.fuel.is_burning,
+        },
+        energy: {
+          currentEnergyProduction: networkData.energy.current_energy_production,
+          maxEnergyProduction:     networkData.energy.max_energy_production,
+          totalReservedEnergy:     networkData.energy.total_reserved_energy,
+          energyPercent:           networkData.energy.energy_percent,
+        },
+        connectedAssemblies: (networkData.connected_assemblies ?? []).map(a => ({
+          id: a.id, name: a.name, assemblyType: a.assembly_type, status: a.status,
+          typeId: a.type_id, key: a.key, groupName: a.group_name, categoryName: a.category_name,
+        })),
+        truncated: networkData.truncated,
+      });
+      addLog('Network map loaded.', 'info');
+    } else if (command === '/nodes') {
+      if (isOff('nodes')) return;
+      try {
+        addLog('Scanning for network nodes...', 'info');
+        const res = await fetch(`${API_BASE_URL}/entity/nodes?tenant=${sessionTenant || tenant}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const raw = await res.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodes = (raw.nodes ?? []).map((n: any) => ({
+          id: n.id, name: n.name, status: n.status, fuelPercent: n.fuel_percent,
+          hoursRemaining: n.hours_remaining, isBurning: n.is_burning,
+          connectedCount: n.connected_count, systemName: n.system_name,
+        }));
+        displayToolOutput('nodes_list', { nodes, count: nodes.length });
+        addLog(`${nodes.length} network node${nodes.length !== 1 ? 's' : ''} found.`, 'info');
+      } catch (err) { addLog(`Nodes scan failed: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+    } else if (command === '/inventory') {
+      if (isOff('inventory')) return;
+      if (!inventoryData) { addLog('Inventory data not available. Structure may not be a SSU.', 'warning'); return; }
+      displayToolOutput('inventory', inventoryData);
+      addLog('Inventory loaded.', 'info');
     } else if (command === '/assets') {
       if (isOff('assets')) return;
-      if (!characterAssemblies) {
-        addLog('Asset data not available. Wallet may not be connected.', 'warning');
-      } else {
-        displayToolOutput('asset_map', {
-          characterName: characterAssemblies.character_name,
-          assemblies:    characterAssemblies.assemblies,
-        });
-        addLog('Asset map loaded.', 'info');
-      }
-    } else if (command === '/home') {
-      // Return to baseline panel
-      const en = enrichedAssembly;
-      const nn = en?.network_node;
-      displayToolOutput('baseline', {
-        crudVersion: 'HUGINN - Version',
-        signature:   walletAddress || '[REDACTED]',
-        shellName:   visitorName || '[REDACTED]',
-        accessLevel: tier,
-        assemblySignature: assemblyId || '[REDACTED]',
-        location:    assembly?.solarSystem?.name || currentSystem || '[REDACTED]',
-        ownerCharacterName: en?.owner?.character_name,
-        ownerTribeId: en?.owner?.tribe_id ? String(en.owner.tribe_id) : undefined,
-        ownerTribeName: en?.owner?.tribe_name || undefined,
-        networkNodeName: nn?.name,
-        fuelPercent: nn ? `${nn.fuel_percent.toFixed(0)}%` : undefined,
-        fuelQuantity: nn?.fuel_quantity,
-        fuelEffectiveMax: nn?.fuel_effective_max,
-        fuelDaysRemaining: nn ? `${(nn.fuel_hours_remaining / 24).toFixed(1)}d` : undefined,
-        fuelBurning: nn ? nn.fuel_hours_remaining > 0 : undefined,
-      });
+      if (!characterAssemblies) { addLog('Asset data not available. Wallet may not be connected.', 'warning'); return; }
+      displayToolOutput('asset_map', { characterName: characterAssemblies.character_name, assemblies: characterAssemblies.assemblies });
+      addLog('Asset map loaded.', 'info');
     } else if (command === '/signal') {
       if (isOff('signal')) return;
-      if (!canAccess(tier, 'canSignal')) {
-        addLog('Signal access restricted to OWNER and TRIBE.', 'warning');
-        return;
-      }
-      if (!walletAddress || !assemblyId) {
-        addLog('Wallet not connected.', 'warning');
-        return;
-      }
+      if (!canAccess(tier, 'canSignal')) { addLog('Signal access restricted to OWNER and TRIBE.', 'warning'); return; }
+      if (!walletAddress || !assemblyId) { addLog('Wallet not connected.', 'warning'); return; }
       try {
         addLog('Receiving signal...', 'info');
         const res = await fetch(
           `${API_BASE_URL}/news/latest?assembly_id=${encodeURIComponent(assemblyId)}`,
           { headers: { 'X-Wallet-Address': walletAddress } },
         );
-        if (res.status === 403) {
-          addLog('Signal access denied.', 'error');
-          return;
-        }
-        if (res.status === 404) {
-          addLog('[ NO TRANSMISSION ON FILE ]', 'info');
-          return;
-        }
+        if (res.status === 403) { addLog('Signal access denied.', 'error'); return; }
+        if (res.status === 404) { addLog('[ NO TRANSMISSION ON FILE ]', 'info'); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json() as HuginnNewsData;
-        displayToolOutput('huginn_news', data);
+        displayToolOutput('huginn_news', await res.json() as HuginnNewsData);
         addLog('Signal received.', 'info');
-      } catch (err) {
-        addLog(`Signal failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
-    } else if (command === '/help') {
-      const on = (key: string) => featureFlags[key] !== false;
-      const helpGroups: HelpGroup[] = [
-        {
-          label: 'CONNECTION',
-          cmds: [
-            { text: '/connect',     action: '/connect' },
-            { text: '/disconnect',  action: '/disconnect' },
-          ],
-        },
-        {
-          label: 'NAVIGATION',
-          cmds: [
-            { text: '/system <name>', action: '/system' },
-            ...(on('recon')  ? [{ text: '/recon',          action: '/recon' }] : []),
-            ...(on('route')  ? [{ text: '/route [dest]',   action: '/route' }] : []),
-            { text: '/home',          action: '/home' },
-          ],
-        },
-        ...(on('network') || on('nodes') || on('inventory') || on('assets') || on('signal') || on('upload') ? [{
-          label: 'INTEL',
-          cmds: [
-            ...(on('network')   ? [{ text: '/network',      action: '/network' }] : []),
-            ...(on('nodes')     ? [{ text: '/nodes',         action: '/nodes' }] : []),
-            ...(on('inventory') ? [{ text: '/inventory',     action: '/inventory' }] : []),
-            ...(on('assets')    ? [{ text: '/assets',        action: '/assets' }] : []),
-            ...(on('signal')    ? [{ text: '/signal',        action: '/signal' }] : []),
-            ...(on('upload')    ? [{ text: '/upload',        action: '/upload' }] : []),
-          ],
-        }] : []),
-        ...(on('watches') ? [{
-          label: 'WATCHER',
-          cmds: [
-            { text: '/watches',           action: '/watches' },
-            { text: '/unwatch <rule_id>', action: '/unwatch' },
-          ],
-        }] : []),
-        ...(on('courier') || on('tribe') || on('board') ? [{
-          label: 'SOCIAL',
-          cmds: [
-            ...(on('courier') ? [
-              { text: '/courier',            action: '/courier' },
-              { text: '/claim-courier <id>', action: '/claim-courier' },
-            ] : []),
-            ...(on('tribe')   ? [{ text: '/tribe',           action: '/tribe' }] : []),
-            ...(on('board')   ? [{ text: '/board',           action: '/board' }] : []),
-          ],
-        }] : []),
-        ...(canAccess(tier, 'canAdmin') ? [{
-          label: 'ADMIN',
-          cmds: [{ text: '/admin', action: '/admin' }],
-        }] : []),
-      ];
-      setLogs((prev) => [...prev, { text: '', type: 'help', timestamp: Date.now(), helpGroups }]);
-      addLog('Anything else goes to HUGINN.', 'info');
-    } else if (command === '/watches') {
+      } catch (err) { addLog(`Signal failed: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+    }
+  };
+
+  // --- Watcher ---
+  const handleWatcherCommands = async (command: string, parts: string[]): Promise<void> => {
+    if (command === '/watches') {
       if (isOff('watches')) return;
-      if (!walletAddress) {
-        addLog('Wallet not connected.', 'warning');
-        return;
-      }
+      if (!walletAddress) { addLog('Wallet not connected.', 'warning'); return; }
       try {
-        const res = await fetch(`${API_BASE_URL}/watcher/${walletAddress}`, {
-          headers: { 'X-Wallet-Address': walletAddress },
-        });
+        const res = await fetch(`${API_BASE_URL}/watcher/${walletAddress}`, { headers: { 'X-Wallet-Address': walletAddress } });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const rules = (data.rules as WatchRule[]).filter(r => r.active);
-        if (rules.length === 0) {
-          addLog('No active watch rules. Use /watch <ssu_id> to add one.', 'info');
-        } else {
-          addLog(`Watch rules (${rules.length}):`, 'info');
-          const t = Date.now();
-          rules.forEach(r => {
-            const filter = r.item_filter ? ` [${r.item_filter}]` : ' [all items]';
-            const name = r.ssu_name || r.ssu_id.slice(0, 16);
-            const checked = r.last_checked ? ` checked ${r.last_checked.slice(11, 16)}z` : '';
-            setLogs(prev => [...prev, {
-              text: `  ${r.id.slice(0, 8)}  ${name}${filter}  threshold=${r.threshold}${checked}`,
-              type: 'command' as const,
-              timestamp: t,
-              action: `/unwatch ${r.id}`,
-            }]);
-          });
-        }
-      } catch (err) {
-        addLog(`Failed to load watches: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
+        const rules = ((await res.json()).rules as WatchRule[]).filter(r => r.active);
+        if (rules.length === 0) { addLog('No active watch rules. Use /watch <ssu_id> to add one.', 'info'); return; }
+        addLog(`Watch rules (${rules.length}):`, 'info');
+        const t = Date.now();
+        rules.forEach(r => {
+          const filter = r.item_filter ? ` [${r.item_filter}]` : ' [all items]';
+          const name = r.ssu_name || r.ssu_id.slice(0, 16);
+          const checked = r.last_checked ? ` checked ${r.last_checked.slice(11, 16)}z` : '';
+          setLogs(prev => [...prev, { text: `  ${r.id.slice(0, 8)}  ${name}${filter}  threshold=${r.threshold}${checked}`, type: 'command' as const, timestamp: t, action: `/unwatch ${r.id}` }]);
+        });
+      } catch (err) { addLog(`Failed to load watches: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
     } else if (command === '/unwatch') {
       if (isOff('watches')) return;
       const ruleId = parts[1];
-      if (!ruleId) {
-        addLog('Usage: /unwatch <rule_id>', 'warning');
-        return;
-      }
-      if (!walletAddress) {
-        addLog('Wallet not connected.', 'warning');
-        return;
-      }
+      if (!ruleId) { addLog('Usage: /unwatch <rule_id>', 'warning'); return; }
+      if (!walletAddress) { addLog('Wallet not connected.', 'warning'); return; }
       try {
-        const res = await fetch(`${API_BASE_URL}/watcher/${walletAddress}/${ruleId}`, {
-          method: 'DELETE',
-          headers: { 'X-Wallet-Address': walletAddress },
-        });
-        if (res.status === 404) {
-          addLog(`Rule not found: ${ruleId}`, 'error');
-          return;
-        }
+        const res = await fetch(`${API_BASE_URL}/watcher/${walletAddress}/${ruleId}`, { method: 'DELETE', headers: { 'X-Wallet-Address': walletAddress } });
+        if (res.status === 404) { addLog(`Rule not found: ${ruleId}`, 'error'); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         addLog(`Watch rule removed: ${ruleId.slice(0, 8)}`, 'info');
-      } catch (err) {
-        addLog(`Unwatch failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
-    } else if (command === '/courier') {
+      } catch (err) { addLog(`Unwatch failed: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+    }
+  };
+
+  // --- Social ---
+  const handleSocialCommands = async (command: string, parts: string[]): Promise<void> => {
+    if (command === '/courier') {
       if (isOff('courier')) return;
       try {
         const res = await fetch(`${API_BASE_URL}/courier`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const contracts = (data.contracts as CourierContract[]);
-        if (contracts.length === 0) {
-          addLog('No active courier contracts. Ask HUGINN to post one.', 'info');
-        } else {
-          addLog(`Courier contracts (${contracts.length}):`, 'info');
-          const t = Date.now();
-          contracts.forEach(c => {
-            const status = c.status.replace('_', ' ').toUpperCase();
-            const claimer = c.claimed_by_name ? `  claimer: ${c.claimed_by_name}` : '';
-            setLogs(prev => [...prev, {
-              text: `  ${c.id.slice(0, 8)}  [${status}]  ${c.item_description}  ${c.from_location} → ${c.to_location}  reward: ${c.reward_description}  by ${c.poster_name}${claimer}`,
-              type: 'command' as const,
-              timestamp: t,
-              action: c.status === 'open' ? `/claim-courier ${c.id}` : undefined,
-            }]);
-          });
-        }
-      } catch (err) {
-        addLog(`Failed to load courier board: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
+        const contracts = (await res.json()).contracts as CourierContract[];
+        if (contracts.length === 0) { addLog('No active courier contracts. Ask HUGINN to post one.', 'info'); return; }
+        addLog(`Courier contracts (${contracts.length}):`, 'info');
+        const t = Date.now();
+        contracts.forEach(c => {
+          const status = c.status.replace('_', ' ').toUpperCase();
+          const claimer = c.claimed_by_name ? `  claimer: ${c.claimed_by_name}` : '';
+          setLogs(prev => [...prev, { text: `  ${c.id.slice(0, 8)}  [${status}]  ${c.item_description}  ${c.from_location} → ${c.to_location}  reward: ${c.reward_description}  by ${c.poster_name}${claimer}`, type: 'command' as const, timestamp: t, action: c.status === 'open' ? `/claim-courier ${c.id}` : undefined }]);
+        });
+      } catch (err) { addLog(`Failed to load courier board: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
     } else if (command === '/claim-courier') {
       const contractId = parts[1];
-      if (!contractId) {
-        addLog('Usage: /claim-courier <contract_id>', 'warning');
-        return;
-      }
-      if (!walletAddress) {
-        addLog('Wallet not connected.', 'warning');
-        return;
-      }
+      if (!contractId) { addLog('Usage: /claim-courier <contract_id>', 'warning'); return; }
+      if (!walletAddress) { addLog('Wallet not connected.', 'warning'); return; }
       try {
-        const res = await fetch(`${API_BASE_URL}/courier/${contractId}/claim`, {
-          method: 'PATCH',
-          headers: { 'X-Wallet-Address': walletAddress },
-        });
-        if (res.status === 404) {
-          addLog(`Contract not found: ${contractId}`, 'error');
-          return;
-        }
-        if (res.status === 409) {
-          const err = await res.json();
-          addLog(`Cannot claim: ${err.detail}`, 'error');
-          return;
-        }
+        const res = await fetch(`${API_BASE_URL}/courier/${contractId}/claim`, { method: 'PATCH', headers: { 'X-Wallet-Address': walletAddress } });
+        if (res.status === 404) { addLog(`Contract not found: ${contractId}`, 'error'); return; }
+        if (res.status === 409) { addLog(`Cannot claim: ${(await res.json()).detail}`, 'error'); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const c = data.contract as CourierContract;
+        const c = (await res.json()).contract as CourierContract;
         addLog(`Contract claimed: ${c.id.slice(0, 8)}  ${c.item_description}  ${c.from_location} → ${c.to_location}  reward: ${c.reward_description}`, 'info');
-      } catch (err) {
-        addLog(`Claim failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
+      } catch (err) { addLog(`Claim failed: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
     } else if (command === '/tribe') {
       if (isOff('tribe')) return;
-      if (!walletAddress) {
-        addLog('Wallet not connected.', 'warning');
-        return;
-      }
-      if (!tribeId) {
-        addLog('No tribe affiliation found. Your character may not belong to a tribe, or tribe data is still loading.', 'warning');
-        return;
-      }
+      if (!walletAddress) { addLog('Wallet not connected.', 'warning'); return; }
+      if (!tribeId) { addLog('No tribe affiliation found. Your character may not belong to a tribe, or tribe data is still loading.', 'warning'); return; }
       try {
         const res = await fetch(`${API_BASE_URL}/tribe/${tribeId}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const members = data.members as TribePresenceMember[];
+        const members = (await res.json()).members as TribePresenceMember[];
         const TRIBE_NAMES: Record<number, string> = { 1000167: 'WOLF' };
         const tribeName = TRIBE_NAMES[tribeId] ?? `Tribe ${tribeId}`;
-        if (members.length === 0) {
-          addLog(`${tribeName} — no members currently online.`, 'info');
-        } else {
-          addLog(`${tribeName} — ${members.length} online:`, 'info');
-          const t = Date.now();
-          members.forEach(m => {
-            setLogs(prev => [...prev, {
-              text: `  ${m.character_name.padEnd(20)} [${m.status}]  ${m.location}  ${m.last_ping.slice(11, 16)}z`,
-              type: 'command' as const,
-              timestamp: t,
-            }]);
-          });
-        }
-      } catch (err) {
-        addLog(`Failed to load tribe board: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
+        if (members.length === 0) { addLog(`${tribeName} — no members currently online.`, 'info'); return; }
+        addLog(`${tribeName} — ${members.length} online:`, 'info');
+        const t = Date.now();
+        members.forEach(m => setLogs(prev => [...prev, { text: `  ${m.character_name.padEnd(20)} [${m.status}]  ${m.location}  ${m.last_ping.slice(11, 16)}z`, type: 'command' as const, timestamp: t }]));
+      } catch (err) { addLog(`Failed to load tribe board: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
     } else if (command === '/board') {
       if (isOff('board')) return;
-      if (!walletAddress) {
-        addLog('Wallet not connected.', 'warning');
-        return;
-      }
-      if (!tribeId) {
-        addLog('No tribe affiliation found. Your character may not belong to a tribe, or tribe data is still loading.', 'warning');
-        return;
-      }
+      if (!walletAddress) { addLog('Wallet not connected.', 'warning'); return; }
+      if (!tribeId) { addLog('No tribe affiliation found. Your character may not belong to a tribe, or tribe data is still loading.', 'warning'); return; }
       try {
         const res = await fetch(`${API_BASE_URL}/tribe-posts/${tribeId}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
         const boardId = `board-${Date.now()}`;
         activeBoardLogIdRef.current = boardId;
-        setLogs(prev => [...prev, {
-          text: '',
-          type: 'board' as const,
-          timestamp: Date.now(),
-          id: boardId,
-          boardPosts: data.posts as TribePost[],
-          boardConfirmDeleteId: null,
-          boardShowPostForm: false,
-          boardPostDraft: '',
-        }]);
-      } catch (err) {
-        addLog(`Failed to load board: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
+        setLogs(prev => [...prev, { text: '', type: 'board' as const, timestamp: Date.now(), id: boardId, boardPosts: (await res.json()).posts as TribePost[], boardConfirmDeleteId: null, boardShowPostForm: false, boardPostDraft: '' }]);
+      } catch (err) { addLog(`Failed to load board: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+    }
+  };
+
+  // --- Admin / util ---
+  const handleAdminCommands = (command: string): void => {
+    if (command === '/admin') {
+      if (!canAccess(tier, 'canAdmin')) { addLog('Admin access restricted to OWNER.', 'warning'); return; }
+      setLogs(prev => [...prev, { text: '', type: 'admin' as const, timestamp: Date.now(), id: `admin-${Date.now()}`, adminFeatureFlags: { ...featureFlags }, adminToolFlags: { ...toolFlags } }]);
+    } else if (command === '/recon') {
+      if (isOff('recon')) return;
+      setLogs(prev => [...prev, { text: '', type: 'recon' as const, timestamp: Date.now(), id: `recon-${Date.now()}` }]);
     } else if (command === '/upload') {
-      const uploadId = `upload-${Date.now()}`;
-      setLogs(prev => [...prev, {
-        text: '',
-        type: 'upload' as const,
-        timestamp: Date.now(),
-        id: uploadId,
-      }]);
+      setLogs(prev => [...prev, { text: '', type: 'upload' as const, timestamp: Date.now(), id: `upload-${Date.now()}` }]);
     } else if (command === '/debug') {
       setDebugMode(true);
       addLog('Debug mode active. Session will be dumped after each message.', 'info');
-    } else {
-      addLog(`Unknown command: ${command}`, 'error');
     }
+  };
+
+  // --- Dispatcher ---
+  const handleCommand = async (input: string): Promise<void> => {
+    const parts = input.trim().split(/\s+/);
+    const command = parts[0].toLowerCase();
+
+    if (['/connect', '/disconnect', '/help'].includes(command))
+      return handleConnectionCommands(command);
+    if (['/system', '/home', '/route', '/intel'].includes(command))
+      return handleNavigationCommands(command, parts);
+    if (['/network', '/nodes', '/inventory', '/assets', '/signal'].includes(command))
+      return handleNetworkCommands(command);
+    if (['/watches', '/unwatch'].includes(command))
+      return handleWatcherCommands(command, parts);
+    if (['/courier', '/claim-courier', '/tribe', '/board'].includes(command))
+      return handleSocialCommands(command, parts);
+    if (['/admin', '/recon', '/upload', '/debug'].includes(command))
+      return handleAdminCommands(command);
+
+    addLog(`Unknown command: ${command}`, 'error');
   };
 
   const printRouteToChat = (route: RouteData): void => {

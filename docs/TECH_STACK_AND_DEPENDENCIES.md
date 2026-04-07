@@ -11,7 +11,7 @@ This document covers what the project uses, what versions are pinned, and — wh
 | `fastapi` | 0.115.0 | HTTP framework. Async, auto-generates OpenAPI, straightforward route registration. |
 | `uvicorn[standard]` | 0.30.0 | ASGI server. Runs FastAPI. `[standard]` adds websocket and HTTP/2 support. |
 | `httpx` | 0.27.0 | Async HTTP client. Used for all outbound calls: World API, Sui RPC. |
-| `anthropic` | 0.34.0 | Official Anthropic SDK. Streaming tool-use calls to Claude API. |
+| `anthropic` | 0.34.0 ⚠️ | Official Anthropic SDK. Streaming tool-use calls to Claude API. **OUTDATED: latest is 0.89.0.** `claude-sonnet-4-6` typed constant added in 0.80.0 — currently works only as a plain string. No breaking changes to streaming tool-use in upgrade path. Safe to upgrade. |
 | `python-dotenv` | 1.0.0 | Loads `.env` file into environment at startup. |
 | `pyjwt` | 2.9.0 | JWT decoding. World API requires a JWT for player location endpoint. |
 | `cryptography` | ≥42.0.0 | JWT signature verification dependency. |

@@ -15,7 +15,7 @@
 /
 ├── main.py                          App entry point. Startup sequence, all routers registered here.
 ├── CLAUDE.md                        Claude Code project instructions (AI assistant rules).
-├── DESIGN.md                        Product philosophy and north star for HUGINN.
+├── PHILOSOPHY.md                    Product philosophy, north star, and engineering principles (Musk's Algorithm).
 ├── requirements.txt                 Python dependencies.
 ├── .env.example                     Environment variable template (copy to .env).
 ├── build_universe.py                One-time script: builds Galaxy DB from World API + starmap data.
@@ -68,10 +68,23 @@
 │   ├── ship_profile.py              Ship + fuel catalog; jump range and fuel budget calculation.
 │   ├── config.py                    Network config; maps DEPLOYMENT_ENV to URLs and package IDs.
 │   ├── schemas.py                   Shared Pydantic models.
+│   ├── eve_types.py                 Pydantic models for EVE Frontier game data types (World API, blockchain, derived).
+│   ├── utils.py                     Shared FastAPI utilities: require_token header auth for internal endpoints.
+│   ├── prompt_loader.py             Reads prompt templates from prompts/ (load_prompt, load_tool_prompts).
+│   ├── tier_capabilities.py         Single source of truth for per-tier access: tools list, nav items, permissions. Primary Claude tool gate.
+│   ├── token_manager.py             RSA key management and JWT signing/verification for server-issued tokens.
+│   ├── vouch_store.py               Tier override store; OWNER can grant VETTED/TRIBE access to specific addresses.
+│   ├── admin_config_store.py        Per-environment admin config persistence (admin_config.json).
+│   ├── location_index.py            Indexes LocationRevealedEvent from chain; maps assembly_id to coordinates; persisted per-env.
+│   ├── build_calculator.py          Pure build calculator; given inventory and NetworkNode status, computes buildable structures and shortfalls.
+│   ├── radius_search.py             Spatial query: structures within a given light-year radius from a reference system.
+│   ├── type_names.py                Resolves EVE Frontier type IDs to human-readable names; loaded once from data/type_names_all.json.
+│   ├── courier_store.py             Courier contract persistence; fcntl-locked read-modify-write on data/courier/contracts.json.
+│   ├── tribe_board.py               In-memory tribe presence board; ephemeral per-process, 5-min TTL expiry.
+│   ├── tribe_posts.py               Tribe post board persistence; per-tribe rolling cap of 200 posts, SSE fan-out.
 │   ├── system_knowledge.py          Global system→enemy/ore knowledge graph (in progress).
-│   ├── tx_builders/                 Unsigned Sui PTB construction (future admin UI).
-│   │   └── gate_builder.py          Gate link/unlink transaction builder.
-│   └── tools/                       AI tool implementation modules (threat, route, memory, etc.).
+│   └── tx_builders/                 Unsigned Sui PTB construction (future admin UI).
+│       └── gate_builder.py          Gate link/unlink transaction builder.
 │
 ├── frontend/                        React TypeScript app.
 │   ├── src/

@@ -72,9 +72,9 @@ Before writing any fetch, query, GraphQL call, parser, formatter, or data transf
 
 ## Documentation
 
-**Start here:** `/docs/SETUP.md`
+**Start here:** `/docs/NAVIGATION.md` — maps every question to the right document.
 
-For architecture: `/docs/ARCHITECTURE.md`. For data schemas: `/docs/DATA_REFERENCE.md`.
+For architecture: `/docs/ARCHITECTURE.md`. For data schemas: `/docs/DATA_REFERENCE.md`. For engineering philosophy: `/PHILOSOPHY.md`.
 
 ---
 

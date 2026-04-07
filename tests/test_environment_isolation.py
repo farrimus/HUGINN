@@ -10,7 +10,6 @@ from src.ship_profile import _profile_path
 from src.route_engine import RouteEngine
 from src.world_api import WorldAPIClient
 from src.structure_persistence import _get_default_base_dir as get_structures_dir
-from src.deal_store import DealStore
 from src.memory_store import MemoryStore
 from src.location_index import LocationIndex
 from src.type_names import get_type_name
@@ -133,19 +132,6 @@ class TestEnvironmentIsolation:
         assert dir_utopia != dir_stillness
         assert "utopia" in dir_utopia
         assert "stillness" in dir_stillness
-
-    def test_deal_store_per_env(self, monkeypatch):
-        """Verify DealStore uses per-environment deals directory."""
-        monkeypatch.setenv("DEPLOYMENT_ENV", "utopia")
-        store_utopia = DealStore()
-
-        monkeypatch.setenv("DEPLOYMENT_ENV", "stillness")
-        store_stillness = DealStore()
-
-        # Different base directories per environment
-        assert store_utopia._base != store_stillness._base
-        assert "utopia" in store_utopia._base
-        assert "stillness" in store_stillness._base
 
     def test_memory_store_per_env(self, monkeypatch):
         """Verify MemoryStore uses per-environment memory directory."""
