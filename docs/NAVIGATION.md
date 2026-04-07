@@ -16,6 +16,8 @@ Use this file to find the right document for a given question. One document per 
 | What is the access control model? | `docs/ARCHITECTURE.md` → Access Control Model |
 | How does the blockchain integration work? | `docs/ARCHITECTURE.md` → Blockchain Role |
 | Why was X designed this way? | `docs/KEY_CONCEPTS_AND_DECISIONS.md` |
+| How does HUGINN's tool output formatting work? | `docs/ARCHITECTURE.md` → Prompt Layer |
+| Where do I edit tool descriptions or response style? | `prompts/tools.yaml` — see `docs/ARCHITECTURE.md` → Prompt Layer |
 | What are the Python/frontend dependencies and why? | `docs/TECH_STACK_AND_DEPENDENCIES.md` |
 | What is the dapp-kit patch and why does it exist? | `docs/TECH_STACK_AND_DEPENDENCIES.md` → dapp-kit patch |
 | What does dapp-kit own vs backend? | `docs/DAPP_KIT_BOUNDARY.md` + `CLAUDE.md` |

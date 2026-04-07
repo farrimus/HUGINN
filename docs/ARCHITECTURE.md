@@ -97,6 +97,45 @@ Registered in `src/ai_tools.py`. Claude may call these mid-conversation:
 
 ---
 
+## Prompt Layer
+
+All prompt content lives in `prompts/`. Two files, separate jobs:
+
+| File | Purpose |
+|------|---------|
+| `prompts/companion.md` | HUGINN system prompt: persona, tier enforcement, tool discipline, output style. Passed as `system` to the Claude API on every request. |
+| `prompts/tools.yaml` | Per-tool prompt fragments. Loaded live on each request. Falls back to hardcoded values if a tool section is absent. |
+
+### tools.yaml fields
+
+Each tool entry in `tools.yaml` may have up to four fields:
+
+| Field | Where it goes | Effect |
+|-------|--------------|--------|
+| `description` | Claude's tool schema | Controls when Claude decides to call this tool. Overrides the hardcoded description in `ai_tools.py`. |
+| `response_guidance` | Prepended to the tool result | Injected at `companion.py:688–690` before the result is sent back to Claude. Shapes how Claude formats and uses the tool output. This is the output enrichment layer — not the system prompt. |
+| `no_result` | Returned as tool result | What Claude receives when a tool finds nothing. Used by `assess_threat` and `query_intel`. |
+| `no_system` | Returned as tool result | What Claude receives when no system context is set. Used by `get_system_intel`, `radius_search`, `plan_route`. |
+
+### Why response_guidance is not in the system prompt
+
+The system prompt sets persona and doctrine once. `response_guidance` is per-tool and per-result — it tells Claude how to present *this specific data* from *this specific call*. Putting per-tool formatting rules in the system prompt makes it unreadable and harder to tune independently.
+
+### Live-reload behavior
+
+`tools.yaml` is read on every request (not cached at startup). To change tool behavior:
+1. Edit `prompts/tools.yaml`
+2. Restart the server
+3. No Python changes needed
+
+`companion.md` is loaded at startup (`COMPANION_SYSTEM_PROMPT` constant in `companion.py`). Changes require a restart.
+
+### The rule for coding agents
+
+If you want to change how HUGINN responds after a tool call — edit `tools.yaml`. Do not add formatting logic to `ai_tools.py`, do not add per-tool rules to `companion.md`. The YAML is the right layer.
+
+---
+
 ## Frontend (React / TypeScript)
 
 **Source:** `frontend/src/`
