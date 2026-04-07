@@ -15,7 +15,7 @@ import { LogUploadPanel } from './LogUploadPanel';
 import { AdminPanel } from './AdminPanel';
 import { ReconForm } from './ReconForm';
 import {
-  getDisabledTools, FEATURES, FeatureFlags, ToolFlags, ToolRegistryEntry,
+  getDisabledTools, FEATURES, FeatureFlags, ToolFlags,
   saveCachedAdminConfig,
 } from '../features/featureFlags';
 import { canAccess, getActiveNavItemsForTier } from '../features/tierCapabilities';
@@ -49,7 +49,7 @@ interface TerminalLog {
 }
 
 function buildBaselineData(
-  walletAddress: string | null,
+  walletAddress: string | null | undefined,
   assemblyId: string | undefined,
   visitorName: string,
   tier: string,
@@ -612,9 +612,10 @@ export function TerminalUI() {
       try {
         const res = await fetch(`${API_BASE_URL}/tribe-posts/${tribeId}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
         const boardId = `board-${Date.now()}`;
         activeBoardLogIdRef.current = boardId;
-        setLogs(prev => [...prev, { text: '', type: 'board' as const, timestamp: Date.now(), id: boardId, boardPosts: (await res.json()).posts as TribePost[], boardConfirmDeleteId: null, boardShowPostForm: false, boardPostDraft: '' }]);
+        setLogs(prev => [...prev, { text: '', type: 'board' as const, timestamp: Date.now(), id: boardId, boardPosts: data.posts as TribePost[], boardConfirmDeleteId: null, boardShowPostForm: false, boardPostDraft: '' }]);
       } catch (err) { addLog(`Failed to load board: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
     }
   };

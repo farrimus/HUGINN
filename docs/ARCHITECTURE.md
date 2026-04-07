@@ -198,7 +198,7 @@ frontend/src/
 ├── main.tsx              — App entry point, provider setup
 ├── App.tsx               — Root component, routing
 ├── components/           — UI panels (TerminalUI, GateUI, TurretUI, InfoPanel, etc.)
-├── hooks/                — Custom hooks (useCompanionStream, useWatcherAlerts, useToolOutput, useTribePosts, useSystemNames)
+├── hooks/                — Custom hooks (useCompanionStream, useWatcherAlerts, useToolOutput, useTribePosts, useSystemNames, useSession)
 ├── context/              — EntityContext and other shared state
 ├── styles/               — CSS files (terminal theme, panels)
 ├── types/                — TypeScript type definitions

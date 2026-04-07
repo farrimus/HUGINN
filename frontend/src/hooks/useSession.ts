@@ -35,7 +35,7 @@ export interface SessionState {
 }
 
 export function useSession(
-  walletAddress: string | null,
+  walletAddress: string | null | undefined,
   assemblyId: string | undefined,
   tenant: string,
   currentLocation: string,
