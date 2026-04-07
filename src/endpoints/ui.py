@@ -1,17 +1,16 @@
 """
-UI route handlers — serve React app and legacy terminals.
+UI route handlers — serve React app and config.
 
 Endpoints:
-- GET /     — React CLI companion app (main UI)
-- GET /legacy-cli — Vanilla JS terminal (fallback)
-- GET /ship-ai — Ship AI terminal (legacy)
-- GET /debug-terminal — Debug terminal (legacy)
+- GET /      — React CLI companion app (main UI, no-cache)
+- GET /app   — SPA entry (no-cache; /app/... assets served by StaticFiles mount in main.py)
+- GET /config — Server config for frontend (tenant)
 """
 
 import os
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 
 ui_router = APIRouter()
 
@@ -34,31 +33,7 @@ async def index():
     return FileResponse("frontend/dist/index.html", headers=_NO_CACHE_HEADERS)
 
 
-@ui_router.get("/demo")
-async def demo():
-    """Landing page for external visitors without an EVE Frontier wallet."""
-    return FileResponse("static/landing.html")
-
-
 @ui_router.get("/app")
 async def app_entry():
     """SPA entry — served no-cache so browsers always pick up new JS bundles after rebuild."""
     return FileResponse("frontend/dist/index.html", headers=_NO_CACHE_HEADERS)
-
-
-@ui_router.get("/legacy-cli")
-async def legacy_cli():
-    """Serve the vanilla JS building terminal (legacy)."""
-    return FileResponse("static/building-terminal.html")
-
-
-@ui_router.get("/ship-ai")
-async def ship_ai_terminal():
-    """Serve the ship AI terminal (legacy)."""
-    return FileResponse("static/ship-ai-terminal.html")
-
-
-@ui_router.get("/debug-terminal")
-async def debug_terminal():
-    """Serve the debug terminal (legacy)."""
-    return FileResponse("static/debug-terminal.html")
