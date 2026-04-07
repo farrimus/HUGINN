@@ -330,3 +330,8 @@ export interface CharacterData {
   };
   total_structures: number;
 }
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}

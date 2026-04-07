@@ -36,7 +36,6 @@ These scripts build the local SQLite database from CCP's World API. Takes a few 
 ```bash
 python build_universe.py      # Solar systems, regions, celestials
 python build_gate_graph.py    # Gate topology for pathfinding
-python build_types.py         # Item type metadata
 ```
 
 The output (`data/eve_universe.db`, `data/gate_graph.json`) is gitignored and must be built locally.
@@ -48,8 +47,7 @@ Run the pipeline from https://github.com/VULTUR-EveFrontier/eve-frontier-tools, 
 cp eve-frontier-tools/data/json/starmapcache.json data/
 cp eve-frontier-tools/data/extracted/type_names_all.json data/
 ```
-`build_gate_graph.py` and `build_types.py` have no external dependencies and fetch live
-from the World API.
+`build_gate_graph.py` has no external dependencies and fetches live from the World API.
 
 ### 4. Start the server
 

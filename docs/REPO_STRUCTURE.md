@@ -68,6 +68,20 @@
 │   ├── ship_profile.py              Ship + fuel catalog; jump range and fuel budget calculation.
 │   ├── config.py                    Network config; maps DEPLOYMENT_ENV to URLs and package IDs.
 │   ├── schemas.py                   Shared Pydantic models.
+│   ├── eve_types.py                 Pydantic models for EVE Frontier game data types (World API, blockchain, derived).
+│   ├── utils.py                     Shared FastAPI utilities: require_token header auth for internal endpoints.
+│   ├── prompt_loader.py             Reads prompt templates from prompts/ (load_prompt, load_tool_prompts).
+│   ├── tier_capabilities.py         Single source of truth for per-tier access: tools list, nav items, permissions. Primary Claude tool gate.
+│   ├── token_manager.py             RSA key management and JWT signing/verification for server-issued tokens.
+│   ├── vouch_store.py               Tier override store; OWNER can grant VETTED/TRIBE access to specific addresses.
+│   ├── admin_config_store.py        Per-environment admin config persistence (admin_config.json).
+│   ├── location_index.py            Indexes LocationRevealedEvent from chain; maps assembly_id to coordinates; persisted per-env.
+│   ├── build_calculator.py          Pure build calculator; given inventory and NetworkNode status, computes buildable structures and shortfalls.
+│   ├── radius_search.py             Spatial query: structures within a given light-year radius from a reference system.
+│   ├── type_names.py                Resolves EVE Frontier type IDs to human-readable names; loaded once from data/type_names_all.json.
+│   ├── courier_store.py             Courier contract persistence; fcntl-locked read-modify-write on data/courier/contracts.json.
+│   ├── tribe_board.py               In-memory tribe presence board; ephemeral per-process, 5-min TTL expiry.
+│   ├── tribe_posts.py               Tribe post board persistence; per-tribe rolling cap of 200 posts, SSE fan-out.
 │   ├── system_knowledge.py          Global system→enemy/ore knowledge graph (in progress).
 │   └── tx_builders/                 Unsigned Sui PTB construction (future admin UI).
 │       └── gate_builder.py          Gate link/unlink transaction builder.

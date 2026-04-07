@@ -54,7 +54,7 @@ Use this file to find the right document for a given question. One document per 
 
 ## What is NOT in docs/
 
-- **Prompts:** `prompts/companion.md` and `prompts/tools.yaml` — AI system prompts, loaded at runtime.
+- **Prompts:** `prompts/` directory — AI system prompts and builder guides. See `docs/ARCHITECTURE.md` → Prompt Layer for the full file list.
 - **Move contract:** `move/access_registry/` — the on-chain access control contract source.
 - **Build scripts:** `build_universe.py`, `build_gate_graph.py` — one-time data generation scripts.
 - **Test suite:** `tests/` — pytest unit and integration tests.

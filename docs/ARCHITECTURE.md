@@ -47,7 +47,7 @@ External: Sui blockchain hosts the AccessRegistry contract and
 | Router file | Key endpoints |
 |-------------|--------------|
 | `companion.py` | `POST /companion/stream` — primary AI chat (SSE), `POST /companion/chat` — non-streaming |
-| `structures.py` | `GET /structure/{id}`, `POST /structure-chat` |
+| `structures.py` | `GET /structure/{id}`, `PATCH /structure/{id}`, `GET /structure/{id}/onchain`, location management |
 | `search.py` | `GET /structures` — list, `POST /search/radius` |
 | `navigation.py` | `POST /route` — pathfinding, `GET /systems/names` |
 | `session.py` | Session management per wallet |
@@ -99,12 +99,25 @@ Registered in `src/ai_tools.py`. Claude may call these mid-conversation:
 
 ## Prompt Layer
 
-All prompt content lives in `prompts/`. Two files, separate jobs:
+All prompt content lives in `prompts/`. Five files with distinct jobs:
 
 | File | Purpose |
 |------|---------|
-| `prompts/companion.md` | HUGINN system prompt: persona, tier enforcement, tool discipline, output style. Passed as `system` to the Claude API on every request. |
-| `prompts/tools.yaml` | Per-tool prompt fragments. Loaded live on each request. Falls back to hardcoded values if a tool section is absent. |
+| `prompts/companion.md` | HUGINN system prompt: persona, tier enforcement, tool discipline, output style. Loaded at startup; passed as `system` to the Claude API on every request. |
+| `prompts/tools.yaml` | Per-tool prompt fragments. Loaded live on each request. Overrides hardcoded descriptions in `ai_tools.py`. Falls back to hardcoded values if a section is absent. |
+| `prompts/TOOLS_YAML_GUIDE.md` | Builder's guide for `tools.yaml` — documents every field, the full tool access pipeline, and the procedure for adding new tools. Read this before editing the tool system. |
+| `prompts/huginn_news.md` | System prompt for the Huginn Signal broadcast (AI-generated news). Used by `huginn_news.py`. |
+| `prompts/logs.md` | System prompt for game log analysis. Used when parsing player-uploaded Gamelogs. |
+
+### Tool access pipeline
+
+Before Claude sees any tool, three gates apply in order:
+
+1. **`src/tier_capabilities.py`** — primary access gate. `blocked_tools(tier, all_names)` returns every tool name not in that tier's `tools` list. A tool absent from the tier's list is completely invisible to Claude. `default_enabled` in `ai_tools.py` is a documentation hint only.
+2. **`disabled_tools`** in the request body — tools the frontend has toggled off (via `frontend/src/features/featureFlags.ts` → `getDisabledTools()`). Added to the blocked set.
+3. **`get_tools_for_claude(disabled=combined_blocked)`** — builds the final schema list sent to Claude.
+
+To add a new tool: register it in `ai_tools.py` → add it to tier lists in `tier_capabilities.py` → add a section in `tools.yaml`. See `prompts/TOOLS_YAML_GUIDE.md` for the complete procedure.
 
 ### tools.yaml fields
 
@@ -123,10 +136,7 @@ The system prompt sets persona and doctrine once. `response_guidance` is per-too
 
 ### Live-reload behavior
 
-`tools.yaml` is read on every request (not cached at startup). To change tool behavior:
-1. Edit `prompts/tools.yaml`
-2. Restart the server
-3. No Python changes needed
+`tools.yaml` is read on every request — no restart needed to change tool behavior. Edit `prompts/tools.yaml` and the next request picks up the change.
 
 `companion.md` is loaded at startup (`COMPANION_SYSTEM_PROMPT` constant in `companion.py`). Changes require a restart.
 
@@ -188,7 +198,7 @@ frontend/src/
 ├── main.tsx              — App entry point, provider setup
 ├── App.tsx               — Root component, routing
 ├── components/           — UI panels (TerminalUI, GateUI, TurretUI, InfoPanel, etc.)
-├── hooks/                — Custom hooks (useCompanionStream, useStructureChat, etc.)
+├── hooks/                — Custom hooks (useCompanionStream, useWatcherAlerts, useToolOutput, useTribePosts, useSystemNames)
 ├── context/              — EntityContext and other shared state
 ├── styles/               — CSS files (terminal theme, panels)
 ├── types/                — TypeScript type definitions
