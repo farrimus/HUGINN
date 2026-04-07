@@ -166,13 +166,3 @@ class LocationRevealRequest(BaseModel):
     jwt_token: str
 
 
-class StructureChatRequest(BaseModel):
-    message: str
-    history: list = []
-    assembly_id: str
-
-
-class StructureDebugChatRequest(BaseModel):
-    assembly_id: str
-    message: str
-    history: list = []

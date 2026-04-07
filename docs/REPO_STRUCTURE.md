@@ -69,9 +69,8 @@
 │   ├── config.py                    Network config; maps DEPLOYMENT_ENV to URLs and package IDs.
 │   ├── schemas.py                   Shared Pydantic models.
 │   ├── system_knowledge.py          Global system→enemy/ore knowledge graph (in progress).
-│   ├── tx_builders/                 Unsigned Sui PTB construction (future admin UI).
-│   │   └── gate_builder.py          Gate link/unlink transaction builder.
-│   └── tools/                       AI tool implementation modules (threat, route, memory, etc.).
+│   └── tx_builders/                 Unsigned Sui PTB construction (future admin UI).
+│       └── gate_builder.py          Gate link/unlink transaction builder.
 │
 ├── frontend/                        React TypeScript app.
 │   ├── src/

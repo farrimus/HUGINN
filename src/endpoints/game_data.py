@@ -103,7 +103,7 @@ async def get_galaxy_system(name_or_id: str):
 @game_data_router.get("/galaxy/system/{name_or_id}/intel")
 async def get_system_intel(name_or_id: str):
     """Return structured system intel panel data (no auth required)."""
-    from src.structure_client import _spectral_label, _count_planets
+    from src.galaxy_db import spectral_label as _spectral_label, count_planets as _count_planets
 
     system_info = galaxy_db.get_system(name_or_id)
     if not system_info:
