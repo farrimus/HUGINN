@@ -15,7 +15,7 @@
 /
 ├── main.py                          App entry point. Startup sequence, all routers registered here.
 ├── CLAUDE.md                        Claude Code project instructions (AI assistant rules).
-├── DESIGN.md                        Product philosophy and north star for HUGINN.
+├── PHILOSOPHY.md                    Product philosophy, north star, and engineering principles (Musk's Algorithm).
 ├── requirements.txt                 Python dependencies.
 ├── .env.example                     Environment variable template (copy to .env).
 ├── build_universe.py                One-time script: builds Galaxy DB from World API + starmap data.
