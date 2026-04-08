@@ -131,7 +131,7 @@ db.get_moon(id)
 db.get_station(id)
 db.get_celestials_in_system(system_id) # → {planets, moons, stations, lagrange_points}
 db.search_systems(pattern)             # LIKE search on name
-db.get_jumps_from_system(system_id)    # → list of adjacent system IDs
+db.get_jumps_from_system(system_id)    # → list of dicts; extract toSystemId for adjacent IDs
 db.run_sql(sql, params)                # → list of dicts
 
 # Module-level utility functions (also importable from galaxy_db):
@@ -168,7 +168,7 @@ UNION SELECT fromSystemId FROM Jumps WHERE toSystemId = ?;
 Key functions:
 - `useSmartObject()` — loads assembly + owner automatically from URL params
 - `getAssemblyWithOwner(objectId)` — GraphQL query: assembly + owner character
-- `transformToAssembly(raw)` — converts raw Sui object → typed assembly
+- `transformToAssembly(objectId, moveObject, options?)` — converts raw Sui object → typed assembly
 - `useConnection()` — wallet connect/disconnect, current account
 
 See `docs/DAPP_KIT_API.md` for the complete API reference.

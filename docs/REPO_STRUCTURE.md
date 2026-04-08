@@ -84,32 +84,56 @@
 │   ├── tribe_posts.py               Tribe post board persistence; per-tribe rolling cap of 200 posts, SSE fan-out.
 │   ├── system_knowledge.py          Global system→enemy/ore knowledge graph (in progress).
 │   └── tx_builders/                 Unsigned Sui PTB construction (future admin UI).
+│       ├── base.py                  Base transaction builder utilities.
 │       └── gate_builder.py          Gate link/unlink transaction builder.
 │
 ├── frontend/                        React TypeScript app.
 │   ├── src/
 │   │   ├── main.tsx                 Entry point: EveFrontierProvider + QueryClientProvider setup.
 │   │   ├── App.tsx                  Root component and structure-type routing.
-│   │   └── components/              All UI panels and associated hooks.
-│   │       ├── TerminalUI.tsx       Main terminal interface (SSU / default assembly type).
-│   │       ├── GateUI.tsx           Gate-specific interface.
-│   │       ├── TurretUI.tsx         Turret-specific interface.
-│   │       ├── InfoPanel.tsx        Structure info and status display.
-│   │       ├── RoutePanel.tsx       Route planning UI.
-│   │       ├── LogUploadPanel.tsx   Game log upload interface.
-│   │       ├── HuginnNewsPanel.tsx  Huginn Signal display.
-│   │       ├── BoardPanel.tsx       Courier contract board UI.
-│   │       ├── NetworkMapPanel.tsx  Connected assembly network display.
-│   │       ├── AdminPanel.tsx       Admin management UI (OWNER only).
-│   │       ├── useCompanionStream.ts Hook: streaming AI chat via SSE.
-│   │       ├── useWatcherAlerts.ts  Hook: SSU state change alert stream.
-│   │       └── ...                  Other panels and utility components.
+│   │   ├── components/              UI panels.
+│   │   │   ├── TerminalUI.tsx       Main terminal interface (SSU / default assembly type).
+│   │   │   ├── GateUI.tsx           Gate-specific interface.
+│   │   │   ├── TurretUI.tsx         Turret-specific interface.
+│   │   │   ├── GateInfoPanel.tsx    Gate details panel.
+│   │   │   ├── InfoPanel.tsx        Structure info and status display.
+│   │   │   ├── RoutePanel.tsx       Route planning UI.
+│   │   │   ├── LogUploadPanel.tsx   Game log upload interface.
+│   │   │   ├── HuginnNewsPanel.tsx  Huginn Signal display.
+│   │   │   ├── BoardPanel.tsx       Courier contract board UI.
+│   │   │   ├── NetworkMapPanel.tsx  Connected assembly network display.
+│   │   │   ├── NodesListPanel.tsx   Network node list display.
+│   │   │   ├── AdminPanel.tsx       Admin management UI (OWNER only).
+│   │   │   ├── AssetMapPanel.tsx    Asset map display.
+│   │   │   ├── BaselinePanel.tsx    Baseline status panel.
+│   │   │   ├── InventoryPanel.tsx   Inventory display.
+│   │   │   ├── ReconForm.tsx        Recon scan form.
+│   │   │   ├── SplashScreen.tsx     Loading/splash screen.
+│   │   │   ├── StructureRouter.tsx  Routes to the correct UI based on assembly type.
+│   │   │   ├── ToolOutputFormatter.tsx  Renders structured AI tool output.
+│   │   │   └── TripCalculatorForm.tsx   Trip fuel calculator UI.
+│   │   ├── hooks/                   Custom React hooks.
+│   │   │   ├── useCompanionStream.ts Hook: streaming AI chat via SSE.
+│   │   │   ├── useWatcherAlerts.ts  Hook: SSU state change alert stream.
+│   │   │   ├── useSession.ts        Hook: session registration and state.
+│   │   │   ├── useSystemNames.ts    Hook: system name resolution.
+│   │   │   ├── useToolOutput.ts     Hook: AI tool call output state.
+│   │   │   └── useTribePosts.ts     Hook: tribe post feed.
+│   │   ├── context/                 Shared React context (EntityContext, etc.).
+│   │   ├── styles/                  CSS files (terminal theme, panels).
+│   │   ├── types/                   TypeScript type definitions.
+│   │   ├── constants/               App-wide constants.
+│   │   ├── features/                Feature flags (getDisabledTools, etc.).
+│   │   └── data/                    Static data assets.
 │   ├── vite.config.ts               Sets base: '/static/companion/' — required for deploy.
 │   └── package.json
 │
 ├── prompts/                         AI system prompts loaded at runtime.
 │   ├── companion.md                 HUGINN persona: identity, tier enforcement, tool discipline.
-│   └── tools.yaml                   Tool definitions and usage rules.
+│   ├── tools.yaml                   Per-tool prompt fragments (descriptions, response_guidance, no_result).
+│   ├── huginn_news.md               System prompt for the Huginn Signal broadcast.
+│   ├── logs.md                      System prompt for game log analysis.
+│   └── TOOLS_YAML_GUIDE.md          Builder's guide for tools.yaml — field reference and procedure for adding tools.
 │
 ├── move/                            Sui Move smart contracts.
 │   └── access_registry/             Per-structure access control contract (deployed on Sui testnet).

@@ -24,7 +24,7 @@ An AI-powered in-lore companion chat agent for EVE Frontier players. The agent s
 ## MANDATORY: Data Layer Boundary
 
 **This project has a documented failure mode: reimplementing things dapp-kit already provides.**
-**It has happened 9 times. Do not add a 10th. The full boundary is at `docs/DAPP_KIT_BOUNDARY.md`.**
+**It has happened 9 times. Do not add a 10th.**
 
 Before writing any fetch, query, GraphQL call, parser, formatter, or data transform — answer this question first:
 

@@ -129,7 +129,7 @@ These apply now, not later.
 
 3. **`gamelog_raw` text has no path to any Claude-facing function. Inviolable.** Raw log text is attacker-controlled. This applies to the quarantine store and all derivative data.
 
-4. **Check `docs/DAPP_KIT_BOUNDARY.md` before writing any new data access code.** Nine known boundary violations exist. The boundary is documented. Read it first.
+4. **Before writing any new data access code, check the dapp-kit boundary in `CLAUDE.md`.** Nine known boundary violations exist.
 
 As the knowledge layer deepens, HUGINN risks sounding like a database. Confidence scores, observation counts, and temporal metadata feed the prompt — they never appear verbatim in responses. Every data enrichment must be paired with a corresponding update to `prompts/companion.md`.
 

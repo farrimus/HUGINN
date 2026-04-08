@@ -52,7 +52,7 @@ cp eve-frontier-tools/data/extracted/type_names_all.json data/
 ### 4. Start the server
 
 ```bash
-python main.py
+./start.sh
 # Runs on http://localhost:8745
 ```
 
@@ -148,4 +148,4 @@ If you deploy to a different path, update this value and rebuild.
 | Port 5173 in use | `lsof -i :5173` then `kill -9 <PID>` |
 | TypeScript errors on build | `npm run build` shows full error list — fix `src/` files |
 | CSS not updating | Hard refresh (Ctrl+Shift+R) |
-| Backend not running | `lsof -i :8745` to check; `python main.py` to start |
+| Backend not running | `lsof -i :8745` to check; `./start.sh` to start |

@@ -1,3 +1,108 @@
+diff --git a/node_modules/@evefrontier/dapp-kit/graphql/client.ts b/node_modules/@evefrontier/dapp-kit/graphql/client.ts
+index f22f83d..db86fae 100644
+--- a/node_modules/@evefrontier/dapp-kit/graphql/client.ts
++++ b/node_modules/@evefrontier/dapp-kit/graphql/client.ts
+@@ -1,6 +1,6 @@
+ import {
+-  getCharacterOwnerCapType,
+   getCharacterPlayerProfileType,
++  getEveWorldPackageId,
+   getSuiGraphqlEndpoint,
+ } from "../utils/constants";
+ import type {
+@@ -232,12 +232,13 @@ export async function getObjectOwnerAndOwnedObjectsWithJson(
+  * @returns Promise resolving to assembly and character data
+  * @internal
+  */
+-export async function getObjectAndCharacterOwner(objectAddress: string) {
++export async function getObjectAndCharacterOwner(objectAddress: string, packageId?: string) {
++  const pkg = packageId ?? getEveWorldPackageId();
+   return executeGraphQLQuery<GetObjectAndCharacterOwnerResponse>(
+     GET_OBJECT_DYNAMICFIELD_CHARACTER_WITH_JSON,
+     {
+       objectId: objectAddress,
+-      characterOwnerType: getCharacterOwnerCapType(),
++      characterOwnerType: `${pkg}::access::OwnerCap<${pkg}::character::Character>`,
+     },
+   );
+ }
+@@ -473,7 +474,7 @@ export async function getObjectsByType(
+  *
+  * @see {@link transformToAssembly} for converting raw data to typed Assembly
+  */
+-export async function getAssemblyWithOwner(assemblyId: string): Promise<{
++export async function getAssemblyWithOwner(assemblyId: string, packageId?: string): Promise<{
+   moveObject: {
+     contents: {
+       json: Record<string, unknown>;
+@@ -488,7 +489,7 @@ export async function getAssemblyWithOwner(assemblyId: string): Promise<{
+   destinationGate: RawSuiObjectData | null;
+ }> {
+   try {
+-    const result = await getObjectAndCharacterOwner(assemblyId);
++    const result = await getObjectAndCharacterOwner(assemblyId, packageId);
+ 
+     if (!result.data?.object?.asMoveObject) {
+       console.warn("[DappKit] getAssemblyWithOwner: Assembly not found");
+diff --git a/node_modules/@evefrontier/dapp-kit/providers/SmartObjectProvider.tsx b/node_modules/@evefrontier/dapp-kit/providers/SmartObjectProvider.tsx
+index e04132d..a03f567 100644
+--- a/node_modules/@evefrontier/dapp-kit/providers/SmartObjectProvider.tsx
++++ b/node_modules/@evefrontier/dapp-kit/providers/SmartObjectProvider.tsx
+@@ -14,7 +14,7 @@ import {
+   DetailedSmartCharacterResponse,
+ } from "../types";
+ 
+-import { DEFAULT_TENANT, POLLING_INTERVAL } from "../utils/constants";
++import { DEFAULT_TENANT, POLLING_INTERVAL, TENANT_CONFIG, type TenantId } from "../utils/constants";
+ import { getAssemblyWithOwner, MoveObjectData } from "../graphql";
+ import {
+   getObjectId,
+@@ -29,8 +29,8 @@ import { SmartObjectContextType } from "../types";
+  * @category Types
+  */
+ export type FetchObjectDataInput =
+-  | { itemId: string; selectedTenant: string }
+-  | { objectId: string };
++  | { itemId: string; selectedTenant: string; packageId?: string }
++  | { objectId: string; packageId?: string };
+ 
+ /** @category Providers */
+ export const SmartObjectContext = createContext<SmartObjectContextType>({
+@@ -104,7 +104,7 @@ const SmartObjectProvider = ({ children }: { children: ReactNode }) => {
+           assemblyOwner: characterInfo,
+           energySource,
+           destinationGate,
+-        } = await getAssemblyWithOwner(objectId);
++        } = await getAssemblyWithOwner(objectId, 'packageId' in input ? input.packageId : undefined);
+ 
+         if (!moveObject) {
+           console.warn(
+@@ -223,9 +223,10 @@ const SmartObjectProvider = ({ children }: { children: ReactNode }) => {
+       return;
+     }
+ 
++    const packageId = TENANT_CONFIG[selectedTenant as TenantId]?.packageId;
+     const input: FetchObjectDataInput = isObjectIdDirect
+-      ? { objectId: selectedObjectId }
+-      : { itemId: selectedObjectId, selectedTenant };
++      ? { objectId: selectedObjectId, packageId }
++      : { itemId: selectedObjectId, selectedTenant, packageId };
+ 
+     // Initial fetch
+     fetchObjectData(input, true);
+@@ -258,9 +259,10 @@ const SmartObjectProvider = ({ children }: { children: ReactNode }) => {
+ 
+   const handleRefetch = useCallback(async () => {
+     if (!selectedObjectId) return;
++    const packageId = TENANT_CONFIG[selectedTenant as TenantId]?.packageId;
+     const input: FetchObjectDataInput = isObjectIdDirect
+-      ? { objectId: selectedObjectId }
+-      : { itemId: selectedObjectId, selectedTenant };
++      ? { objectId: selectedObjectId, packageId }
++      : { itemId: selectedObjectId, selectedTenant, packageId };
+     await fetchObjectData(input, true);
+   }, [selectedObjectId, selectedTenant, isObjectIdDirect, fetchObjectData]);
+ 
 diff --git a/node_modules/@evefrontier/dapp-kit/utils/mapping.ts b/node_modules/@evefrontier/dapp-kit/utils/mapping.ts
 index 4a6eda4..104d02b 100644
 --- a/node_modules/@evefrontier/dapp-kit/utils/mapping.ts

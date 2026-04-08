@@ -90,10 +90,26 @@ src/
 ### AI Tools
 
 Registered in `src/ai_tools.py`. Claude may call these mid-conversation:
-- `get_system_intel` — Galaxy DB + World API for a solar system
-- `query_intel` / `log_intel` — Read/write pilot-reported intel
-- `assess_threat` — Threat assessment for a system or entity
-- `plan_route` — Pathfinding between two systems
+
+| Tool | What it does |
+|------|-------------|
+| `get_system_intel` | Galaxy DB + World API for a solar system |
+| `assess_threat` | Threat scoring for a system or entity |
+| `plan_route` | Pathfinding between two systems |
+| `radius_search` | Structures within a light-year radius |
+| `get_pilot_profile` | Pilot ship type and fuel load |
+| `search_memory` | Per-structure event memory lookup |
+| `get_memory_summary` | Rolling summary of structure events |
+| `query_intel` | Read pilot-reported field intel |
+| `log_intel` | Write a new pilot field observation |
+| `record_field_observation` | Record system-level field observation |
+| `query_system_knowledge` | Query the global system knowledge graph |
+| `lookup_item_type` | Resolve a type ID to name and category |
+| `calculate_build_options` | Compute buildable structures from inventory |
+| `recon_scan` | Trigger a recon scan of a system |
+| `manage_watcher` | Add/remove SSU state watch rules |
+| `manage_courier` | Create/update/claim hauling contracts |
+| `manage_tribe` | Post tribe announcements |
 
 ---
 
@@ -129,10 +145,6 @@ Each tool entry in `tools.yaml` may have up to four fields:
 | `response_guidance` | Prepended to the tool result | Injected at `companion.py:688–690` before the result is sent back to Claude. Shapes how Claude formats and uses the tool output. This is the output enrichment layer — not the system prompt. |
 | `no_result` | Returned as tool result | What Claude receives when a tool finds nothing. Used by `assess_threat` and `query_intel`. |
 | `no_system` | Returned as tool result | What Claude receives when no system context is set. Used by `get_system_intel`, `radius_search`, `plan_route`. |
-
-### Why response_guidance is not in the system prompt
-
-The system prompt sets persona and doctrine once. `response_guidance` is per-tool and per-result — it tells Claude how to present *this specific data* from *this specific call*. Putting per-tool formatting rules in the system prompt makes it unreadable and harder to tune independently.
 
 ### Live-reload behavior
 
@@ -319,28 +331,6 @@ ssu_watcher_task.run_forever()
 
 ---
 
-## AI Context Pipeline
-
-```
-Pilot sends message
-    ↓
-context_builder.py assembles context block:
-    - Current location (system, region, security status)
-    - Structure state (fuel, online/offline, assembly types)
-    - Recent alerts and killmails
-    - Pilot identity and access tier
-    ↓
-Claude API receives: system prompt + context + tool definitions + message history
-    ↓
-Claude responds in-character, optionally calling tools for live data
-    ↓
-Response streams via SSE to frontend
-    ↓
-Frontend renders chunks incrementally in terminal UI
-```
-
----
-
 ## Access Control Model
 
 Access tier is resolved per-request from the on-chain AccessRegistry. No session token elevates access — every call is independently checked.
@@ -359,7 +349,7 @@ Access tier is resolved per-request from the on-chain AccessRegistry. No session
 Single VPS. FastAPI serves both the API and the built frontend as static files.
 
 ```
-python main.py          # starts uvicorn on port 8745
+./start.sh              # starts uvicorn on 0.0.0.0:8745
                         # serves /static/companion/ → built React app
                         # serves /app/ → frontend/dist/
 ```

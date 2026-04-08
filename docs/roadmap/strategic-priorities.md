@@ -79,7 +79,7 @@ Signal rewire after system_knowledge has real data. Contribution incentives afte
 3. **Tier caching before model routing.** Routing keyed on tier inherits the Sui RPC latency otherwise.
 4. **Telemetry baseline before any routing decision.** Cost estimates are estimates.
 5. **`gamelog_raw` text has no path to any Claude-facing function.** Inviolable security boundary.
-6. **dapp-kit boundary check before any new data access code.** See `docs/DAPP_KIT_BOUNDARY.md`.
+6. **dapp-kit boundary check before any new data access code.** See `CLAUDE.md` — Data Layer Boundary section.
 
 ---
 

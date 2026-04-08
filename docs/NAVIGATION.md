@@ -19,14 +19,13 @@ Use this file to find the right document for a given question. One document per 
 | How does HUGINN's tool output formatting work? | `docs/ARCHITECTURE.md` → Prompt Layer |
 | Where do I edit tool descriptions or response style? | `prompts/tools.yaml` — see `docs/ARCHITECTURE.md` → Prompt Layer |
 | What are the Python/frontend dependencies and why? | `docs/TECH_STACK_AND_DEPENDENCIES.md` |
-| What is the dapp-kit patch and why does it exist? | `docs/TECH_STACK_AND_DEPENDENCIES.md` → dapp-kit patch |
-| What does dapp-kit own vs backend? | `docs/DAPP_KIT_BOUNDARY.md` + `CLAUDE.md` |
+| How is the dapp-kit multi-tenant cache structured? | `docs/TECH_STACK_AND_DEPENDENCIES.md` → dapp-kit multi-tenant cache |
+| What does dapp-kit own vs backend? | `CLAUDE.md` — Data Layer Boundary section |
 | Where is file X and what does it do? | `docs/REPO_STRUCTURE.md` |
 | What are the data schemas (structures, sessions, etc.)? | `docs/DATA_REFERENCE.md` |
 | How do I set up the project locally? | `docs/SETUP.md` |
 | How does BCS encoding / Sui object ID derivation work? | `docs/BCS_ENCODING.md` |
 | What dapp-kit hooks and APIs are available? | `docs/DAPP_KIT_API.md` |
-| What is planned next? | `docs/ROADMAP.MD` + `docs/roadmap/` |
 
 ---
 
@@ -43,12 +42,9 @@ Use this file to find the right document for a given question. One document per 
 | `docs/TECH_STACK_AND_DEPENDENCIES.md` | Package versions, rationale, dapp-kit patch | Developers |
 | `docs/REPO_STRUCTURE.md` | Every file, every directory, every entry point | Developers / AI agents |
 | `docs/DATA_REFERENCE.md` | Data schemas: structures, sessions, killmails, intel | Developers |
-| `docs/DAPP_KIT_BOUNDARY.md` | What dapp-kit owns vs backend (critical boundary doc) | Developers / AI agents |
 | `docs/DAPP_KIT_API.md` | Full dapp-kit hook and API reference | Frontend developers |
 | `docs/BCS_ENCODING.md` | Sui BCS encoding, object ID derivation | Blockchain / backend |
 | `docs/SETUP.md` | Local development setup | Developers |
-| `docs/ROADMAP.MD` | Active roadmap and next priorities | All |
-| `docs/roadmap/` | Detailed roadmap sub-documents per feature area | All |
 
 ---
 
