@@ -26,6 +26,7 @@ Use this file to find the right document for a given question. One document per 
 | How do I set up the project locally? | `docs/SETUP.md` |
 | How does BCS encoding / Sui object ID derivation work? | `docs/BCS_ENCODING.md` |
 | What dapp-kit hooks and APIs are available? | `docs/DAPP_KIT_API.md` |
+| What did we evaluate from the official UI components library? What should we adopt? | `docs/roadmap/eval-ui-components-library.md` |
 
 ---
 
@@ -45,6 +46,7 @@ Use this file to find the right document for a given question. One document per 
 | `docs/DAPP_KIT_API.md` | Full dapp-kit hook and API reference | Frontend developers |
 | `docs/BCS_ENCODING.md` | Sui BCS encoding, object ID derivation | Blockchain / backend |
 | `docs/SETUP.md` | Local development setup | Developers |
+| `docs/roadmap/eval-ui-components-library.md` | Evaluation of official EVE Frontier UI components — what to adopt, copy, or skip | Frontend developers |
 
 ---
 
