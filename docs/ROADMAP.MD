@@ -2,8 +2,6 @@
 
 This is a pre-alpha hobby project. One developer. One real tester. The hackathon MVP shipped every planned feature — AI chat, on-chain access control, route planning, log upload, kill feed, SSU watcher, courier board, tribe presence — across two environments (utopia/stillness). Nothing is finished.
 
-The one thing that matters most right now: the core intelligence premise — "every log upload adds to a shared, permanent knowledge base" — is currently false. Log data is collected and immediately siloed in per-wallet files with no read path into companion chat. That's the central problem this document is organized around.
-
 The supporting analysis in `docs/roadmap/` explains why things are structured the way they are. Read those when working on the relevant area.
 
 ---
@@ -15,77 +13,103 @@ The supporting analysis in `docs/roadmap/` explains why things are structured th
 | Feature | Status | Key files |
 |---------|--------|-----------|
 | AI companion chat (SSE streaming) | Functional | `endpoints/companion.py`, `ai_tools.py`, `context_builder.py` |
-| On-chain access control | Functional, has known bug | Per-request Sui RPC; OWNER/TRIBE/VETTED/NONE |
+| On-chain access control | Functional — per-request Sui RPC | `session_store.py`, `endpoints/session.py` |
 | Route planner | Most complete feature | `route_engine.py` + `data/gate_graph.json` |
-| Recon (system intel) | Functional | World API + Galaxy DB; kill context injected via `context_builder.py` |
+| Recon (system intel) | Functional | World API + Galaxy DB; kill context via `context_builder.py` |
 | Kill feed sync | Functional | Hourly from Sui events; `blockchain_killmails.py` |
-| Log upload | Write path functional; read path absent | Parse + summarize + store works; no AI tool to query it |
+| Log upload | Functional end-to-end | Parse + summarize + store + feeds `system_knowledge.db` |
 | SSU watcher | Functional | `ssu_watcher_task.py` SSE alert streams |
 | Courier board | Functional | `endpoints/courier.py` |
 | Tribe presence board | Functional | `endpoints/tribe.py`, `endpoints/tribe_posts.py` |
-| Huginn Signal | Functional but narrow | Reads kills + structure state only; no log intel, no field reports |
+| Huginn Signal | Functional — KILL FEED + NETWORK DELTA | `huginn_news_task.py`, `huginn_news.py` |
+| Global knowledge graph | Functional — fed by log uploads | `system_knowledge.py`, `endpoints/system_knowledge.py` |
 | Multi-tenant (utopia/stillness) | Functional | `config.py`; dapp-kit patch for dual-registry cache |
 | AccessRegistry Move contract | Deployed | Testnet; `move/access_registry/` |
 
-### What was built for hackathon velocity
+### Intelligence pipeline
 
-- **Per-request Sui RPC for access tier** — adds 100–400ms to every companion chat turn; Sui Testnet degradation is a hard failure.
-- **`log_intel` keyed by wallet, not system** — cross-pilot aggregation requires an O(pilots) file scan per query.
-- **`claude-sonnet-4-6` for all Claude API calls** — log summarization and Signal don't need sonnet.
-- **`structures/*.json` requires a developer commit** — new structure owner = developer action + server restart.
-- **File-based persistence, single VPS** — appropriate for MVP.
-- **No backup automation** — acceptable now; becomes a concern before sharing with anyone who cares about losing their data.
+| Store | AI read path | Compounds? |
+|-------|-------------|-----------|
+| `intel_store.py` field reports | Yes (`query_intel`) | Per-structure only |
+| `log_intel_store.py` log uploads | Yes (feeds `system_knowledge.db` on upload) | Cross-pilot, global |
+| `killmails.jsonl` | Partial (`context_builder.py`) | Yes — automated |
+| `memory_store/` event memory | Unconfirmed | Unknown |
+| `system_knowledge.db` | Yes (`query_system_knowledge`, `record_field_observation`) | Wired — grows with every upload |
 
-### Active bugs
-
-None known.
-
-### Intelligence pipeline gaps
-
-| Store | Format | AI read path | Compounds? |
-|-------|--------|-------------|-----------|
-| `intel_store.py` field reports | Flat JSON per structure | Yes (`query_intel` tool) | Per-structure only |
-| `log_intel_store.py` log uploads | JSONL per wallet | **Not wired** | Zero |
-| `killmails.jsonl` | Append-only JSONL | Partial (`context_builder.py`) | Yes — only automated source |
-| `memory_store/` event memory | JSONL + rolling summary | Unconfirmed | Per-structure only |
-| `system_knowledge.db` | SQLite WAL | No tools exist | Nothing feeds it |
-
-### Known areas flagged for change
+### Known areas in scope for change
 
 | Area | Current state |
 |------|--------------|
-| UI (TerminalUI, TurretUI, GateUI) | Functional but unfinished — sizes, layout, visual design all in scope |
+| Access tier | Per-request Sui RPC — 100–400ms per chat turn; Testnet degradation = hard failure |
+| Intel stores | No temporal metadata (`first_seen_at`, `last_seen_at`) — stale and fresh records indistinguishable |
+| Claude model selection | `claude-sonnet-4-6` everywhere — log summarization and Signal don't need it |
 | Log parser | Drops unknown entity types (players, ships, player structures) |
-| Claude model selection | `claude-sonnet-4-6` everywhere — per-use-case routing would reduce cost |
-| Feature completeness | All features WIP — Recon, route planning, and log ingest closest to done |
+| UI | TerminalUI, GateUI, TurretUI — functional but unfinished |
+| Rate limiting | None on `/companion/stream` or `/logs/upload` — tokens exposed |
 
 ---
 
 ## What to Work on Next
 
-### Wire the broken read path
+### Delete dead code — `bcs_encoding.py`
 
-Log uploads accumulate in per-wallet JSONL files and are never queried by the AI. The `log_intel_store.py` has no tool in `ai_tools.py` and no read path into `context_builder.py`. Until this is fixed, every log a pilot uploads has zero effect on what HUGINN knows.
+`src/bcs_encoding.py` is never imported anywhere. The `hash_input_for_derived_object()` function is marked "best guess" in comments and is not used in tier resolution (which uses hardcoded IDs from profile JSON). Delete it. It creates false confidence that Python-side BCS derivation works. If runtime object ID derivation is ever needed, use a TypeScript sidecar — do not replicate Sui's `hash_type_and_key` in Python.
 
-These tasks should be done together — the temporal columns must exist before new records are written, and the re-key should happen before more wallet-keyed records accumulate.
+### UI quick wins — EVE component library evaluation
 
-| Task | Files | Note |
-|------|-------|------|
-| Add `get_log_intel(system_id)` tool to `ai_tools.py` | `ai_tools.py`, `log_intel_store.py` | Do simultaneously with temporal columns |
-| Add `first_seen_at`, `last_seen_at`, `observation_count` to `log_intel_store.py` | `log_intel_store.py`, `system_knowledge.py` | Records written before this are permanently undateable |
-| Re-key `log_intel` store from wallet to system | `log_intel_store.py`, `scripts/` | One-time offline migration script; make it idempotent |
-| Audit `query_intel` scope — cross-pilot or personal-only? | `ai_tools.py`, `intel_store.py` | If personal-only, collective intel doesn't exist at all |
-| Audit `memory_store.py` → `context_builder.py` connection | `memory_store.py`, `context_builder.py` | Confirm before assuming it's another broken pipe |
+A full evaluation of `@eveworld/ui-components` and `@evefrontier/dapp-kit` was done on 2026-04-08. Several low-effort improvements fall out of it. All of the immediate items are difficulty 1/5. Full list with exact copy/recreation instructions in `docs/roadmap/eval-ui-components-library.md`.
 
-Every additional log upload before the re-key runs increases migration cost. Do not defer.
+**Immediate (no prerequisites):**
+- `parseErrorFromMessage` — import from installed dapp-kit, apply before all `notify()` calls in GateUI and TurretUI. Classifies tx errors into 24 typed codes.
+- Identicon / `useIdenticon` — 30-line hook + 16 SVG imports. Adds visual identity marker to BaselinePanel and TurretUI wallet bar. Currently zero visual identity exists.
+- Disconnect button — `handleDisconnect` from `useConnection()` is available but never surfaced. Add to TurretUI and GateUI.
+- Scrollbar CSS — extract `.Eve-Scrollbar` rules from dapp-kit `styles-ui.css`. Apply to `.terminal-output`, gate chat. Only TurretUI has custom scrollbar styling today.
+- `EXCLUDED_TYPEIDS` backend filter — add `EXCLUDED_TYPEIDS = {"87160", "87161", "87162", "87566"}` to backend and filter portables (refinery, printer, storage, refuge) from assembly list endpoints. These currently return unfiltered.
 
-### Finish the three near-done features
+**Near-term (copy/recreate, no Tailwind required):**
+- `EveFeralCodeGen` — copy 50-line file + one CSS class. Ambient lore texture for loading states.
+- In-house toast/notification snackbar — `notify()` is called throughout GateUI and TurretUI but nothing renders. Build minimal snackbar wired to `useNotification()` state.
+- `CopyButton` — clipboard copy for assembly IDs and wallet addresses using `clickToCopy` from dapp-kit.
+- `EveLoadingAnimation` — recreate CSS keyframes, apply across TurretUI, GateUI, TerminalUI loading states.
+- ConfirmDialog for `/unlink` — gate unlinking is destructive, currently executes immediately with no confirmation.
+- `useCooldown` hook — copy cooldown mechanic for BRING ONLINE/OFFLINE buttons in TurretUI (currently just grey out).
 
-**Recon** is functional. After the read path is wired, wire `system_knowledge.db` so cross-system queries work in O(1) instead of O(pilots) file scan. That's the main remaining gap.
+### BYOK — Bring Your Own API Key
 
-**Log ingest** write path works. The read path above is the only gap. After that's done, log ingest is functionally complete for current scale.
+Allow users to supply their own Claude API key. Key stored in browser `localStorage`, sent as `X-User-Api-Key` header, used per-request and discarded — never written to server disk. Server key remains fallback. Full design in `docs/roadmap/byok-api-keys.md`.
 
-**Route Planner** is the most complete feature already. Walk through it end-to-end and note any remaining gaps.
+Three files, ~70 lines total:
+- `src/endpoints/companion.py` — read header, pass to `AsyncAnthropic` instantiation (~15 lines)
+- `frontend/src/hooks/useCompanionStream.ts` — inject header from localStorage (~5 lines)
+- `frontend/src/components/TerminalUI.tsx` — `/apikey` slash command + inline settings panel (~50 lines)
+
+**Open decisions before implementing:**
+- Tier policy for BYOK users — does tier still apply, or do BYOK users get a VETTED floor?
+- Logging hygiene — confirm FastAPI middleware does not log `X-User-Api-Key` header before shipping.
+
+### Add temporal metadata to intel stores
+
+No intel record currently carries `first_seen_at`, `last_seen_at`, or `observation_count`. Stale data is indistinguishable from current data. This must be added before more records accumulate — records written without timestamps cannot be backdated.
+
+| Task | Files |
+|------|-------|
+| Add `first_seen_at`, `last_seen_at`, `observation_count` to `log_intel_store.py` | `log_intel_store.py`, `system_knowledge.py` |
+| Audit `query_intel` scope — cross-pilot or personal only? | `ai_tools.py`, `intel_store.py` |
+| Audit `memory_store.py` → `context_builder.py` connection | `memory_store.py`, `context_builder.py` |
+
+### Verified player location (`/provemylocation`)
+
+Players currently self-report their system via `/system <name>`. A verified path exists using player-exported PODs from `evefrontier.com/account` — no CCP cooperation or auth tokens required. The backend verifies the cryptographic signature, resolves the system name via a public World API endpoint, and marks the location as confirmed.
+
+Full investigation and both implementation paths in `docs/roadmap/verified-location-rpc-investigation.md`.
+
+### Warehouse receipts — on-chain item custody
+
+Loash Industries (fellow hackathon participants) have deployed Sui Move contracts on both testnets that lock items into SSU vaults and issue bearer receipt tokens in return. Contracts require no deployment work. HUGINN needs PTB builders, vault state query endpoints, frontend panels, and AI tools.
+
+This is the only path to real courier contracts — items locked in vault, receipt is the cargo claim. Text-only courier posts become enforceable.
+
+Full integration plan in `docs/roadmap/warehouse-receipts-item-custody.md`.
 
 ---
 
@@ -93,13 +117,13 @@ Every additional log upload before the re-key runs increases migration cost. Do 
 
 These are real concerns. None of them matter right now with one tester and near-zero traffic. Revisit when the trigger applies.
 
-**Access tier caching** — when Sui Testnet degradation actually causes problems or when the 100–400ms per-chat-turn latency becomes noticeable. Resolve tier once at `/session/register`, cache in session, lazy TTL refresh. Full design: `docs/roadmap/access-tier-caching.md`.
+**Access tier caching** — when Sui Testnet degradation actually causes problems or when 100–400ms per chat turn becomes noticeable. Resolve tier once at `/session/register`, cache in session, lazy TTL refresh. Full design: `docs/roadmap/access-tier-caching.md`.
 
 **Rate limiting on `/companion/stream` and `/logs/upload`** — before sharing the URL publicly with people you don't know.
 
-**Claude model routing** — when the monthly Claude bill is high enough to care. Haiku for log summarization and Huginn Signal; sonnet for companion chat. Hard rule before routing: haiku never writes to `system_knowledge.db` or `log_intel_store.py` without schema validation at the write path. Full decision table: `docs/roadmap/model-routing.md`.
+**Claude model routing** — when the monthly Claude bill is high enough to care. Haiku for log summarization and Huginn Signal; sonnet for companion chat. Hard rule: haiku never writes to `system_knowledge.db` or `log_intel_store.py` without schema validation at the write path. Full decision table: `docs/roadmap/model-routing.md`.
 
-**Unify the knowledge graph into `system_knowledge.db`** — after the read path is working and pilot data is actually accumulating. Wire log upload, killmail sync, and field reports into one SQLite database. Add `get_system_knowledge` tool. Inject per-system summary proactively into `context_builder.py`. Not worth doing while the stores are empty.
+**Complete the knowledge graph** — wire killmail system visit counts and `intel_store.py` field reports into `system_knowledge.db`. Inject per-system summaries proactively into `context_builder.py`. Enrich Huginn Signal from the graph. Not worth doing while pilot count is low and the stores are thin.
 
 **Parser coverage** — when there are enough real log uploads to have a meaningful signal on what's being dropped. Build the quarantine store, candidate hostile extraction, and developer CLI then. Full design: `docs/roadmap/log-parser-intelligence-evolution.md`.
 
@@ -107,15 +131,11 @@ These are real concerns. None of them matter right now with one tester and near-
 
 **Backup** — before sharing with anyone who'd care about losing their data.
 
-**HTTPS / TLS** — before any public URL shared beyond the current testers.
-
-**Huginn Signal enrichment** — after `system_knowledge.db` has real data. Not worth enriching a broadcast that reads from empty stores.
+**HTTPS / TLS** — before any public URL shared beyond current testers.
 
 **Contribution → VETTED tier pathway** — after there are enough users to make the flywheel worth incentivizing.
 
-**UI revision** — TerminalUI, GateUI, TurretUI sizes, layout, and visual design are all in scope. Do this after the intelligence layer has substance. Redesigning a display before the data exists is wasted work.
-
-**PostgreSQL / multi-VPS / HA** — if this ever becomes something people depend on.
+**UI revision** — TerminalUI, GateUI, TurretUI sizes, layout, and visual design are all in scope. After the intelligence layer has substance.
 
 ---
 
@@ -123,11 +143,11 @@ These are real concerns. None of them matter right now with one tester and near-
 
 These apply now, not later.
 
-1. **No haiku writes to `system_knowledge.db` or `log_intel_store.py` without schema validation at the write path.** Misattributed intelligence is permanent and cited by every future pilot. This applies before haiku routing is even enabled.
+1. **No haiku writes to `system_knowledge.db` or `log_intel_store.py` without schema validation at the write path.** Misattributed intelligence is permanent and cited by every future pilot.
 
-2. **Temporal columns from the start.** Any new intel record without `first_seen_at`, `last_seen_at`, `observation_count` at write time is permanently undateable. Do not add a store without them.
+2. **Temporal columns from the start.** Any new intel record without `first_seen_at`, `last_seen_at`, `observation_count` at write time is permanently undateable.
 
-3. **`gamelog_raw` text has no path to any Claude-facing function. Inviolable.** Raw log text is attacker-controlled. This applies to the quarantine store and all derivative data.
+3. **`gamelog_raw` text has no path to any Claude-facing function. Inviolable.** Raw log text is attacker-controlled.
 
 4. **Before writing any new data access code, check the dapp-kit boundary in `CLAUDE.md`.** Nine known boundary violations exist.
 
@@ -137,11 +157,17 @@ As the knowledge layer deepens, HUGINN risks sounding like a database. Confidenc
 
 ## Supporting Documents
 
-The `docs/roadmap/` directory contains detailed analysis written post-hackathon. They are accurate background. Read them when working on the relevant area.
+The `docs/roadmap/` directory contains detailed analysis written post-hackathon. Read the relevant doc when working on that area.
 
 - `access-tier-caching.md` — full design for resolving tier at registration, TTL strategy, consistency window
-- `data-layer-architecture.md` — store inventory, structural problems, evolutionary path
-- `intelligence-pipeline-analysis.md` — why log intel is siloed and how to fix it
+- `byok-api-keys.md` — BYOK design, exact file changes, open decisions
+- `eval-ui-components-library.md` — EVE component library evaluation, full quick-win list with difficulty ratings
 - `log-parser-intelligence-evolution.md` — quarantine store, candidate hostile extraction, entity category tagging
 - `model-routing.md` — full routing decision table, rollout sequence, prompt engineering rules
-- `strategic-priorities.md` — priority ranking and sequencing waves (predates this document)
+- `strategic-priorities.md` — ranked priority list with sequencing waves
+- `verified-location-rpc-investigation.md` — World API auth investigation, POD export path, zkLogin path
+- `warehouse-receipts-item-custody.md` — Loash Industries contract integration plan
+
+**Stale** (describe problems now resolved — kept for historical context):
+- `data-layer-architecture.md` — store structural problems; most are fixed. Watch items: session read-modify-write race under concurrent load, `memory_store/` summarization divergence risk, dead session accumulation.
+- `intelligence-pipeline-analysis.md` — written when log intel and system_knowledge were unwired. Both are now operational.
