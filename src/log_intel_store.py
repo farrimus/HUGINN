@@ -161,6 +161,7 @@ def merge_upload(
     - last_processed_date is advanced to newest_file_date if it's later.
     """
     record = load(wallet, env=env)
+    record = _migrate(record)
     systems: dict = record.setdefault("systems", {})
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -171,6 +172,8 @@ def merge_upload(
             entry = systems.setdefault(sys_name, _empty_system())
             entry["visit_count"] = entry.get("visit_count", 0) + 1
             entry["last_seen"] = now
+            if entry.get("first_seen") is None:
+                entry["first_seen"] = now
             seen_in_this_upload.add(sys_name)
 
     # Mining
@@ -181,8 +184,12 @@ def merge_upload(
         material = ev.get("material", "unknown")
         qty = ev.get("quantity", 0)
         entry = systems.setdefault(sys_name, _empty_system())
-        ores = entry.setdefault("ores", {})
-        ores[material] = ores.get(material, 0) + qty
+        ores: dict = entry.setdefault("ores", {})
+        if material not in ores:
+            ores[material] = {"qty": qty, "first_seen": now, "last_seen": now}
+        else:
+            ores[material]["qty"] = ores[material].get("qty", 0) + qty
+            ores[material]["last_seen"] = now
 
     # Hostiles from combat (targets of outgoing hits + sources of incoming hits)
     for ev in gamelog_events:
@@ -198,9 +205,12 @@ def merge_upload(
             continue
         sys_name = ev.get("system", "unknown")
         entry = systems.setdefault(sys_name, _empty_system())
-        hostiles: list = entry.setdefault("hostiles", [])
+        hostiles: dict = entry.setdefault("hostiles", {})
         if hostile not in hostiles:
-            hostiles.append(hostile)
+            hostiles[hostile] = {"count": 1, "first_seen": now, "last_seen": now}
+        else:
+            hostiles[hostile]["count"] = hostiles[hostile].get("count", 0) + 1
+            hostiles[hostile]["last_seen"] = now
 
     # Advance last_processed_date
     if newest_file_date:
@@ -224,7 +234,41 @@ def merge_upload(
 
 
 def _empty_system() -> dict:
-    return {"visit_count": 0, "last_seen": None, "ores": {}, "hostiles": []}
+    return {
+        "visit_count": 0,
+        "first_seen": None,
+        "last_seen": None,
+        "ores": {},      # {name: {"qty": int, "first_seen": ts, "last_seen": ts}}
+        "hostiles": {},  # {name: {"count": int, "first_seen": ts, "last_seen": ts}}
+    }
+
+
+def _migrate(record: dict) -> dict:
+    """Upgrade old schema (int ores, list hostiles, no first_seen) to current format in-place."""
+    for entry in record.get("systems", {}).values():
+        if "first_seen" not in entry:
+            entry["first_seen"] = entry.get("last_seen")
+
+        # ores: {name: int} → {name: {qty, first_seen, last_seen}}
+        ores = entry.get("ores", {})
+        if ores:
+            sample = next(iter(ores.values()))
+            if isinstance(sample, (int, float)):
+                ts = entry.get("last_seen")
+                entry["ores"] = {
+                    name: {"qty": int(qty), "first_seen": ts, "last_seen": ts}
+                    for name, qty in ores.items()
+                }
+
+        # hostiles: [name] → {name: {count, first_seen, last_seen}}
+        hostiles = entry.get("hostiles", [])
+        if isinstance(hostiles, list):
+            ts = entry.get("last_seen")
+            entry["hostiles"] = {
+                name: {"count": 1, "first_seen": ts, "last_seen": ts}
+                for name in hostiles
+            }
+    return record
 
 
 def format_for_huginn(wallet: str, env: str | None = None) -> str:
@@ -233,18 +277,25 @@ def format_for_huginn(wallet: str, env: str | None = None) -> str:
     Only included if the wallet has prior upload history.
     """
     record = load(wallet, env=env)
+    record = _migrate(record)
     systems: dict = record.get("systems", {})
     if not systems:
         return ""
 
     lines = ["HISTORICAL SYSTEM INTEL (accumulated from prior uploads):"]
     for sys_name, data in sorted(systems.items()):
-        ores = data.get("ores", {})
-        hostiles = data.get("hostiles", [])
+        ores: dict = data.get("ores", {})
+        hostiles: dict = data.get("hostiles", {})
         visits = data.get("visit_count", 0)
+        last_seen = (data.get("last_seen") or "")[:10]
 
-        ore_str = ", ".join(f"{m} x{q}" for m, q in sorted(ores.items())) if ores else "none"
-        hostile_str = ", ".join(hostiles[:8]) if hostiles else "none"
-        lines.append(f"  {sys_name} (visits={visits}): ores=[{ore_str}] hostiles=[{hostile_str}]")
+        ore_str = ", ".join(
+            f"{n} x{v['qty']}" for n, v in sorted(ores.items())
+        ) if ores else "none"
+        hostile_str = ", ".join(list(hostiles.keys())[:8]) if hostiles else "none"
+        lines.append(
+            f"  {sys_name} (visits={visits}, last={last_seen}): "
+            f"ores=[{ore_str}] hostiles=[{hostile_str}]"
+        )
 
     return "\n".join(lines)

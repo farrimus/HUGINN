@@ -163,7 +163,7 @@ def record_sighting(
 
 
 def record_from_upload(systems_dict: dict, reported_by: str | None = None, env: str | None = None) -> None:
-    """Batch-record from log upload format: {system_name: {ores: {name: qty}, hostiles: [name, ...]}}."""
+    """Batch-record from log upload format: {system_name: {ores: {name: ...}, hostiles: {name: ...}}}."""
     # Use wallet-prefixed source key so distinct pilots accumulate in sources[]
     # len(sources) on any sighting row gives distinct reporter count
     source_key = f"pilot:{reported_by[:10]}" if reported_by else "log_upload"
@@ -172,7 +172,10 @@ def record_from_upload(systems_dict: dict, reported_by: str | None = None, env: 
             continue
         for ore_name in (data.get("ores") or {}).keys():
             record_sighting(system_name, "ore", ore_name, source_key, reported_by, env=env)
-        for hostile_name in (data.get("hostiles") or []):
+        # hostiles is {name: {count, ...}} after schema migration
+        hostiles = data.get("hostiles") or {}
+        hostile_names = hostiles.keys() if isinstance(hostiles, dict) else hostiles
+        for hostile_name in hostile_names:
             record_sighting(system_name, "enemy", hostile_name, source_key, reported_by, env=env)
 
 
