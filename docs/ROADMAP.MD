@@ -41,7 +41,7 @@ The supporting analysis in `docs/roadmap/` explains why things are structured th
 | Area | Current state |
 |------|--------------|
 | Access tier | Per-request Sui RPC — 100–400ms per chat turn; Testnet degradation = hard failure |
-| Intel stores | No temporal metadata (`first_seen_at`, `last_seen_at`) — stale and fresh records indistinguishable |
+| Intel stores | `log_intel_store.py` has `first_seen`/`last_seen` per ore and hostile. `intel_store.py` field report scope (cross-pilot vs. personal) unaudited. |
 | Claude model selection | `claude-sonnet-4-6` everywhere — log summarization and Signal don't need it |
 | Log parser | Drops unknown entity types (players, ships, player structures) |
 | UI | TerminalUI, GateUI, TurretUI — functional but unfinished |
@@ -51,28 +51,52 @@ The supporting analysis in `docs/roadmap/` explains why things are structured th
 
 ## What to Work on Next
 
-### Delete dead code — `bcs_encoding.py`
+Items are ordered: no-blockers with no open decisions first, sorted by effort ascending; then items with soft dependencies; then items with open decisions or significant scope.
 
-`src/bcs_encoding.py` is never imported anywhere. The `hash_input_for_derived_object()` function is marked "best guess" in comments and is not used in tier resolution (which uses hardcoded IDs from profile JSON). Delete it. It creates false confidence that Python-side BCS derivation works. If runtime object ID derivation is ever needed, use a TypeScript sidecar — do not replicate Sui's `hash_type_and_key` in Python.
+### Lore Core
 
-### UI quick wins — EVE component library evaluation
+- `prompts/companion.md` contains no faction descriptions, world history, or glossary. HUGINN cannot speak to these topics with authority.
+- Create `prompts/lore.md` with content from the EVE Frontier Whitepaper v0.7.5: 5 setting entries (The Frontier, The Collapse, Rogue Drones, Riders, Digital Physics & Energy), 4 factions (Tribes, Syndicates, Exclave Ventures, Ophidia Operations), 5 game pillars, and 40+ glossary terms (all fuel types, Crude Matter, Rifts, Still Knot, Salt, $EVE, EVE Points, Fossilized Exotronics, and more).
+- Inject `lore.md` into the prompt build alongside `companion.md`. No changes to any other file.
+- Estimated token cost: ~2,000 tokens per chat turn.
+- Full content specification: `docs/roadmap/hackathon-scout-feature-candidates.md` — Lore Core section.
 
-A full evaluation of `@eveworld/ui-components` and `@evefrontier/dapp-kit` was done on 2026-04-08. Several low-effort improvements fall out of it. All of the immediate items are difficulty 1/5. Full list with exact copy/recreation instructions in `docs/roadmap/eval-ui-components-library.md`.
+### Ship Hull Stats
 
-**Immediate (no prerequisites):**
-- `parseErrorFromMessage` — import from installed dapp-kit, apply before all `notify()` calls in GateUI and TurretUI. Classifies tx errors into 24 typed codes.
-- Identicon / `useIdenticon` — 30-line hook + 16 SVG imports. Adds visual identity marker to BaselinePanel and TurretUI wallet bar. Currently zero visual identity exists.
-- Disconnect button — `handleDisconnect` from `useConnection()` is available but never surfaced. Add to TurretUI and GateUI.
-- Scrollbar CSS — extract `.Eve-Scrollbar` rules from dapp-kit `styles-ui.css`. Apply to `.terminal-output`, gate chat. Only TurretUI has custom scrollbar styling today.
-- `EXCLUDED_TYPEIDS` backend filter — add `EXCLUDED_TYPEIDS = {"87160", "87161", "87162", "87566"}` to backend and filter portables (refinery, printer, storage, refuge) from assembly list endpoints. These currently return unfiltered.
+- `src/ship_profile.py` contains the full hull catalog for all current hulls with `slots` (high/mid/low), `cpu_output`, and `powergrid_output`. The ship context block in `src/context_builder.py` does not forward these fields — the AI receives hull name, class, fuel type, fuel quantity, jump range, jump budget, and adaptive level only.
+- Add `slots`, `cpu_output`, and `powergrid_output` to the ship context block in `src/context_builder.py`. No new data sources, no new API calls.
+- Out of scope: full fit analysis (which modules are in fitted slots) requires an in-game Bearer JWT. Defer until the game client exposes a solution.
 
-**Near-term (copy/recreate, no Tailwind required):**
-- `EveFeralCodeGen` — copy 50-line file + one CSS class. Ambient lore texture for loading states.
-- In-house toast/notification snackbar — `notify()` is called throughout GateUI and TurretUI but nothing renders. Build minimal snackbar wired to `useNotification()` state.
-- `CopyButton` — clipboard copy for assembly IDs and wallet addresses using `clickToCopy` from dapp-kit.
-- `EveLoadingAnimation` — recreate CSS keyframes, apply across TurretUI, GateUI, TerminalUI loading states.
-- ConfirmDialog for `/unlink` — gate unlinking is destructive, currently executes immediately with no confirmation.
-- `useCooldown` hook — copy cooldown mechanic for BRING ONLINE/OFFLINE buttons in TurretUI (currently just grey out).
+### Character Session Enrichment
+
+- `CharacterSession` defines `character_id` and `tribe_id` as `Optional[int]`. Both default to `None` in all active sessions — `RegisterRequest` does not include them, so they are never populated. `tribe_id` is absent from `tool_context`, so the AI cannot use it for tribe-aware decisions.
+- Three files:
+  - Frontend: send `character_id` and `tribe_id` in the `/session/register` POST. dapp-kit `CharacterInfo` returns both at wallet connect time.
+  - `src/endpoints/session.py`: add `character_id` and `tribe_id` to `RegisterRequest`; store on the session.
+  - `src/companion.py`: thread `tribe_id` into `tool_context`.
+- Out of scope: owned assemblies (dapp-kit client-side only, no server relay mechanism) and jump history (`GET /v2/characters/me/jumps` requires in-game Bearer JWT).
+
+### Tribe Awareness
+
+- `WorldAPIClient.get_tribe(tribe_id)` discards all fields except `name`. The list endpoint `GET /v2/tribes` is never called. Tribe directory data (description, tax rate, short name, tribe URL) is unavailable to the AI.
+- Three changes, all in `src/world_api.py` and `src/ai_tools.py`:
+  - Add `get_tribes()` to `WorldAPIClient` — one method, same `_cached_fetch` pattern as existing calls.
+  - Fix `get_tribe(tribe_id)` to return the full object: `name`, `nameShort`, `description`, `taxRate`, `tribeUrl`.
+  - Add `get_tribe_info` tool in `src/ai_tools.py` — live fetch per request, no DB storage.
+- Note: works standalone. More useful after Character Session Enrichment — when `tribe_id` is populated in the session, the AI can look up the pilot's own tribe without asking.
+
+### Audit intel stores
+
+| Task | Files |
+|------|-------|
+| Audit `query_intel` scope — cross-pilot or personal only? | `ai_tools.py`, `intel_store.py` |
+| Audit `memory_store.py` → `context_builder.py` connection | `memory_store.py`, `context_builder.py` |
+
+### Verified player location (`/provemylocation`)
+
+Players currently self-report their system via `/system <name>`. A verified path exists using player-exported PODs from `evefrontier.com/account` — no CCP cooperation or auth tokens required. The backend verifies the cryptographic signature, resolves the system name via a public World API endpoint, and marks the location as confirmed.
+
+Full investigation and both implementation paths in `docs/roadmap/verified-location-rpc-investigation.md`.
 
 ### BYOK — Bring Your Own API Key
 
@@ -86,22 +110,6 @@ Three files, ~70 lines total:
 **Open decisions before implementing:**
 - Tier policy for BYOK users — does tier still apply, or do BYOK users get a VETTED floor?
 - Logging hygiene — confirm FastAPI middleware does not log `X-User-Api-Key` header before shipping.
-
-### Add temporal metadata to intel stores
-
-No intel record currently carries `first_seen_at`, `last_seen_at`, or `observation_count`. Stale data is indistinguishable from current data. This must be added before more records accumulate — records written without timestamps cannot be backdated.
-
-| Task | Files |
-|------|-------|
-| Add `first_seen_at`, `last_seen_at`, `observation_count` to `log_intel_store.py` | `log_intel_store.py`, `system_knowledge.py` |
-| Audit `query_intel` scope — cross-pilot or personal only? | `ai_tools.py`, `intel_store.py` |
-| Audit `memory_store.py` → `context_builder.py` connection | `memory_store.py`, `context_builder.py` |
-
-### Verified player location (`/provemylocation`)
-
-Players currently self-report their system via `/system <name>`. A verified path exists using player-exported PODs from `evefrontier.com/account` — no CCP cooperation or auth tokens required. The backend verifies the cryptographic signature, resolves the system name via a public World API endpoint, and marks the location as confirmed.
-
-Full investigation and both implementation paths in `docs/roadmap/verified-location-rpc-investigation.md`.
 
 ### Warehouse receipts — on-chain item custody
 
@@ -133,9 +141,38 @@ These are real concerns. None of them matter right now with one tester and near-
 
 **HTTPS / TLS** — before any public URL shared beyond current testers.
 
-**Contribution → VETTED tier pathway** — after there are enough users to make the flywheel worth incentivizing.
+**Contribution → VETTED tier pathway** — after there are enough users to make the flywheel worth incentivizing. The BYOK tier policy decision (whether BYOK users receive a VETTED floor) should be resolved before the BYOK item ships.
 
 **UI revision** — TerminalUI, GateUI, TurretUI sizes, layout, and visual design are all in scope. After the intelligence layer has substance.
+
+---
+
+## Deferred / Blocked
+
+These items have been evaluated and have known integration patterns. Work cannot start due to external dependencies outside this project's control.
+
+### Gate Access Awareness
+
+- On-chain gate extension contracts control jump permit issuance. Two confirmed patterns: `tribe_permit.move` (gates allowing only pilots whose tribe ID matches a configured u32) and `corpse_gate_bounty.move` (gates requiring deposit of a specific item type as toll).
+- The gate's `extension: Option<TypeName>` field is readable via a single Sui RPC call — sufficient to detect locked vs. open.
+- Blocked by:
+  - Open Borders Protocol (OBP) package ID is unknown. `ExtensionConfig` (the object holding tribe ID or bounty type) is a separate Sui shared object with no pointer in the Gate struct — discovery requires per-extension lookup chains not self-describing from the gate alone.
+  - OBP's `ExtensionConfig` schema cannot be queried without the package ID.
+  - Bounty gate access requires completing a transaction; it cannot be answered by a static read.
+  - Player-deployed SmartGates are absent from `systems.json`. `src/route_engine.py` uses a static gate graph with no concept of access-filtered edges.
+- Unblock when: OBP publishes their package ID AND player SmartGates are indexed in `systems.json`.
+- Full blocker analysis: `docs/roadmap/hackathon-scout-feature-candidates.md` — Gate Access Awareness section.
+
+---
+
+## Skipped
+
+These items were evaluated and will not be integrated in their current state.
+
+### KARUM Marketplace
+
+- An on-chain marketplace for EVE Frontier resources. `karum.space` serves a JavaScript SPA. No public REST API, no Sui package ID, no on-chain registry object ID is discoverable. Nothing to integrate against.
+- Revisit if KARUM publishes a REST API or on-chain registry object ID. Integration pattern: new `find_marketplace` tool in `src/ai_tools.py`, same shape as `manage_courier`.
 
 ---
 
@@ -162,12 +199,10 @@ The `docs/roadmap/` directory contains detailed analysis written post-hackathon.
 - `access-tier-caching.md` — full design for resolving tier at registration, TTL strategy, consistency window
 - `byok-api-keys.md` — BYOK design, exact file changes, open decisions
 - `eval-ui-components-library.md` — EVE component library evaluation, full quick-win list with difficulty ratings
+- `hackathon-scout-feature-candidates.md` — post-hackathon scout evaluation: Lore Core, Ship Hull Stats, Session Enrichment, Tribe Awareness (USE); Gate Access Awareness (DEFER/blocked); KARUM Marketplace (SKIP)
 - `log-parser-intelligence-evolution.md` — quarantine store, candidate hostile extraction, entity category tagging
 - `model-routing.md` — full routing decision table, rollout sequence, prompt engineering rules
 - `strategic-priorities.md` — ranked priority list with sequencing waves
 - `verified-location-rpc-investigation.md` — World API auth investigation, POD export path, zkLogin path
 - `warehouse-receipts-item-custody.md` — Loash Industries contract integration plan
 
-**Stale** (describe problems now resolved — kept for historical context):
-- `data-layer-architecture.md` — store structural problems; most are fixed. Watch items: session read-modify-write race under concurrent load, `memory_store/` summarization divergence risk, dead session accumulation.
-- `intelligence-pipeline-analysis.md` — written when log intel and system_knowledge were unwired. Both are now operational.
