@@ -25,6 +25,18 @@ import { SUBDIV } from '../constants/dividers';
 
 const API_BASE_URL = window.location.origin;
 
+const PORTABLE_TYPE_IDS = new Set(['87160', '87161', '87162', '87566']);
+type NetworkFilter = 'exclude_portables' | 'all' | 'only_portables';
+
+function applyNetworkFilter<T extends { typeId: string }>(
+  assemblies: T[],
+  filter: NetworkFilter,
+): T[] {
+  if (filter === 'all') return assemblies;
+  if (filter === 'only_portables') return assemblies.filter(a => PORTABLE_TYPE_IDS.has(a.typeId));
+  return assemblies.filter(a => !PORTABLE_TYPE_IDS.has(a.typeId));
+}
+
 interface HelpGroup {
   label: string;
   cmds: Array<{ text: string; action: string }>;
@@ -387,7 +399,7 @@ export function TerminalUI() {
         ...(on('network') || on('nodes') || on('inventory') || on('assets') || on('signal') || on('upload') ? [{
           label: 'INTEL',
           cmds: [
-            ...(on('network')   ? [{ text: '/network',   action: '/network' }]   : []),
+            ...(on('network')   ? [{ text: '/network [all|portables]', action: '/network' }]   : []),
             ...(on('nodes')     ? [{ text: '/nodes',     action: '/nodes' }]     : []),
             ...(on('inventory') ? [{ text: '/inventory', action: '/inventory' }] : []),
             ...(on('assets')    ? [{ text: '/assets',    action: '/assets' }]    : []),
@@ -481,10 +493,23 @@ export function TerminalUI() {
   };
 
   // --- Network / intel panels ---
-  const handleNetworkCommands = async (command: string): Promise<void> => {
+  const handleNetworkCommands = async (command: string, parts: string[]): Promise<void> => {
     if (command === '/network') {
       if (isOff('network')) return;
       if (!networkData) { addLog('Network data not available.', 'warning'); return; }
+
+      const flag = parts[1]?.toLowerCase();
+      const filter: NetworkFilter =
+        flag === 'all'       ? 'all' :
+        flag === 'portables' ? 'only_portables' :
+                               'exclude_portables';
+
+      const allAssemblies = (networkData.connected_assemblies ?? []).map(a => ({
+        id: a.id, name: a.name, assemblyType: a.assembly_type, status: a.status,
+        typeId: a.type_id, key: a.key, groupName: a.group_name, categoryName: a.category_name,
+      }));
+      const filtered = applyNetworkFilter(allAssemblies, filter);
+
       displayToolOutput('network_map', {
         nodeId:              networkData.id,
         nodeName:            networkData.name,
@@ -505,13 +530,15 @@ export function TerminalUI() {
           totalReservedEnergy:     networkData.energy.total_reserved_energy,
           energyPercent:           networkData.energy.energy_percent,
         },
-        connectedAssemblies: (networkData.connected_assemblies ?? []).map(a => ({
-          id: a.id, name: a.name, assemblyType: a.assembly_type, status: a.status,
-          typeId: a.type_id, key: a.key, groupName: a.group_name, categoryName: a.category_name,
-        })),
+        connectedAssemblies: filtered,
         truncated: networkData.truncated,
       });
-      addLog('Network map loaded.', 'info');
+      const total = allAssemblies.length;
+      const shown = filtered.length;
+      const suffix = filter === 'all' ? '' : filter === 'only_portables'
+        ? ` (portables only: ${shown}/${total})`
+        : ` (${shown}/${total} — /network all to include portables)`;
+      addLog(`Network map loaded.${suffix}`, 'info');
     } else if (command === '/nodes') {
       if (isOff('nodes')) return;
       try {
@@ -675,7 +702,7 @@ export function TerminalUI() {
     if (['/system', '/home', '/route', '/intel'].includes(command))
       return handleNavigationCommands(command, parts);
     if (['/network', '/nodes', '/inventory', '/assets', '/signal'].includes(command))
-      return handleNetworkCommands(command);
+      return handleNetworkCommands(command, parts);
     if (['/watches', '/unwatch'].includes(command))
       return handleWatcherCommands(command, parts);
     if (['/courier', '/claim-courier', '/tribe', '/board'].includes(command))
@@ -810,7 +837,7 @@ export function TerminalUI() {
       ];
       addLog('[PRINT]: ' + lines.join('\n'), 'info');
     } else if (currentToolType === 'network_map' && networkData) {
-      const { name, status, fuel, energy, connected_assemblies } = networkData;
+      const { name, status, fuel, energy } = networkData;
       const fuelStr = fuel.is_burning
         ? `FUEL: ${fuel.fuel_percent.toFixed(0)}%  ~${(fuel.hours_remaining / 24).toFixed(1)}d`
         : 'FUEL: NOT BURNING';
@@ -819,7 +846,10 @@ export function TerminalUI() {
       const enStr = maxEn > 0
         ? `ENERGY: ${fmtNum(curEn)} / ${fmtNum(maxEn)} kW`
         : 'ENERGY: [ NO DATA ]';
-      const sorted = [...(connected_assemblies ?? [])].sort((a, b) => {
+      // Use currentData.connectedAssemblies — already filtered by the flag used when /network was run
+      type NetAsm = { id: string; name: string; assemblyType: string; status: string; groupName: string };
+      const netData = currentData as { connectedAssemblies: NetAsm[] } | null;
+      const sorted = [...(netData?.connectedAssemblies ?? [])].sort((a, b) => {
         if (a.id === assemblyId) return -1;
         if (b.id === assemblyId) return 1;
         const aOn = a.status === 'ONLINE' ? 0 : 1;
@@ -830,7 +860,7 @@ export function TerminalUI() {
         const isOff = a.status !== 'ONLINE';
         const badge = a.id === assemblyId ? ' [THIS]' : (isOff ? ' [!]' : '');
         const displayName = (a.id === assemblyId && enrichedAssembly?.name) ? enrichedAssembly.name : a.name;
-        return `  ${pad((isOff ? '~' : ' ') + displayName, 24)}${pad(a.group_name || a.assembly_type, 18)}${a.status}${badge}`;
+        return `  ${pad((isOff ? '~' : ' ') + displayName, 24)}${pad(a.groupName || a.assemblyType, 18)}${a.status}${badge}`;
       });
       const lines = [
         `NETWORK — ${name} [${status}]  |  ${fuelStr}  |  ${enStr}`,

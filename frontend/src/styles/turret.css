@@ -163,14 +163,6 @@
   border-top: 1px solid var(--c-bg-hover);
 }
 
-.turret-response::-webkit-scrollbar {
-  width: 3px;
-}
-
-.turret-response::-webkit-scrollbar-thumb {
-  background: var(--c-border);
-}
-
 .turret-response .response-line {
   margin-bottom: 4px;
 }
