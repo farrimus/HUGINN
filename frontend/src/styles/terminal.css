@@ -242,6 +242,36 @@ body {
   border-radius: 2px;
 }
 
+.text-martianred-5 { color: hsla(17, 100%, 50%, 1); }
+
+@keyframes feral-flicker {
+  0%   { opacity: 1;    }
+  8%   { opacity: 0.85; }
+  15%  { opacity: 1;    }
+  40%  { opacity: 0.9;  }
+  55%  { opacity: 1;    }
+  72%  { opacity: 0.8;  }
+  85%  { opacity: 1;    }
+  100% { opacity: 0.95; }
+}
+
+.feral-flicker {
+  animation: feral-flicker 2.3s linear infinite;
+}
+
+@keyframes feral-jitter {
+  0%   { transform: translateX(0);   }
+  25%  { transform: translateX(1px); }
+  50%  { transform: translateX(0);   }
+  75%  { transform: translateX(-1px);}
+  100% { transform: translateX(0);   }
+}
+
+.feral-jitter {
+  display: inline-block;
+  animation: feral-jitter 0.17s steps(1, end) infinite;
+}
+
 /* Blinking cursor input */
 .input-field-wrapper {
   flex: 1;

@@ -5,6 +5,7 @@ import { BaselinePanelData, HuginnNewsData, BuildOptionsData } from '../types/te
 import { TripCalculatorForm } from './TripCalculatorForm';
 import { BUILD_TIME } from '../main';
 import { useCompanionStream } from '../hooks/useCompanionStream';
+import { EveFeralCodeGen } from './EveFeralCodeGen';
 import { useWatcherAlerts } from '../hooks/useWatcherAlerts';
 import { useTribePosts, TribePostEvent } from '../hooks/useTribePosts';
 import { useEntityContext, type EnrichedAssembly } from '../context/EntityContext';
@@ -120,6 +121,9 @@ export function TerminalUI() {
   const [inputValue, setInputValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [feralTickMs, setFeralTickMs] = useState(300);
+  const windDownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentSystem, setCurrentSystem] = useState<string>('');
   const [debugMode, setDebugMode] = useState(false);
@@ -148,7 +152,7 @@ export function TerminalUI() {
   // Auto-scroll
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+  }, [logs, isStreaming]);
 
   // Baseline panel — update whenever identity or enrichment changes.
   // During splash: save data to ref but do not animate. After splash exits,
@@ -257,6 +261,24 @@ export function TerminalUI() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  const cancelWindDown = () => {
+    if (windDownRef.current) {
+      clearTimeout(windDownRef.current);
+      windDownRef.current = null;
+    }
+  };
+
+  const windDown = (ms: number, stepsLeft: number) => {
+    if (stepsLeft === 0) {
+      setIsStreaming(false);
+      setFeralTickMs(300);
+      return;
+    }
+    const next = ms * 2;
+    setFeralTickMs(next);
+    windDownRef.current = setTimeout(() => windDown(next, stepsLeft - 1), next);
+  };
+
   // Send chat message to /companion/stream (SSE with tool use)
   const handleChatMessage = async (userInput: string): Promise<void> => {
     if (!isReady) {
@@ -264,6 +286,8 @@ export function TerminalUI() {
       return;
     }
 
+    cancelWindDown();
+    setFeralTickMs(300);
     addLog(`[You]: ${userInput}`, 'user');
     setIsLoading(true);
 
@@ -293,6 +317,7 @@ export function TerminalUI() {
           textBuffer += text;
           if (!streamStarted) {
             streamStarted = true;
+            setIsStreaming(true);
             setLogs((prev) => [...prev, { id: streamId, text: `[HUGINN]: ${text}`, type: 'ai', timestamp: Date.now() }]);
           } else {
             setLogs((prev) => prev.map((l) => l.id === streamId ? { ...l, text: `[HUGINN]: ${textBuffer}` } : l));
@@ -313,9 +338,13 @@ export function TerminalUI() {
             ]);
           }
           setIsLoading(false);
+          windDown(300, 2);
         },
         onError: (err) => {
           addLog(`Error: ${err.message}`, 'error');
+          cancelWindDown();
+          setIsStreaming(false);
+          setFeralTickMs(300);
           setIsLoading(false);
         },
       }
@@ -1088,6 +1117,15 @@ export function TerminalUI() {
           </div>
         ))}
         <div ref={terminalEndRef} />
+        {isStreaming && (
+          <div className="terminal-line line-ai feral-flicker">
+            <span className="content">
+              <EveFeralCodeGen tickMs={feralTickMs} />
+              <EveFeralCodeGen tickMs={Math.round(feralTickMs * 1.33)} />
+              <EveFeralCodeGen tickMs={Math.round(feralTickMs * 0.67)} />
+            </span>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="terminal-input-area">
