@@ -55,11 +55,13 @@ Items are ordered: no-blockers with no open decisions first, sorted by effort as
 
 ### Lore Core
 
-- `prompts/companion.md` contains no faction descriptions, world history, or glossary. HUGINN cannot speak to these topics with authority.
-- Create `prompts/lore.md` with content from the EVE Frontier Whitepaper v0.7.5: 5 setting entries (The Frontier, The Collapse, Rogue Drones, Riders, Digital Physics & Energy), 4 factions (Tribes, Syndicates, Exclave Ventures, Ophidia Operations), 5 game pillars, and 40+ glossary terms (all fuel types, Crude Matter, Rifts, Still Knot, Salt, $EVE, EVE Points, Fossilized Exotronics, and more).
-- Inject `lore.md` into the prompt build alongside `companion.md`. No changes to any other file.
-- Estimated token cost: ~2,000 tokens per chat turn.
-- Full content specification: `docs/roadmap/hackathon-scout-feature-candidates.md` — Lore Core section.
+HUGINN has no knowledge of EVE Frontier lore — factions, world history, ships, materials, or mechanics. The system uses a SQLite archive (`data/lore.db`) with FTS5 full-text search, surfaced via a `search_lore` AI tool. A thin orientation block (~150 tokens) in the system prompt keeps always-on cost low; retrieval fires only when a pilot asks a lore question.
+
+Content is seeded from `data/lore_seed.json` — ~100 manually curated entries across 12 categories (setting, faction, pillar, ship, structure, npc, fuel, ore, material, mechanic, item, glossary). All `game_id` values reference the Stillness environment.
+
+Seven files: `src/lore_store.py` (new), `src/ai_tools.py` (edit), `src/tier_capabilities.py` (edit), `prompts/companion.md` (edit), `prompts/tools.yaml` (edit), `data/lore_seed.json` (new), `scripts/import_lore.py` (new).
+
+Full implementation plan: `docs/roadmap/lore-core.md`
 
 ### Ship Hull Stats
 
