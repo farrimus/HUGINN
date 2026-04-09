@@ -21,7 +21,7 @@ Two EVE Frontier environments exist: `utopia` (test) and `stillness` (staging/li
 - Which Sui package IDs are used for contract reads
 - Where in `data/` runtime files are stored (`data/utopia/` vs `data/stillness/`)
 
-If the env var is missing or unknown, the backend falls back to `utopia`. Frontend passes a `tenant` parameter on most requests so the backend can route correctly even if `DEPLOYMENT_ENV` differs.
+If the env var is missing or unknown, the main application falls back to `utopia`. Exception: the background tasks `huginn_news_task.py` and `blockchain_killmails.py` default to `stillness` when `DEPLOYMENT_ENV` is unset. Frontend passes a `tenant` parameter on most requests so the backend can route correctly even if `DEPLOYMENT_ENV` differs.
 
 ---
 
@@ -45,7 +45,7 @@ This serves two purposes:
 1. **Security boundary:** Raw chat messages and unrecognized log content never reach the AI.
 2. **Quality gate:** Claude only sees structured, typed events — no free-text noise.
 
-The practical limitation is that the game generates log lines for entity types the parser doesn't know yet: other players, player ships, player-owned structures. These are currently dropped rather than parsed. The approach for handling this is incremental: as unknown entity samples are collected in production, they are categorized and the parser is updated to cover them. The parser is not considered finished.
+The practical limitation is that the game generates log lines for entity types the parser doesn't know yet: other players, player ships, player-owned structures. These are currently dropped rather than parsed. The approach for handling this is incremental: as unknown entity samples are collected in production, they are categorized and the parser is updated to cover them.
 
 ---
 

@@ -26,6 +26,7 @@ cp .env.example .env
 Edit `.env` and fill in:
 - `ANTHROPIC_API_KEY` — from console.anthropic.com (required)
 - `JWT_SECRET` — random secret for session auth; generate with `python -c "import secrets; print(secrets.token_hex(16))"` (required)
+- `TOKEN_KEY_PASSWORD` — password for RSA key encryption; generate with `python -c "import secrets; print(secrets.token_hex(8))"` (required)
 - `VPS_SUI_ADDRESS` — the Sui address of the HUGINN server wallet; required for on-chain tier checks in production
 - `DEPLOYMENT_ENV` — `utopia` (default) or `stillness`; automatically sets the World API URL, Sui RPC, and package IDs
 

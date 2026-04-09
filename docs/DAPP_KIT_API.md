@@ -2,7 +2,6 @@
 
 **Version:** 0.1.7
 **Status:** Production-ready
-**Last Updated:** 2026-03-27
 
 This is the authoritative reference for all methods, hooks, utilities, types, and providers available in the dApp Kit. Use this when building dApps that interact with the builder scaffold.
 
@@ -569,9 +568,34 @@ const error = parseErrorFromMessage('Move module error in assembly...');
 
 ## 3. GraphQL Queries {#graphql}
 
-All GraphQL functions are in `@evefrontier/dapp-kit/graphql`.
+All GraphQL functions are in `@evefrontier/dapp-kit/graphql`. The low-level executor and named query constants are importable from `@evefrontier/dapp-kit` directly.
 
 **Import:** `import { getObjectWithJson, getAssemblyWithOwner, ... } from '@evefrontier/dapp-kit/graphql'`
+
+### Low-Level Executor
+
+#### executeGraphQLQuery(query, variables?)
+```typescript
+import { executeGraphQLQuery, GET_WALLET_CHARACTERS } from '@evefrontier/dapp-kit';
+
+const result = await executeGraphQLQuery(GET_WALLET_CHARACTERS, {
+  owner: walletAddress,
+  characterPlayerProfileType: profileType,
+});
+```
+- **Parameters:** A named query constant (e.g. `GET_WALLET_CHARACTERS`) and a variables object
+- **Returns:** Raw GraphQL response `{ data, errors }`
+- **Use when:** You need direct query execution outside of the React hook lifecycle (e.g. in a `useEffect` or async helper)
+
+#### GET_WALLET_CHARACTERS
+```typescript
+import { GET_WALLET_CHARACTERS } from '@evefrontier/dapp-kit';
+```
+- Named query constant for fetching a character by wallet address and character profile type
+- Pass to `executeGraphQLQuery()` with `{ owner: walletAddress, characterPlayerProfileType: profileType }`
+- Used in `useSession.ts` and `EntityContext.tsx` for tenant-aware character name resolution
+
+---
 
 ### Object Queries
 
@@ -758,7 +782,7 @@ function App() {
 ### VaultProvider
 
 **Features:**
-- Auto-reconnect to previously connected wallet
+- Reconnects to wallet persisted in localStorage (`eve-dapp-connected` key)
 - EVE Vault wallet detection
 - localStorage persistence (`eve-dapp-connected` key)
 - Integration with @mysten/dapp-kit-react
@@ -1409,5 +1433,4 @@ VITE_EVE_WORLD_PACKAGE_ID=0x456  # Required: EVE World package ID
 
 ---
 
-**Last Updated:** 2026-03-27
 **Status:** Production-ready

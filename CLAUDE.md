@@ -74,7 +74,7 @@ Before writing any fetch, query, GraphQL call, parser, formatter, or data transf
 
 **Start here:** `/docs/NAVIGATION.md` — maps every question to the right document.
 
-For architecture: `/docs/ARCHITECTURE.md`. For data schemas: `/docs/DATA_REFERENCE.md`. For engineering philosophy: `/PHILOSOPHY.md`.
+For architecture: `/docs/ARCHITECTURE.md`. For data schemas: `/docs/DATA_REFERENCE.md`. For engineering philosophy: `/PHILOSOPHY.md`. For how to write and maintain docs: `/docs/DOC_STANDARDS.md`.
 
 ---
 

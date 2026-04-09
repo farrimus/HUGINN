@@ -24,9 +24,12 @@ Use this file to find the right document for a given question. One document per 
 | Where is file X and what does it do? | `docs/REPO_STRUCTURE.md` |
 | What are the data schemas (structures, sessions, etc.)? | `docs/DATA_REFERENCE.md` |
 | How do I set up the project locally? | `docs/SETUP.md` |
-| How does BCS encoding / Sui object ID derivation work? | `docs/BCS_ENCODING.md` |
+| How does Sui object ID derivation work? | `docs/ARCHITECTURE.md` → Assembly Data (handled by dapp-kit via `@mysten/bcs`) |
 | What dapp-kit hooks and APIs are available? | `docs/DAPP_KIT_API.md` |
 | What did we evaluate from the official UI components library? What should we adopt? | `docs/roadmap/eval-ui-components-library.md` |
+| How should documentation be written, maintained, and structured? | `docs/DOC_STANDARDS.md` |
+| What language patterns work best for directing AI agents? | `docs/DOC_STANDARDS.md` → Writing for Agents |
+| When and how should a doc be updated? | `docs/DOC_STANDARDS.md` → Maintenance Workflow |
 
 ---
 
@@ -34,7 +37,7 @@ Use this file to find the right document for a given question. One document per 
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| `PHILOSOPHY.md` | Product vision + engineering principles (Musk's Algorithm) | All |
+| `PHILOSOPHY.md` | Product vision + engineering principles (Engineering: The Algorithm) | All |
 | `CLAUDE.md` | Claude Code rules, data layer boundary, standing preferences | AI agents |
 | `docs/NAVIGATION.md` | This file — maps questions to documents | AI agents |
 | `docs/PROJECT_OVERVIEW.md` | Mission, feature list, current status | All |
@@ -44,9 +47,9 @@ Use this file to find the right document for a given question. One document per 
 | `docs/REPO_STRUCTURE.md` | Every file, every directory, every entry point | Developers / AI agents |
 | `docs/DATA_REFERENCE.md` | Data schemas: structures, sessions, killmails, intel | Developers |
 | `docs/DAPP_KIT_API.md` | Full dapp-kit hook and API reference | Frontend developers |
-| `docs/BCS_ENCODING.md` | Sui BCS encoding, object ID derivation | Blockchain / backend |
 | `docs/SETUP.md` | Local development setup | Developers |
 | `docs/roadmap/eval-ui-components-library.md` | Evaluation of official EVE Frontier UI components — what to adopt, copy, or skip | Frontend developers |
+| `docs/DOC_STANDARDS.md` | How to write, maintain, and audit all project documentation | All / AI agents |
 
 ---
 

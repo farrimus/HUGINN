@@ -37,7 +37,7 @@ FastAPI is async-native — suited to several concurrent background tasks (SSU p
 
 ### dapp-kit multi-tenant cache
 
-dapp-kit 0.1.7 ships with the assembly registry cache (`getObjectId`) already keyed by package ID (`Record<string, string>`), so utopia and stillness coexist in the same session without collision. No patch is required.
+dapp-kit is patched via `frontend/patches/@evefrontier+dapp-kit+0.1.7.patch` to key the assembly registry cache by package ID (`Record<string, string>`), so utopia and stillness coexist in the same session without collision. The patch modifies `getAssemblyWithOwner()` to accept a `packageId` parameter and stores registry addresses in a per-package map. Applied automatically by `patch-package` on `npm install`.
 
 ---
 
@@ -48,7 +48,7 @@ No external database server is required. All persistence is file-based.
 | Store | Format | Used for |
 |-------|--------|---------|
 | `data/eve_universe.db` | SQLite | Galaxy geography: 24,426 solar systems, gate topology, celestials. Pre-built by `build_universe.py`. Read-only at runtime. |
-| `data/{env}/system_knowledge.db` | SQLite (WAL mode) | Global system → enemy/ore knowledge graph. In progress. |
+| `data/{env}/system_knowledge.db` | SQLite (WAL mode) | Global system → enemy/ore knowledge graph. |
 | `data/{env}/killmails.jsonl` | JSONL (append-only) | Kill feed, synced hourly from Sui. |
 | `data/{env}/memory/` | JSONL + JSON (rolling) | Per-structure event memory and summary. |
 | `data/{env}/log_intel/` | JSONL per wallet | Per-system intel accumulated from log uploads. |

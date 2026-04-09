@@ -58,6 +58,10 @@ External: Sui blockchain hosts the AccessRegistry contract and
 | `news.py` | Huginn signal broadcast |
 | `admin.py` | Admin panel endpoints (OWNER-gated) |
 | `transactions.py` | `POST /tx/build` — unsigned Sui PTB builder |
+| `entity.py` | Entity resolution endpoints |
+| `game_data.py` | Game data passthrough endpoints |
+| `system_knowledge.py` | System knowledge graph endpoints |
+| `ui.py` | UI config and routing endpoints |
 
 ### Key Modules
 
@@ -194,7 +198,7 @@ No `window.ethereum`. No custom auth. DApp Kit handles everything.
 
 When the URL includes `?itemId=...&tenant=...`, `EveFrontierProvider` automatically:
 1. Reads the URL params
-2. Derives the Sui object ID (via BCS encoding)
+2. Derives the Sui object ID from URL parameters (via `@mysten/bcs` within dapp-kit)
 3. Fetches assembly + owner character in one GraphQL call
 4. Polls for updates every **10 seconds**
 5. Provides data via `useSmartObject()` hook
@@ -271,7 +275,7 @@ Pilot types a message
 ```
 Player opens SSU in-game
   → Browser loads /?itemId=...&tenant=...
-  → DApp Kit derives Sui object ID from itemId (BCS encoding, src/bcs_encoding.py)
+  → DApp Kit derives Sui object ID from itemId (BCS encoding via @mysten/bcs)
   → Sui GraphQL: assembly state + owner character (single query, polled every 10s)
   → Frontend: POST /session/register (wallet address, character name)
   → Backend: create or load session, return initial context
@@ -327,7 +331,7 @@ ssu_watcher_task.run_forever()
 
 **Reading (active):** The backend reads Sui for kill events, assembly state, and access control tier resolution. The frontend reads assembly and ownership data via DApp Kit's GraphQL hooks. All reads are unauthenticated (public chain state).
 
-**Writing (in development):** A deployed Move smart contract (`move/access_registry/`) manages per-structure access lists on-chain. Structure owners currently manage this directly via their Sui wallets. The backend has transaction-building infrastructure (`src/tx_builders/`) for future admin UI support.
+**Writing:** A deployed Move smart contract (`move/access_registry/`) manages per-structure access lists on-chain. Structure owners manage this directly via their Sui wallets. The backend provides transaction-building infrastructure (`src/tx_builders/`) for constructing unsigned PTBs; the wallet signs and submits.
 
 ---
 

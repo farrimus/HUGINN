@@ -18,7 +18,7 @@ Authentication: none required for most endpoints. `GET /v2/characters/me/jumps` 
 ### Endpoints
 
 **Solar Systems**
-- `GET /v2/solarsystems` — paginated list, limit 1000 per page (24,502 total)
+- `GET /v2/solarsystems` — paginated list, limit 1000 per page (24,426 total)
 - `GET /v2/solarsystems/{id}`
 - Fields: `id`, `name`, `constellationId`, `regionId`, `location {x,y,z}`
 - Extended (detail): + `gateLinks [{id, name, location, destination: SolarSystem}]`

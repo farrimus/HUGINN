@@ -15,7 +15,7 @@
 /
 ├── main.py                          App entry point. Startup sequence, all routers registered here.
 ├── CLAUDE.md                        Claude Code project instructions (AI assistant rules).
-├── PHILOSOPHY.md                    Product philosophy, north star, and engineering principles (Musk's Algorithm).
+├── PHILOSOPHY.md                    Product philosophy, north star, and engineering principles (Engineering: The Algorithm).
 ├── requirements.txt                 Python dependencies.
 ├── .env.example                     Environment variable template (copy to .env).
 ├── build_universe.py                One-time script: builds Galaxy DB from World API + starmap data.
@@ -39,7 +39,7 @@
 │   │   ├── admin.py                 Admin panel endpoints (OWNER-gated).
 │   │   ├── entity.py                Entity resolution endpoints.
 │   │   ├── game_data.py             Game data passthrough endpoints.
-│   │   ├── system_knowledge.py      System knowledge graph endpoints (in progress).
+│   │   ├── system_knowledge.py      System knowledge graph endpoints.
 │   │   └── ui.py                    UI config endpoints.
 │   │
 │   ├── ai_tools.py                  Claude tool registry: all tool definitions, schemas, and handlers.
@@ -51,7 +51,6 @@
 │   ├── blockchain_queries.py        Sui RPC: reads AccessRegistry, resolves tier.
 │   ├── entity_resolver.py           Resolves entity names and types; prewarmed from Sui GraphQL.
 │   ├── graphql_queries.py           Named GraphQL query strings + per-tenant (utopia/stillness) config.
-│   ├── bcs_encoding.py              BCS encoding utilities (Sui object ID derivation from itemId).
 │   ├── intel_store.py               Pilot-reported per-structure intelligence (read/write).
 │   ├── log_intel_store.py           Per-system intel accumulated from player log uploads.
 │   ├── log_analysis.py              Parses game logs into a per-system event timeline.
@@ -82,8 +81,8 @@
 │   ├── courier_store.py             Courier contract persistence; fcntl-locked read-modify-write on data/courier/contracts.json.
 │   ├── tribe_board.py               In-memory tribe presence board; ephemeral per-process, 5-min TTL expiry.
 │   ├── tribe_posts.py               Tribe post board persistence; per-tribe rolling cap of 200 posts, SSE fan-out.
-│   ├── system_knowledge.py          Global system→enemy/ore knowledge graph (in progress).
-│   └── tx_builders/                 Unsigned Sui PTB construction (future admin UI).
+│   ├── system_knowledge.py          Global system→enemy/ore knowledge graph.
+│   └── tx_builders/                 Unsigned Sui PTB construction.
 │       ├── base.py                  Base transaction builder utilities.
 │       └── gate_builder.py          Gate link/unlink transaction builder.
 │
@@ -106,6 +105,7 @@
 │   │   │   ├── AdminPanel.tsx       Admin management UI (OWNER only).
 │   │   │   ├── AssetMapPanel.tsx    Asset map display.
 │   │   │   ├── BaselinePanel.tsx    Baseline status panel.
+│   │   │   ├── EveFeralCodeGen.tsx  Code generation utility component.
 │   │   │   ├── InventoryPanel.tsx   Inventory display.
 │   │   │   ├── ReconForm.tsx        Recon scan form.
 │   │   │   ├── SplashScreen.tsx     Loading/splash screen.
@@ -149,8 +149,9 @@
 │       ├── sessions/                Per-pilot session state files.
 │       ├── memory/                  Per-structure event memory.
 │       ├── log_intel/               Per-system intel from player log uploads.
-│       └── system_knowledge.db      Global system knowledge graph (in progress).
+│       └── system_knowledge.db      Global system knowledge graph.
 │
+├── tests/                           pytest unit and integration tests.
 ├── docs/                            Technical documentation.
 ├── scripts/                         Utility and backfill scripts.
 ├── static/                          FastAPI static file serving. Built frontend is deployed here.

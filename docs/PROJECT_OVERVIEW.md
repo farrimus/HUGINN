@@ -23,7 +23,7 @@ These features were delivered and are running in production. All are functional 
 | Route planner | Pathfinding across 24,426 solar systems using gate topology. Accounts for jump range and fuel budget. |
 | Recon (system intelligence) | Live + historical data for any solar system: security status, kill activity, resources, threats. |
 | Kill feed | Killmails synced hourly from Sui blockchain events. Available to the AI and displayed in-app. |
-| Log upload + intel | Players upload their EVE Frontier game logs. HUGINN parses them and extracts per-system observations. Write path functional; AI read path not yet wired. |
+| Log upload + intel | Players upload their EVE Frontier game logs. HUGINN parses them and extracts per-system observations. Write path and AI read path functional via the `query_intel` tool. |
 | SSU watcher | Alert streams for structure state changes. Pilots can set watch rules and receive SSE notifications. |
 | Courier board | Per-structure hauling contract board. Pilots post, claim, and track contracts. |
 | Tribe presence board | Real-time tribe member presence and posts. |
@@ -41,7 +41,7 @@ A Sui Move contract (`move/access_registry/`) is deployed on-chain. It manages p
 
 The most complete features are route planning, recon, and log upload. Log parsing is actively evolving: as players use the system, unknown entity types (other players, ships, player-owned structures) are encountered, catalogued, and incrementally fed back into the parser to improve coverage.
 
-Log upload has a known gap: the write path (parse → summarize → store) works, but there is no AI tool wired to query the stored per-system intel. Log data accumulates without affecting what HUGINN knows in chat.
+Log upload write path (parse → summarize → store) is complete. Stored intel is accessible to the AI via the `query_intel` tool. Log parsing coverage expands incrementally as new entity types are encountered in production.
 
 ---
 
