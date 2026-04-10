@@ -22,6 +22,7 @@ import { AssetMapPanel } from './AssetMapPanel';
 import { RoutePanel } from './RoutePanel';
 
 import { DIVIDER } from '../constants/dividers';
+import { copyText } from '../utils/formatters';
 
 interface ToolOutputFormatterProps {
   toolType: ToolType;
@@ -136,7 +137,7 @@ function formatMemorySummary(data: MemorySummaryData): string {
   return lines.join('\n');
 }
 
-function fmtBuildStep(s: NonNullable<BuildOptionsData['buildOrder']>[number]): string {
+export function fmtBuildStep(s: NonNullable<BuildOptionsData['buildOrder']>[number]): string {
   const stepLabel = `STEP ${s.step}`;
   const name = s.name.slice(0, 20).padEnd(20);
   let detail: string;
@@ -215,23 +216,6 @@ function BuildOrderPanel({ data, onPrintToTerminal }: { data: BuildOptionsData; 
       )}
     </>
   );
-}
-
-function copyText(text: string): boolean {
-  // navigator.clipboard requires HTTPS — use execCommand fallback for HTTP
-  try {
-    const el = document.createElement('textarea');
-    el.value = text;
-    el.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
-    document.body.appendChild(el);
-    el.focus();
-    el.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(el);
-    return ok;
-  } catch {
-    return false;
-  }
 }
 
 function SystemIntelPanel({ data }: { data: SystemIntelData }) {

@@ -9,22 +9,7 @@ interface InventoryPanelProps {
 }
 
 import { DIVIDER } from '../constants/dividers';
-
-function fmtNum(n: number): string {
-  return n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-function fmtVol(n: number): string {
-  return n.toFixed(2);
-}
-
-function pad(s: string, len: number): string {
-  return s.slice(0, len).padEnd(len);
-}
-
-function padR(s: string, len: number): string {
-  return s.slice(0, len).padStart(len);
-}
+import { fmtNum, fmtVol, pad, padR } from '../utils/formatters';
 
 export function InventoryPanel({ data, onPrintToTerminal }: InventoryPanelProps) {
   const { assembly_name, used_capacity, max_capacity, capacity_percent, items } = data;

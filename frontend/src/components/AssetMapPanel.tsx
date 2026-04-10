@@ -2,6 +2,8 @@
 
 import { AssetMapData } from '../types/terminal';
 import { DIVIDER } from '../constants/dividers';
+import { TYPE_LABEL, TYPE_PRIORITY, statusRank } from '../utils/assemblyUtils';
+import { pad } from '../utils/formatters';
 
 interface AssetMapPanelProps {
   data: AssetMapData;
@@ -9,33 +11,6 @@ interface AssetMapPanelProps {
 }
 
 type Assembly = AssetMapData['assemblies'][number];
-
-const TYPE_LABEL: Record<string, string> = {
-  NetworkNode:      'NODE',
-  SmartStorageUnit: 'SSU',
-  SmartGate:        'GATE',
-  SmartTurret:      'TURT',
-  Manufacturing:    'MFG',
-  Refinery:         'REF',
-  Assembly:         'ASM',
-};
-
-const TYPE_PRIORITY: Record<string, number> = {
-  NetworkNode:      0,
-  Manufacturing:    1,
-  Refinery:         2,
-  SmartStorageUnit: 3,
-  SmartGate:        4,
-  SmartTurret:      5,
-};
-
-function statusRank(s: string): number {
-  return s === 'ONLINE' ? 0 : s === 'DESTROYED' ? 2 : 1;
-}
-
-function pad(s: string, len: number): string {
-  return s.slice(0, len).padEnd(len);
-}
 
 // Compact detail string — keep short, used in 42-char column
 function detail(a: Assembly): string {

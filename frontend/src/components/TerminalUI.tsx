@@ -8,7 +8,7 @@ import { useCompanionStream } from '../hooks/useCompanionStream';
 import { EveFeralCodeGen } from './EveFeralCodeGen';
 import { useWatcherAlerts } from '../hooks/useWatcherAlerts';
 import { useTribePosts, TribePostEvent } from '../hooks/useTribePosts';
-import { useEntityContext, type EnrichedAssembly } from '../context/EntityContext';
+import { useEntityContext } from '../context/EntityContext';
 import { useSession } from '../hooks/useSession';
 import { InfoPanel } from './InfoPanel';
 import { BoardPanel } from './BoardPanel';
@@ -22,20 +22,12 @@ import {
 import { canAccess, getActiveNavItemsForTier } from '../features/tierCapabilities';
 import type { WatchRule, WatcherAlert, RouteData, CourierContract, TribePresenceMember, TribePost, ChatMessage } from '../types/terminal';
 import { SUBDIV } from '../constants/dividers';
+import { fmtNum, fmtVol, pad, padR } from '../utils/formatters';
+import { TYPE_LABEL, TYPE_PRIORITY, statusRank, type NetworkFilter, applyNetworkFilter } from '../utils/assemblyUtils';
+import { buildBaselineData } from '../utils/baselineBuilder';
+import { fmtBuildStep } from './ToolOutputFormatter';
 
 const API_BASE_URL = window.location.origin;
-
-const PORTABLE_TYPE_IDS = new Set(['87160', '87161', '87162', '87566']);
-type NetworkFilter = 'exclude_portables' | 'all' | 'only_portables';
-
-function applyNetworkFilter<T extends { typeId: string }>(
-  assemblies: T[],
-  filter: NetworkFilter,
-): T[] {
-  if (filter === 'all') return assemblies;
-  if (filter === 'only_portables') return assemblies.filter(a => PORTABLE_TYPE_IDS.has(a.typeId));
-  return assemblies.filter(a => !PORTABLE_TYPE_IDS.has(a.typeId));
-}
 
 interface HelpGroup {
   label: string;
@@ -59,35 +51,6 @@ interface TerminalLog {
   boardPostDraft?: string;
   // Inline copy button (route output)
   copyText?: string;
-}
-
-function buildBaselineData(
-  walletAddress: string | null | undefined,
-  assemblyId: string | undefined,
-  visitorName: string,
-  tier: string,
-  location: string,
-  enrichedAssembly: EnrichedAssembly | null,
-): BaselinePanelData {
-  const en = enrichedAssembly;
-  const nn = en?.network_node;
-  return {
-    crudVersion: 'HUGINN - Version',
-    signature: walletAddress || '[REDACTED]',
-    shellName: visitorName || '[REDACTED]',
-    accessLevel: tier,
-    assemblySignature: assemblyId || '[REDACTED]',
-    location,
-    ownerCharacterName: en?.owner?.character_name,
-    ownerTribeId: en?.owner?.tribe_id ? String(en.owner.tribe_id) : undefined,
-    ownerTribeName: en?.owner?.tribe_name || undefined,
-    networkNodeName: nn?.name,
-    fuelPercent: nn ? `${nn.fuel_percent.toFixed(0)}%` : undefined,
-    fuelQuantity: nn?.fuel_quantity,
-    fuelEffectiveMax: nn?.fuel_effective_max,
-    fuelDaysRemaining: nn ? `${(nn.fuel_hours_remaining / 24).toFixed(1)}d` : undefined,
-    fuelBurning: nn ? nn.fuel_hours_remaining > 0 : undefined,
-  };
 }
 
 /**
@@ -812,11 +775,6 @@ export function TerminalUI() {
   };
 
   const handlePrintToTerminal = (): void => {
-    const fmtNum = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    const fmtVol = (n: number) => n.toFixed(2);
-    const pad  = (s: string, len: number) => s.slice(0, len).padEnd(len);
-    const padR = (s: string, len: number) => s.slice(0, len).padStart(len);
-
     if (currentToolType === 'inventory' && inventoryData) {
       const { assembly_name, used_capacity, max_capacity, capacity_percent, items } = inventoryData;
       const capStr = max_capacity && max_capacity > 0
@@ -872,27 +830,18 @@ export function TerminalUI() {
       const news = currentData as HuginnNewsData;
       addLog(news.text, 'info');
     } else if (currentToolType === 'asset_map' && characterAssemblies) {
-      const TYPE_SHORT: Record<string, string> = {
-        NetworkNode: 'NODE', SmartStorageUnit: 'SSU', SmartGate: 'GATE',
-        SmartTurret: 'TURT', Manufacturing: 'MFG', Refinery: 'REF', Assembly: 'ASM',
-      };
-      const TYPE_PRI: Record<string, number> = {
-        NetworkNode: 0, Manufacturing: 1, Refinery: 2,
-        SmartStorageUnit: 3, SmartGate: 4, SmartTurret: 5,
-      };
-      const rank = (s: string) => s === 'ONLINE' ? 0 : s === 'DESTROYED' ? 2 : 1;
       const sorted = [...characterAssemblies.assemblies].sort((a, b) => {
         if (a.is_current && !b.is_current) return -1;
         if (!a.is_current && b.is_current) return 1;
-        const tp = (TYPE_PRI[a.assembly_type] ?? 9) - (TYPE_PRI[b.assembly_type] ?? 9);
+        const tp = (TYPE_PRIORITY[a.assembly_type] ?? 9) - (TYPE_PRIORITY[b.assembly_type] ?? 9);
         if (tp !== 0) return tp;
-        const r = rank(a.status) - rank(b.status);
+        const r = statusRank(a.status) - statusRank(b.status);
         return r !== 0 ? r : a.name.localeCompare(b.name);
       });
       const lines = [
         `ASSETS — ${characterAssemblies.character_name} (${sorted.length} structure${sorted.length !== 1 ? 's' : ''})`,
         ...sorted.map(a => {
-          const label  = pad(TYPE_SHORT[a.assembly_type] ?? a.assembly_type.slice(0, 4).toUpperCase(), 4);
+          const label  = pad(TYPE_LABEL[a.assembly_type] ?? a.assembly_type.slice(0, 4).toUpperCase(), 4);
           const name   = pad(a.name, 22);
           const status = pad(a.status, 9);
           const parts: string[] = [];
@@ -915,24 +864,7 @@ export function TerminalUI() {
       const bd = currentData as BuildOptionsData;
       const steps = bd.buildOrder ?? [];
       if (steps.length === 0) return;
-      const stepLines = steps.map(s => {
-        const stepLabel = `STEP ${s.step}`;
-        const name = s.name.slice(0, 20).padEnd(20);
-        let detail: string;
-        if (s.status === 'can_build') {
-          detail = 'READY';
-        } else if (s.status === 'blocked') {
-          detail = `BLOCKED  ${s.note}`;
-        } else {
-          const pct = (Math.round(s.pctReady * 100) + '%').padStart(4);
-          const entries = Object.entries(s.shortfalls);
-          const sfStr = entries.length > 0 ? `${entries[0][1]}x ${entries[0][0]}` : '';
-          const extra = entries.length > 1 ? ' +more' : '';
-          detail = `${pct}  need ${sfStr}${extra}`;
-        }
-        return `  ${stepLabel.padEnd(8)} ${name} ${detail}`;
-      });
-      addLog('[BUILD ORDER]\n' + stepLines.join('\n'), 'info');
+      addLog('[BUILD ORDER]\n' + steps.map(fmtBuildStep).join('\n'), 'info');
     }
   };
 
@@ -942,7 +874,6 @@ export function TerminalUI() {
       const res = await fetch(`${API_BASE_URL}/entity/network/${nodeId}?tenant=${t}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const net = await res.json();
-      const pad = (s: string, len: number) => s.slice(0, len).padEnd(len);
       const fuelStr = net.fuel.is_burning
         ? `FUEL: ${net.fuel.fuel_percent.toFixed(0)}%`
         : 'FUEL: NOT BURNING';
