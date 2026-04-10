@@ -603,17 +603,21 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
     client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     context_str = await _preload_context(req, profile)
 
-    # Resolve pilot tier from session (set at registration time by /session/register)
+    # Resolve pilot tier from session (set at registration time by /session/register).
+    # Use the tenant the client reported so we read from the same directory it was saved to.
     tier = "NONE"
     tribe_id = None
     character_id = None
     if req.owner_address:
         from src.session_store import load_session as _load_session
-        _session = _load_session(req.owner_address)
+        _tenant = req.tenant.strip() or os.environ.get("DEPLOYMENT_ENV", "utopia")
+        _session = _load_session(req.owner_address, tenant=_tenant)
         if _session:
             tier = _session.tier
             tribe_id = _session.tribe_id
             character_id = _session.character_id
+        from src.vouch_store import apply_override
+        tier = apply_override(tier, req.owner_address)
         try:
             from src.memory_store import get_memory_store
             store = get_memory_store(profile.assembly_id)
