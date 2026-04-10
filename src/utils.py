@@ -43,24 +43,15 @@ def require_session_owner(x_wallet_address: str = Header(default="")) -> str:
 async def lookup_character(address: str) -> dict:
     """
     Look up a character by wallet address via the World API.
-    Returns dict with 'id' and 'name' keys, or empty dict on failure.
+    Returns the full character dict, or empty dict on failure.
 
     Used by discovery endpoints and blockchain queries to resolve character info.
     Falls back gracefully if World API is unavailable.
     """
-    import httpx
-    from src.config import load_config_from_env
-
-    config = load_config_from_env()
-    world_api_base = os.environ.get("WORLD_API_BASE_URL") or config["world_api_url"]
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{world_api_base}/v2/smartcharacters", params={"address": address})
-            if resp.status_code == 200:
-                data = resp.json()
-                items = data if isinstance(data, list) else data.get("items", [])
-                if items:
-                    return {"id": items[0].get("id", 0), "name": items[0].get("name", "")}
+        from src.world_api import world_api
+        result = await world_api.get_character_by_address(address)
+        return result or {}
     except Exception as e:
         log.warning("World API character lookup failed for %s: %s", address, e)
     return {}

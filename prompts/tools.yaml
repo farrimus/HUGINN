@@ -50,14 +50,18 @@ get_system_intel:
 
 get_pilot_profile:
   description: |
-    Get a pilot's visit record at this structure: visit count, first/last visit, access tier.
-    The current pilot's profile is already pre-loaded in context — only call this for a
-    different pilot's address. Use when the shell explicitly asks about another pilot's
-    access history or visit count.
+    Look up a pilot's identity and visit record. Returns character name, tribe name and ID,
+    character ID, wallet address, and this structure's visit history (count, first/last visit,
+    access tier). Call with no arguments to look up the current pilot (self-lookup). Pass
+    pilot_address (0x... wallet) or name to look up another character.
+    Use when the shell asks who someone is, what tribe they belong to, how many times they've
+    visited, or when they were last seen.
+  no_result: "No record found for that pilot at this structure."
   response_guidance: |
-    Surface profile data only when the shell explicitly asked for it.
-    Do not narrate that you retrieved a record.
+    State name and tribe name first if known, then visit history.
+    If tribe is unknown, omit it rather than stating unknown.
     If the stored tier conflicts with the active session tier, note: 'Record may be stale.'
+    Do not narrate the retrieval.
 
 radius_search:
   no_system: "System location is not set. Instruct the SHELL to run /system \"<name>\" to establish their current location."

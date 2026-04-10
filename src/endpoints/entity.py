@@ -79,7 +79,8 @@ async def get_assembly_entity(
     owner = None
     if char:
         tribe_id_val = char.get("tribe_id") or 0
-        tribe_name = await world_api.get_tribe(tribe_id_val) if tribe_id_val else None
+        tribe_data = await world_api.get_tribe(tribe_id_val) if tribe_id_val else None
+        tribe_name = tribe_data.get("name") if tribe_data else None
         owner = {
             "character_name": char.get("name") or char.get("metadata", {}).get("name") or "",
             "tribe_id":       tribe_id_val,

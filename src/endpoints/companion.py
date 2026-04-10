@@ -145,7 +145,7 @@ def _get_or_create_profile(req: CompanionChatRequest) -> StructureProfile:
 
 
 def _pilot_record_block(assembly_id: str, owner_address: str) -> str:
-    """Return a PILOT RECORD block from memory_store, or empty string if no record exists."""
+    """Return a PILOT RECORD block from memory_store + session, or empty string if no record exists."""
     if not owner_address:
         return ""
     try:
@@ -161,6 +161,19 @@ def _pilot_record_block(assembly_id: str, owner_address: str) -> str:
         name = pilot.get("character_name", "")
         if name:
             lines.append(f"  NAME: {name}")
+
+        # Enrich with session identity data (tribe_id, character_id)
+        try:
+            from src.session_store import load_session
+            session = load_session(owner_address)
+            if session:
+                if session.character_id:
+                    lines.append(f"  CHARACTER ID: {session.character_id}")
+                if session.tribe_id:
+                    lines.append(f"  TRIBE ID: {session.tribe_id}")
+        except Exception:
+            pass
+
         lines += [
             f"  VISITS: {pilot.get('visit_count', 0)}",
             f"  FIRST SEEN: {pilot.get('first_seen', 'unknown')[:10]}",
@@ -592,11 +605,15 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
 
     # Resolve pilot tier from session (set at registration time by /session/register)
     tier = "NONE"
+    tribe_id = None
+    character_id = None
     if req.owner_address:
         from src.session_store import load_session as _load_session
         _session = _load_session(req.owner_address)
         if _session:
             tier = _session.tier
+            tribe_id = _session.tribe_id
+            character_id = _session.character_id
         try:
             from src.memory_store import get_memory_store
             store = get_memory_store(profile.assembly_id)
@@ -607,6 +624,10 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
     if req.owner_address:
         from src.tier_capabilities import ai_instruction, blocked_tools as _blocked_tools
         context_str += f"\nTIER: {tier} — {ai_instruction(tier)}"
+        if tribe_id:
+            context_str += f"\nPILOT TRIBE ID: {tribe_id}"
+        if character_id:
+            context_str += f"\nPILOT CHARACTER ID: {character_id}"
 
     messages = list(req.history[-20:])
     messages.append({
@@ -641,6 +662,8 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
         "system_name": system_name,
         "system_id": system_id,
         "pilot_tier": tier,
+        "tribe_id": tribe_id,
+        "character_id": character_id,
     }
 
     try:

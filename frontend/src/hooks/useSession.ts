@@ -32,6 +32,7 @@ export interface SessionState {
   sessionRegistered: boolean;
   visitorName: string;
   tribeId: number | null;
+  characterId: number | null;
 }
 
 export function useSession(
@@ -53,6 +54,7 @@ export function useSession(
   const [sessionRegistered, setSessionRegistered] = useState<boolean>(false);
   const [visitorName, setVisitorName] = useState<string>('');
   const [tribeId, setTribeId] = useState<number | null>(null);
+  const [characterId, setCharacterId] = useState<number | null>(null);
 
   // 1. Admin config + tool registry (once on mount)
   useEffect(() => {
@@ -94,6 +96,8 @@ export function useSession(
         character_name: visitorName || walletAddress.slice(0, 10),
         assembly_id: assemblyId,
         tenant: (sessionTenant || tenant),
+        character_id: characterId || null,
+        tribe_id: tribeId || null,
       }),
     })
       .then(r => r.ok ? r.json() : null)
@@ -106,7 +110,7 @@ export function useSession(
       .catch(() => {
         setSessionRegistered(true); // fail-open: unlock terminal even if backend is down
       });
-  }, [walletAddress, visitorName, assemblyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [walletAddress, visitorName, assemblyId, tribeId, characterId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 3. Character name + tribe ID from chain
   useEffect(() => {
@@ -127,6 +131,7 @@ export function useSession(
       if (char?.name) setVisitorName(char.name);
       else setVisitorName(walletAddress.slice(0, 10));
       if (char?.tribeId && char.tribeId > 0) setTribeId(char.tribeId);
+      if (char?.characterId && char.characterId > 0) setCharacterId(char.characterId);
     }).catch(() => {
       if (!cancelled) setVisitorName(walletAddress.slice(0, 10));
     });
@@ -154,5 +159,6 @@ export function useSession(
     sessionRegistered,
     visitorName,
     tribeId,
+    characterId,
   };
 }

@@ -56,6 +56,8 @@ class RegisterRequest(BaseModel):
     character_name: str
     assembly_id: Optional[str] = None
     tenant: str = ""
+    character_id: Optional[int] = None
+    tribe_id: Optional[int] = None
 
 
 @session_router.post("/session/register")
@@ -84,6 +86,11 @@ async def register_session(req: RegisterRequest):
                      req.wallet_address[:12], session.character_name, req.character_name.strip())
             session.character_name = req.character_name.strip()
         session.tenant = _tenant
+
+    if req.character_id is not None:
+        session.character_id = req.character_id
+    if req.tribe_id is not None:
+        session.tribe_id = req.tribe_id
 
     tier = "NONE"
     if req.assembly_id:

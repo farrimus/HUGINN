@@ -83,20 +83,23 @@ function formatThreat(data: ThreatAssessmentData): string {
 }
 
 function formatPilotProfile(data: PilotProfileData): string {
-  const fields = [
-    { label: 'VISITS:', value: data.visits || '[REDACTED]' },
+  const tribeDisplay = data.tribeName
+    ? `${data.tribeName} (${data.tribeId})`
+    : data.tribeId || '';
+
+  const fields: Array<{ label: string; value: string }> = [
+    ...(data.name        ? [{ label: 'NAME:',       value: data.name }] : []),
+    ...(tribeDisplay     ? [{ label: 'TRIBE:',      value: tribeDisplay }] : []),
+    ...(data.characterId ? [{ label: 'CHAR ID:',    value: data.characterId }] : []),
+    { label: 'VISITS:',      value: data.visits || '[REDACTED]' },
     { label: 'FIRST VISIT:', value: data.firstVisit || '[REDACTED]' },
-    { label: 'LAST VISIT:', value: data.lastVisit || '[REDACTED]' },
-    { label: 'TIER:', value: data.tier || '[REDACTED]' },
-    { label: '', value: '' },
-    { label: '', value: '' },
+    { label: 'LAST VISIT:',  value: data.lastVisit || '[REDACTED]' },
+    { label: 'TIER:',        value: data.tier || '[REDACTED]' },
   ];
 
   const lines = [
     DIVIDER,
-    ...fields.map((f) =>
-      f.label ? padLabel(f.label) + truncateValue(f.value) : ''
-    ),
+    ...fields.map((f) => padLabel(f.label) + truncateValue(f.value)),
     DIVIDER,
   ];
 

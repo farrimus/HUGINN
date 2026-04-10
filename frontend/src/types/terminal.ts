@@ -51,6 +51,12 @@ export interface PilotProfileData {
   firstVisit: string;
   lastVisit: string;
   tier: string;
+  // Identity fields — populated when World API lookup succeeds
+  name?: string;
+  characterId?: string;
+  tribeId?: string;
+  tribeName?: string;
+  walletAddress?: string;
 }
 
 export interface MemorySearchData {

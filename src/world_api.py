@@ -252,10 +252,27 @@ class WorldAPIClient:
             log.warning("get_killmails(%s) failed: %s", system_id, e)
             return []
 
-    async def get_tribe(self, tribe_id: int) -> Optional[str]:
-        """Fetch tribe name by ID from /v2/tribes/{id}. Returns None if not found."""
-        data = await self._cached_fetch(f"/v2/tribes/{tribe_id}")
-        return data.get("name") if data else None
+    async def get_tribe(self, tribe_id: int) -> Optional[dict]:
+        """Fetch full tribe object by ID from /v2/tribes/{id}. Returns None if not found."""
+        return await self._cached_fetch(f"/v2/tribes/{tribe_id}")
+
+    async def get_character_by_address(self, address: str) -> Optional[dict]:
+        """Fetch character data by wallet address from /v2/smartcharacters.
+        Returns the full character dict or None if not found."""
+        data = await self._cached_fetch("/v2/smartcharacters", {"address": address})
+        if not data:
+            return None
+        items = data if isinstance(data, list) else data.get("items", [])
+        return items[0] if items else None
+
+    async def get_character_by_name(self, name: str) -> Optional[dict]:
+        """Attempt character lookup by name from /v2/smartcharacters.
+        Returns the first match or None if not found / endpoint unsupported."""
+        data = await self._cached_fetch("/v2/smartcharacters", {"name": name})
+        if not data:
+            return None
+        items = data if isinstance(data, list) else data.get("items", [])
+        return items[0] if items else None
 
 # Global singleton
 world_api = WorldAPIClient()

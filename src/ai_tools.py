@@ -150,13 +150,17 @@ class ToolRegistry:
         self.register_tool(
             name="get_pilot_profile",
             category="info",
-            description="Get pilot profile: visit count, first visit, last visit, access tier",
+            description="Get pilot profile: character identity (name, tribe, character ID), visit history, and access tier.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "pilot_address": {
                         "type": "string",
                         "description": "Sui wallet address (0x + 64 hex chars). Optional, defaults to current pilot."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Character name to look up. Use pilot_address if known; name search may not be supported by all environments."
                     }
                 },
                 "required": []
@@ -981,44 +985,110 @@ class ToolRegistry:
             log.warning(f"get_system_intel failed: {e}")
             return {"text": f"[get_system_intel error: {type(e).__name__}]", "structured": None}
 
-    def _tool_get_pilot_profile(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Handler for get_pilot_profile tool. Structure AI only."""
-        if not context or not context.get("structure_id"):
-            return {"text": "[get_pilot_profile requires structure_id in context]", "structured": None}
+    async def _tool_get_pilot_profile(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Handler for get_pilot_profile tool."""
+        from src.world_api import world_api
 
-        pilot_address = inputs.get("pilot_address") or (context.get("character_address") if context else None)
+        name_input = inputs.get("name", "").strip()
+        pilot_address = inputs.get("pilot_address", "").strip()
+
+        # Resolve address from name if provided and no address given
+        if name_input and not pilot_address:
+            char_by_name = await world_api.get_character_by_name(name_input)
+            if char_by_name:
+                pilot_address = char_by_name.get("address") or char_by_name.get("wallet_address") or ""
+            if not pilot_address:
+                return {
+                    "text": f"No character found with name '{name_input}'. Ask the pilot for their wallet address.",
+                    "structured": None,
+                }
+
+        # Fall back to current pilot
+        if not pilot_address:
+            pilot_address = (context or {}).get("character_address", "")
 
         if not pilot_address:
-            return {"text": "[get_pilot_profile requires pilot_address in input or context]", "structured": None}
+            return {"text": "[get_pilot_profile: no pilot address available]", "structured": None}
 
-        try:
-            from src.memory_store import get_memory_store
-            store = get_memory_store(context["structure_id"])
-            pilot = store.get_pilot(pilot_address)
+        # Determine if this is self-lookup
+        is_self = pilot_address == (context or {}).get("character_address", "")
 
-            if not pilot:
-                return {"text": f"No profile for pilot {pilot_address[:6]}...", "structured": None}
+        # --- Identity: fast path from session context for self, World API for others ---
+        char_name = ""
+        char_tribe_id = None
+        char_character_id = None
+        tribe_name = ""
 
-            profile_parts = [
-                f"Pilot: {pilot.get('character_name', 'Unknown')}",
-                f"Visits: {pilot.get('visit_count', 0)}",
-                f"First: {pilot.get('first_seen', 'unknown')[:10]}",
-                f"Last: {pilot.get('last_seen', 'unknown')[:10]}",
-                f"Tier: {pilot.get('tier', 'NONE')}",
-            ]
+        if is_self:
+            char_name = (context or {}).get("pilot_name", "")
+            char_tribe_id = (context or {}).get("tribe_id")
+            char_character_id = (context or {}).get("character_id")
+        else:
+            char_data = await world_api.get_character_by_address(pilot_address)
+            if char_data:
+                char_name = char_data.get("name", "")
+                char_tribe_id = char_data.get("tribeId") or char_data.get("tribe_id")
+                char_character_id = char_data.get("characterId") or char_data.get("character_id") or char_data.get("id")
 
-            return {
-                "text": " | ".join(profile_parts),
-                "structured": {
-                    "visits": str(pilot.get("visit_count", 0)),
-                    "firstVisit": pilot.get("first_seen", "unknown")[:10],
-                    "lastVisit": pilot.get("last_seen", "unknown")[:10],
-                    "tier": pilot.get("tier", "NONE"),
-                },
-            }
-        except Exception as e:
-            log.warning(f"get_pilot_profile failed: {e}")
-            return {"text": f"[get_pilot_profile error: {type(e).__name__}]", "structured": None}
+        # Resolve tribe name
+        if char_tribe_id:
+            try:
+                tribe_data = await world_api.get_tribe(int(char_tribe_id))
+                if tribe_data:
+                    tribe_name = tribe_data.get("name", "")
+            except Exception:
+                pass
+
+        # --- Visit history from memory store (graceful if no structure_id) ---
+        pilot_mem = None
+        structure_id = (context or {}).get("structure_id", "")
+        if structure_id:
+            try:
+                from src.memory_store import get_memory_store
+                store = get_memory_store(structure_id)
+                pilot_mem = store.get_pilot(pilot_address)
+            except Exception as e:
+                log.warning(f"get_pilot_profile memory lookup failed: {e}")
+
+        visits = str(pilot_mem.get("visit_count", 0)) if pilot_mem else "0"
+        first_visit = (pilot_mem.get("first_seen", "unknown")[:10]) if pilot_mem else "unknown"
+        last_visit = (pilot_mem.get("last_seen", "unknown")[:10]) if pilot_mem else "unknown"
+        tier = (pilot_mem.get("tier", "NONE")) if pilot_mem else "NONE"
+        # Use stored name as fallback if World API returned nothing
+        if not char_name and pilot_mem:
+            char_name = pilot_mem.get("character_name", "")
+
+        # --- Build output ---
+        parts = []
+        if char_name:
+            parts.append(f"Pilot: {char_name}")
+        if tribe_name:
+            parts.append(f"Tribe: {tribe_name} ({char_tribe_id})")
+        elif char_tribe_id:
+            parts.append(f"Tribe ID: {char_tribe_id}")
+        if char_character_id:
+            parts.append(f"Char ID: {char_character_id}")
+        parts += [
+            f"Visits: {visits}",
+            f"First: {first_visit}",
+            f"Last: {last_visit}",
+            f"Tier: {tier}",
+        ]
+
+        return {
+            "text": " | ".join(parts),
+            "structured": {
+                "name": char_name,
+                "tribeId": str(char_tribe_id) if char_tribe_id else "",
+                "tribeName": tribe_name,
+                "characterId": str(char_character_id) if char_character_id else "",
+                "walletAddress": pilot_address,
+                "visits": visits,
+                "firstVisit": first_visit,
+                "lastVisit": last_visit,
+                "tier": tier,
+            },
+        }
 
     async def _tool_radius_search(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Handler for radius_search tool."""
