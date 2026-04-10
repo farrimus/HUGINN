@@ -2,6 +2,7 @@
 
 import { HuginnNewsData } from '../types/terminal';
 import { DIVIDER } from '../constants/dividers';
+import { renderPanelLines } from '../utils/renderPanelLines';
 
 interface HuginnNewsPanelProps {
   data: HuginnNewsData;
@@ -31,9 +32,7 @@ export function HuginnNewsPanel({ data, onPrintToTerminal }: HuginnNewsPanelProp
 
   return (
     <>
-      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-        {header}
-      </pre>
+      {renderPanelLines(header)}
       {onPrintToTerminal && (
         <div style={{
           position: 'absolute',

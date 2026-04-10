@@ -5,6 +5,7 @@ import { RouteData } from '../types/terminal';
 
 import { DIVIDER, SUBDIV } from '../constants/dividers';
 import { copyText } from '../utils/formatters';
+import { renderPanelLines } from '../utils/renderPanelLines';
 
 interface RoutePanelProps {
   data: RouteData;
@@ -110,9 +111,7 @@ export function RoutePanel({ data }: RoutePanelProps) {
 
   return (
     <div>
-      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-        {lines.join('\n')}
-      </pre>
+      {renderPanelLines(lines)}
       {data.path_ids && data.path_ids.length > 0 && (
         <button
           onClick={handleCopy}

@@ -2,6 +2,7 @@
 
 import { AssetMapData } from '../types/terminal';
 import { DIVIDER } from '../constants/dividers';
+import { renderPanelLines } from '../utils/renderPanelLines';
 import { TYPE_LABEL, TYPE_PRIORITY, statusRank } from '../utils/assemblyUtils';
 import { pad } from '../utils/formatters';
 
@@ -86,9 +87,7 @@ export function AssetMapPanel({ data, onPrintToTerminal }: AssetMapPanelProps) {
 
   return (
     <>
-      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-        {lines.join('\n')}
-      </pre>
+      {renderPanelLines(lines)}
       {onPrintToTerminal && total > 0 && (
         <div style={{
           position: 'absolute',

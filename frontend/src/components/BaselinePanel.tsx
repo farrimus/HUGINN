@@ -2,6 +2,7 @@
 
 import { BaselinePanelData } from '../types/terminal';
 import { DIVIDER, SUBDIV } from '../constants/dividers';
+import { renderPanelLines } from '../utils/renderPanelLines';
 
 interface BaselinePanelProps {
   data: BaselinePanelData;
@@ -89,9 +90,5 @@ export function BaselinePanel({ data }: BaselinePanelProps) {
 
   lines.push(DIVIDER);
 
-  return (
-    <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-      {lines.join('\n')}
-    </pre>
-  );
+  return renderPanelLines(lines);
 }

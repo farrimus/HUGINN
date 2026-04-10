@@ -2,6 +2,7 @@
 
 import { NetworkMapData } from '../types/terminal';
 import { DIVIDER } from '../constants/dividers';
+import { renderPanelLines } from '../utils/renderPanelLines';
 
 interface NetworkMapPanelProps {
   data: NetworkMapData;
@@ -62,9 +63,7 @@ export function NetworkMapPanel({ data, onPrintToTerminal }: NetworkMapPanelProp
 
   return (
     <>
-      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-        {lines.join('\n')}
-      </pre>
+      {renderPanelLines(lines)}
       {onPrintToTerminal && connectedAssemblies.length > 0 && (
         <span
           onClick={onPrintToTerminal}

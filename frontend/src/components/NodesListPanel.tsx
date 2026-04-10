@@ -1,7 +1,7 @@
 // src/components/NodesListPanel.tsx
 
 import { NodesListData, NodesListEntry } from '../types/terminal';
-import { DIVIDER } from '../constants/dividers';
+import { PanelHr } from './PanelHr';
 
 interface NodesListPanelProps {
   data: NodesListData;
@@ -19,9 +19,9 @@ export function NodesListPanel({ data, onPrint }: NodesListPanelProps) {
   const header = `NETWORK NODES (${nodes.length})`;
 
   return (
-    <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-      {DIVIDER + '\n'}
-      {header + '\n'}
+    <div className="panel-lines">
+      <PanelHr />
+      <div className="panel-text-line">{header}</div>
       {nodes.map(n => {
         const id      = n.id.slice(2, 10).toUpperCase().padEnd(10);
         const system  = (n.systemName || '—').slice(0, 16).padEnd(16);
@@ -30,17 +30,16 @@ export function NodesListPanel({ data, onPrint }: NodesListPanelProps) {
         const status  = n.status.slice(0, 7).padEnd(7);
         const row     = `  ${id}${system}${count}${fuel}${status}`;
         return (
-          <span key={n.id}>
+          <div key={n.id} className="panel-text-line">
             {row}
             <span
               onClick={() => onPrint(n.id)}
               style={{ cursor: 'pointer', textDecoration: 'underline' }}
             >{' [PRINT]'}</span>
-            {'\n'}
-          </span>
+          </div>
         );
       })}
-      {DIVIDER}
-    </pre>
+      <PanelHr />
+    </div>
   );
 }

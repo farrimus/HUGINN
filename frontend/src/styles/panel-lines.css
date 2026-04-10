@@ -1,0 +1,28 @@
+/* Panel line renderer — PanelHr + renderPanelLines */
+
+#visual-area {
+  --panel-padding: 16px;    /* single source of truth: consumed by .panel-hr margin */
+}
+
+.panel-lines {
+  font-family: 'Courier New', monospace;
+  font-size: inherit;
+  line-height: 1.4;
+  white-space: pre;
+  text-shadow: 0 0 6px rgba(var(--c-primary-rgb), 0.6);
+}
+
+.panel-text-line {
+  min-height: 1.4em;
+}
+
+.panel-hr {
+  margin: 0 calc(-1 * var(--panel-padding));  /* always edge-to-edge, any container width */
+  border: none;
+  border-top: 1px solid var(--c-primary);
+  box-shadow: 0 0 6px rgba(var(--c-primary-rgb), 0.6);
+}
+
+/* panel-hr-heavy and panel-hr-light share the same color per design requirement */
+.panel-hr-light {
+}

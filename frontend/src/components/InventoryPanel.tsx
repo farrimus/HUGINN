@@ -9,6 +9,7 @@ interface InventoryPanelProps {
 }
 
 import { DIVIDER } from '../constants/dividers';
+import { renderPanelLines } from '../utils/renderPanelLines';
 import { fmtNum, fmtVol, pad, padR } from '../utils/formatters';
 
 export function InventoryPanel({ data, onPrintToTerminal }: InventoryPanelProps) {
@@ -64,9 +65,7 @@ export function InventoryPanel({ data, onPrintToTerminal }: InventoryPanelProps)
 
   return (
     <>
-      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-        {lines.join('\n')}
-      </pre>
+      {renderPanelLines(lines)}
       {onPrintToTerminal && items.length > 0 && (
         <div style={{
           position: 'absolute',

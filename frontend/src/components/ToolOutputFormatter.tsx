@@ -22,6 +22,7 @@ import { AssetMapPanel } from './AssetMapPanel';
 import { RoutePanel } from './RoutePanel';
 
 import { DIVIDER } from '../constants/dividers';
+import { renderPanelLines } from '../utils/renderPanelLines';
 import { copyText } from '../utils/formatters';
 
 interface ToolOutputFormatterProps {
@@ -173,7 +174,7 @@ function BuildOrderPanel({ data, onPrintToTerminal }: { data: BuildOptionsData; 
       }
     }
     lines.push(DIVIDER);
-    return <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>{lines.join('\n')}</pre>;
+    return renderPanelLines(lines);
   }
 
   const steps = data.buildOrder ?? [];
@@ -192,9 +193,7 @@ function BuildOrderPanel({ data, onPrintToTerminal }: { data: BuildOptionsData; 
 
   return (
     <>
-      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-        {lines.join('\n')}
-      </pre>
+      {renderPanelLines(lines)}
       {onPrintToTerminal && rest > 0 && (
         <div style={{
           position: 'absolute',
@@ -232,7 +231,7 @@ function SystemIntelPanel({ data }: { data: SystemIntelData }) {
 
   return (
     <div>
-      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>{formatted}</pre>
+      {renderPanelLines(formatted)}
       {data.systemId && (
         <button className="panel-copy-btn" onClick={handleCopy}>
           {copyLabel}
@@ -285,9 +284,5 @@ export function ToolOutputFormatter({
       formatted = DIVIDER + '\n[UNKNOWN TOOL TYPE]\n' + DIVIDER;
   }
 
-  return (
-    <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-      {formatted}
-    </pre>
-  );
+  return renderPanelLines(formatted);
 }

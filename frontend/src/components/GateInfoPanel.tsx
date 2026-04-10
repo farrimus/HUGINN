@@ -2,12 +2,12 @@
 // Phase 8 — SmartGate standalone panel
 
 import { GateInfoData } from '../types/terminal';
+import { DIVIDER, SUBDIV } from '../constants/dividers';
+import { renderPanelLines } from '../utils/renderPanelLines';
 
 interface GateInfoPanelProps {
   data: GateInfoData;
 }
-
-import { DIVIDER, SUBDIV } from '../constants/dividers';
 
 function truncateName(name: string | null, max = 30): string {
   if (!name) return '';
@@ -30,9 +30,5 @@ export function GateInfoPanel({ data }: GateInfoPanelProps) {
     DIVIDER,
   ];
 
-  return (
-    <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-      {lines.join('\n')}
-    </pre>
-  );
+  return renderPanelLines(lines);
 }
