@@ -23,6 +23,7 @@ The supporting analysis in `docs/roadmap/` explains why things are structured th
 | Tribe presence board | Functional | `endpoints/tribe.py`, `endpoints/tribe_posts.py` |
 | Huginn Signal | Functional — KILL FEED + NETWORK DELTA | `huginn_news_task.py`, `huginn_news.py` |
 | Global knowledge graph | Functional — fed by log uploads | `system_knowledge.py`, `endpoints/system_knowledge.py` |
+| Lore archive (`search_lore` tool) | Infrastructure complete — `data/lore.db` not yet populated; 51 of 100 content entries need manual authoring before import | `src/lore_store.py`, `src/ai_tools.py`, `data/lore_seed.json` |
 | Multi-tenant (utopia/stillness) | Functional | `config.py`; dapp-kit patch for dual-registry cache |
 | AccessRegistry Move contract | Deployed | Testnet; `move/access_registry/` |
 
@@ -53,15 +54,31 @@ The supporting analysis in `docs/roadmap/` explains why things are structured th
 
 Items are ordered: no-blockers with no open decisions first, sorted by effort ascending; then items with soft dependencies; then items with open decisions or significant scope.
 
-### Lore Core
+### Lore Core — content authoring
 
-HUGINN has no knowledge of EVE Frontier lore — factions, world history, ships, materials, or mechanics. The system uses a SQLite archive (`data/lore.db`) with FTS5 full-text search, surfaced via a `search_lore` AI tool. A thin orientation block (~150 tokens) in the system prompt keeps always-on cost low; retrieval fires only when a pilot asks a lore question.
+Engineering complete. `data/lore.db` is not yet populated. Before the feature is active:
 
-Content is seeded from `data/lore_seed.json` — ~100 manually curated entries across 12 categories (setting, faction, pillar, ship, structure, npc, fuel, ore, material, mechanic, item, glossary). All `game_id` values reference the Stillness environment.
+1. Fill all `TODO:` entries in `data/lore_seed.json` (51 of 100 entries).
+2. Run `python3 scripts/import_lore.py`.
+3. Restart the server (activates the orientation block in `prompts/companion.md`).
 
-Seven files: `src/lore_store.py` (new), `src/ai_tools.py` (edit), `src/tier_capabilities.py` (edit), `prompts/companion.md` (edit), `prompts/tools.yaml` (edit), `data/lore_seed.json` (new), `scripts/import_lore.py` (new).
+`python3 scripts/generate_lore_seed.py` rebuilds the scaffold from game type data at any time — rerun after adding new entries to the spec.
 
-Full implementation plan: `docs/roadmap/lore-core.md`
+**Entries needing content (51 total):**
+
+| Category | Count | Entries |
+|----------|-------|---------|
+| Setting | 5 | The Frontier, The Collapse, Rogue Drones, The Riders, Digital Physics |
+| Factions | 4 | Tribes, Syndicates, Exclave Ventures, Ophidia Operations |
+| Pillars | 5 | Realism, Cruel Survival, Broken World, Forever Game, Co-Created Universe |
+| Mechanics | 6 | Energy & Heat, Jump Drive, Warp, Networks, Clones, Access Control |
+| NPCs | 11 | All named Rogue Drone types — absent from static type data |
+| Materials | 9 | Still Knot, Feral Echo, Salt, Sophrogon, Gravionite, Luminalis, Eclipsite, Catalytic Dust, Feral Data |
+| Fuels | 4 | SOF-40, SOF-80, EU-40, EU-90 — empty descriptions in game data |
+| Items | 4 | Ophidian Sensor Cloak, Askur Access Code Cypher, Network Pollinator, Reaping Shell |
+| Ores | 2 | Hermetite, Deep-Core Carbon |
+
+Writing rules: in-universe only, intelligence-file register, no meta-language. Full content spec and schema in `docs/roadmap/lore-core.md`.
 
 ### Ship Hull Stats
 
@@ -202,6 +219,7 @@ The `docs/roadmap/` directory contains detailed analysis written post-hackathon.
 - `byok-api-keys.md` — BYOK design, exact file changes, open decisions
 - `eval-ui-components-library.md` — EVE component library evaluation, full quick-win list with difficulty ratings
 - `hackathon-scout-feature-candidates.md` — post-hackathon scout evaluation: Lore Core, Ship Hull Stats, Session Enrichment, Tribe Awareness (USE); Gate Access Awareness (DEFER/blocked); KARUM Marketplace (SKIP)
+- `lore-core.md` — lore archive system design and content authoring spec; 100-entry schema, writing rules, and verification criteria
 - `log-parser-intelligence-evolution.md` — quarantine store, candidate hostile extraction, entity category tagging
 - `model-routing.md` — full routing decision table, rollout sequence, prompt engineering rules
 - `strategic-priorities.md` — ranked priority list with sequencing waves

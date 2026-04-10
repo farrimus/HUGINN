@@ -1,0 +1,902 @@
+[
+  {
+    "id": "setting_the_frontier",
+    "category": "setting",
+    "title": "The Frontier",
+    "game_id": null,
+    "content": "TODO: setting / The Frontier",
+    "tags": "frontier,space,universe,new eden,colonization",
+    "aliases": "the frontier,frontier space"
+  },
+  {
+    "id": "setting_the_collapse",
+    "category": "setting",
+    "title": "The Collapse",
+    "game_id": null,
+    "content": "TODO: setting / The Collapse",
+    "tags": "collapse,history,catastrophe,origin,lore",
+    "aliases": "the collapse,collapse event"
+  },
+  {
+    "id": "setting_rogue_drones",
+    "category": "setting",
+    "title": "Rogue Drones (Setting)",
+    "game_id": null,
+    "content": "TODO: setting / Rogue Drones (Setting)",
+    "tags": "rogue drones,drones,hostile,setting,lore",
+    "aliases": "rogue drone lore,drone history"
+  },
+  {
+    "id": "setting_riders",
+    "category": "setting",
+    "title": "The Riders",
+    "game_id": null,
+    "content": "TODO: setting / The Riders",
+    "tags": "riders,entity,unknown,mysterious,ancient",
+    "aliases": "the riders,ancient riders"
+  },
+  {
+    "id": "setting_digital_physics",
+    "category": "setting",
+    "title": "Digital Physics & Energy",
+    "game_id": null,
+    "content": "TODO: setting / Digital Physics & Energy",
+    "tags": "digital physics,energy,physics,heat,temperature,universe",
+    "aliases": "digital physics,energy physics"
+  },
+  {
+    "id": "faction_tribes",
+    "category": "faction",
+    "title": "Tribes",
+    "game_id": null,
+    "content": "TODO: faction / Tribes",
+    "tags": "tribe,player,organization,corp,social",
+    "aliases": "tribe,tribes"
+  },
+  {
+    "id": "faction_syndicates",
+    "category": "faction",
+    "title": "Syndicates",
+    "game_id": null,
+    "content": "TODO: faction / Syndicates",
+    "tags": "syndicate,player,organization,corp,social",
+    "aliases": "syndicate,syndicates"
+  },
+  {
+    "id": "faction_exclave_ventures",
+    "category": "faction",
+    "title": "Exclave Ventures",
+    "game_id": null,
+    "content": "TODO: faction / Exclave Ventures",
+    "tags": "exclave ventures,npc,orphan geist,faction",
+    "aliases": "exclave,exclave ventures"
+  },
+  {
+    "id": "faction_ophidia_operations",
+    "category": "faction",
+    "title": "Ophidia Operations",
+    "game_id": null,
+    "content": "TODO: faction / Ophidia Operations",
+    "tags": "ophidia,npc,askur,ophidian,faction",
+    "aliases": "ophidia,ophidia operations"
+  },
+  {
+    "id": "pillar_realism",
+    "category": "pillar",
+    "title": "Realism",
+    "game_id": null,
+    "content": "TODO: pillar / Realism",
+    "tags": "realism,design,pillar,philosophy",
+    "aliases": "realism pillar"
+  },
+  {
+    "id": "pillar_cruel_survival",
+    "category": "pillar",
+    "title": "Cruel Survival",
+    "game_id": null,
+    "content": "TODO: pillar / Cruel Survival",
+    "tags": "cruel survival,survival,pvp,death,risk",
+    "aliases": "cruel survival"
+  },
+  {
+    "id": "pillar_broken_world",
+    "category": "pillar",
+    "title": "Broken World",
+    "game_id": null,
+    "content": "TODO: pillar / Broken World",
+    "tags": "broken world,collapse,environment,lore",
+    "aliases": "broken world"
+  },
+  {
+    "id": "pillar_forever_game",
+    "category": "pillar",
+    "title": "Forever Game",
+    "game_id": null,
+    "content": "TODO: pillar / Forever Game",
+    "tags": "forever game,persistent,long term,economy",
+    "aliases": "forever game"
+  },
+  {
+    "id": "pillar_co_created_universe",
+    "category": "pillar",
+    "title": "Co-Created Universe",
+    "game_id": null,
+    "content": "TODO: pillar / Co-Created Universe",
+    "tags": "co-created,player driven,sandbox,economy",
+    "aliases": "co-created universe,player created"
+  },
+  {
+    "id": "ship_wend",
+    "category": "ship",
+    "title": "Wend",
+    "game_id": 87698,
+    "content": "A vessel able to complete basic tasks. Provided by Keep as a springboard for Project Awakening (placeholder)",
+    "tags": "shuttle,wend,basic,starter,travel",
+    "aliases": "wend shuttle"
+  },
+  {
+    "id": "ship_recurve",
+    "category": "ship",
+    "title": "Recurve",
+    "game_id": 87846,
+    "content": "A small hard hitting combat vessel emphasizing firepower over hull strength. (Placeholder)",
+    "tags": "corvette,recurve,combat,short-range",
+    "aliases": "recurve corvette"
+  },
+  {
+    "id": "ship_reflex",
+    "category": "ship",
+    "title": "Reflex",
+    "game_id": 87847,
+    "content": "Created for efficient, long distance travel. Records suggest the structure of this vessel has been repurposed numerous times as automated processes sought to adapt to an increasingly hostile environment. \r\n\r\nAs a result, the original intention behind this hull design has been lost to the millennia and data corruption has obscured even whether this design originates from a human or artificial mind. However, the data streams which led to this vessel's development have their origins in the K4T-Y region. (placeholder)",
+    "tags": "corvette,reflex,long-range,fuel-efficient,jump",
+    "aliases": "reflex corvette"
+  },
+  {
+    "id": "ship_reiver",
+    "category": "ship",
+    "title": "Reiver",
+    "game_id": 87848,
+    "content": "A small, durable combat vessel. (Placeholder)",
+    "tags": "corvette,reiver,combat,agile",
+    "aliases": "reiver corvette"
+  },
+  {
+    "id": "ship_stride",
+    "category": "ship",
+    "title": "Stride",
+    "game_id": 91106,
+    "content": "A frame stripped for range, built to leap between stars.\r\nThe design bears apparent alterations \u2014 conduits rerouted through spaces that seem improvised, geometries bent into configurations that defy intuition.\r\nNo signature remains to mark its maker.",
+    "tags": "corvette,stride,jump,long-range,explorer",
+    "aliases": "stride corvette"
+  },
+  {
+    "id": "ship_carom",
+    "category": "ship",
+    "title": "Carom",
+    "game_id": 91107,
+    "content": "A hull shaped for distance and solitude. The proportions are spare, stripped of anything not essential to the crossing. The drive assembly carries unexpected mass \u2014 bracing layered over bracing, housings reinforced beyond apparent need, structure filling spaces the original geometry left hollow. What necessity shaped these adaptations remains unclear.",
+    "tags": "corvette,carom,jump,ultra-range",
+    "aliases": "carom corvette"
+  },
+  {
+    "id": "ship_usv",
+    "category": "ship",
+    "title": "USV",
+    "game_id": 81609,
+    "content": "A light vessel optimized for resource extraction (placeholder).",
+    "tags": "frigate,usv,combat,medium",
+    "aliases": "usv frigate"
+  },
+  {
+    "id": "ship_mcf",
+    "category": "ship",
+    "title": "MCF",
+    "game_id": 81904,
+    "content": "A lightweight combat vessel designed focused on evading fire. (placeholder)",
+    "tags": "frigate,mcf,combat",
+    "aliases": "mcf frigate"
+  },
+  {
+    "id": "ship_haf",
+    "category": "ship",
+    "title": "HAF",
+    "game_id": 82424,
+    "content": "A small but durable combat vessel. (placeholder)",
+    "tags": "frigate,haf,combat,heavy assault",
+    "aliases": "haf frigate,heavy assault frigate"
+  },
+  {
+    "id": "ship_lai",
+    "category": "ship",
+    "title": "LAI",
+    "game_id": 82425,
+    "content": "An ultra-lightweight combat vessel designed to focus on striking fast. (placeholder)",
+    "tags": "frigate,lai,long-range,jump",
+    "aliases": "lai frigate"
+  },
+  {
+    "id": "ship_lorha",
+    "category": "ship",
+    "title": "LORHA",
+    "game_id": 82426,
+    "content": "A small hauler designed to travel through combat zones. (placeholder)",
+    "tags": "frigate,lorha,long-range,hauler",
+    "aliases": "lorha frigate"
+  },
+  {
+    "id": "ship_tades",
+    "category": "ship",
+    "title": "TADES",
+    "game_id": 81808,
+    "content": "A medium-sized and flexible combat vessel. (placeholder)",
+    "tags": "destroyer,tades,combat",
+    "aliases": "tades destroyer"
+  },
+  {
+    "id": "ship_maul",
+    "category": "ship",
+    "title": "MAUL",
+    "game_id": 82430,
+    "content": "An assault cruiser platform. (Placeholder)",
+    "tags": "cruiser,maul,heavy,combat",
+    "aliases": "maul cruiser"
+  },
+  {
+    "id": "ship_chumaq",
+    "category": "ship",
+    "title": "Chumaq",
+    "game_id": 81611,
+    "content": "A large hauler with extensive cargo capacity. (placeholder)",
+    "tags": "battlecruiser,chumaq,capital,combat,heavy",
+    "aliases": "chumaq battlecruiser"
+  },
+  {
+    "id": "fuel_d1",
+    "category": "fuel",
+    "title": "D1 Fuel",
+    "game_id": 88335,
+    "content": "The allure of Crude Matter brought computation and humanity to the Frontier. As life reawakens, so too does the thirst for power in all its forms, including from the most mundane sources. Even in the face of the Static Shear, ice still litters the heavens. From its crystals, hydrogen may be extracted, reprocessed, and refined into fuel. This product, inefficient as it is, still drives the smallest vessels of the Frontier via its abundance and minimal cost.",
+    "tags": "fuel,d1,corvette,basic fuel,jump",
+    "aliases": "d1,d1 fuel,tier 1 fuel"
+  },
+  {
+    "id": "fuel_d2",
+    "category": "fuel",
+    "title": "D2 Fuel",
+    "game_id": 88319,
+    "content": "Even the most mundane matter can be improved through synthesis with byproducts of Crude extraction. Plentiful and inefficient on the Frontier, hydrogen too may be uplifted through this process, breathing new life into reactors which would otherwise be left behind. A question remains: are these efforts efficient?",
+    "tags": "fuel,d2,frigate,jump fuel",
+    "aliases": "d2,d2 fuel,tier 2 fuel"
+  },
+  {
+    "id": "fuel_sof40",
+    "category": "fuel",
+    "title": "SOF-40 Fuel",
+    "game_id": 84868,
+    "content": "TODO: fuel / SOF-40 Fuel",
+    "tags": "fuel,sof,sof-40,structure fuel,deployable",
+    "aliases": "sof40,sof-40,small outpost fuel 40"
+  },
+  {
+    "id": "fuel_sof80",
+    "category": "fuel",
+    "title": "SOF-80 Fuel",
+    "game_id": 78515,
+    "content": "TODO: fuel / SOF-80 Fuel",
+    "tags": "fuel,sof,sof-80,structure fuel",
+    "aliases": "sof80,sof-80"
+  },
+  {
+    "id": "fuel_eu40",
+    "category": "fuel",
+    "title": "EU-40 Fuel",
+    "game_id": 78516,
+    "content": "TODO: fuel / EU-40 Fuel",
+    "tags": "fuel,eu,eu-40,energy unit,structure",
+    "aliases": "eu40,eu-40"
+  },
+  {
+    "id": "fuel_eu90",
+    "category": "fuel",
+    "title": "EU-90 Fuel",
+    "game_id": 78437,
+    "content": "TODO: fuel / EU-90 Fuel",
+    "tags": "fuel,eu,eu-90,energy unit,structure",
+    "aliases": "eu90,eu-90"
+  },
+  {
+    "id": "fuel_unstable",
+    "category": "fuel",
+    "title": "Unstable Fuel",
+    "game_id": 77818,
+    "content": "Long abandoned and left to the mercy of the Static Shear, little energy or even structure remains. This lingering dross provides barely enough of a spark to power a vessel. Even the best refinery processes cannot prevent the decay of time from claiming their product.",
+    "tags": "fuel,unstable,salvage,hazard",
+    "aliases": "unstable fuel,degraded fuel"
+  },
+  {
+    "id": "structure_ssu",
+    "category": "structure",
+    "title": "Smart Storage Unit",
+    "game_id": null,
+    "content": "TODO: structure / Smart Storage Unit",
+    "tags": "ssu,storage,smart storage unit,core,base",
+    "aliases": "ssu,smart storage,storage unit"
+  },
+  {
+    "id": "structure_smartgate",
+    "category": "structure",
+    "title": "SmartGate",
+    "game_id": 88086,
+    "content": "Establish your own stargate by connecting two short range Small Gates together.",
+    "tags": "smartgate,gate,travel,jump gate,connection",
+    "aliases": "smart gate,smartgate,mini gate,small gate"
+  },
+  {
+    "id": "structure_smart_turret",
+    "category": "structure",
+    "title": "Smart Turret",
+    "game_id": 84556,
+    "content": "A structure with a turret slot which you can equip with any turret.",
+    "tags": "turret,defense,smart turret,weapon",
+    "aliases": "smart turret,turret,defense structure"
+  },
+  {
+    "id": "structure_network_node",
+    "category": "structure",
+    "title": "Network Node",
+    "game_id": 88092,
+    "content": "Establish your base with a Network Node. Stabilizes and fuels other structures in its range. Must be placed at an unclaimed Anchor point.\r\n\r\nOnce built you can set it as a home base.",
+    "tags": "network node,network,base,core,anchor",
+    "aliases": "network node,node"
+  },
+  {
+    "id": "structure_refuge",
+    "category": "structure",
+    "title": "Refuge",
+    "game_id": 87160,
+    "content": "Offers a respite after a long journey. Offers fitting services.",
+    "tags": "refuge,fitting,rest,repair,service",
+    "aliases": "refuge,safe house"
+  },
+  {
+    "id": "structure_nursery",
+    "category": "structure",
+    "title": "Nursery",
+    "game_id": 91978,
+    "content": "A facility for growing synthetic Shells.",
+    "tags": "nursery,clone,industry,spawn",
+    "aliases": "nursery,clone nursery"
+  },
+  {
+    "id": "structure_nest",
+    "category": "structure",
+    "title": "Nest",
+    "game_id": 91871,
+    "content": "A facility for storing Shells and transferring between them.",
+    "tags": "nest,hangar,ship storage,parking",
+    "aliases": "nest,ship hangar"
+  },
+  {
+    "id": "structure_printer",
+    "category": "structure",
+    "title": "Printer",
+    "game_id": 87119,
+    "content": "Offers small scale industry services.",
+    "tags": "printer,manufacturing,build,fabrication",
+    "aliases": "printer,3d printer,fabricator"
+  },
+  {
+    "id": "structure_refinery",
+    "category": "structure",
+    "title": "Refinery",
+    "game_id": 88063,
+    "content": "A refinery capable of extracting main minerals from all ores.",
+    "tags": "refinery,processing,ore,materials,industry",
+    "aliases": "refinery"
+  },
+  {
+    "id": "structure_berth",
+    "category": "structure",
+    "title": "Berth",
+    "game_id": 88069,
+    "content": "Small shipyard for building shuttles and corvettes.",
+    "tags": "berth,industry,production",
+    "aliases": "berth"
+  },
+  {
+    "id": "structure_assembler",
+    "category": "structure",
+    "title": "Assembler",
+    "game_id": 88068,
+    "content": "Assembles materials into end products like modules.",
+    "tags": "assembler,manufacturing,assembly,industry",
+    "aliases": "assembler"
+  },
+  {
+    "id": "structure_relay",
+    "category": "structure",
+    "title": "Relay",
+    "game_id": 90184,
+    "content": "Establishes a connection to EVE Net, allowing the purchase of data, thus enabling the fabrication <a href=showinfo:77518>Crude mining lenses</a>, as well as the sale of feral data.",
+    "tags": "relay,industry,network,signal",
+    "aliases": "relay"
+  },
+  {
+    "id": "structure_field_cairn",
+    "category": "structure",
+    "title": "Field Cairn",
+    "game_id": 93141,
+    "content": "A Field Cairn is deployable anchor that fixes a signature to an exact point in space for those intending to return.\r\n\r\nCairns lack stabilizing thrusters and are inherently unstable, gradually degrading and drifting out of orbit within 24 hours.",
+    "tags": "field cairn,cairn,deployable,temporary,field",
+    "aliases": "field cairn,cairn"
+  },
+  {
+    "id": "structure_seer",
+    "category": "structure",
+    "title": "SEER",
+    "game_id": 89775,
+    "content": "Sate the hunger for the arcane. This monolith resonates with long-forgotten knowledge.",
+    "tags": "seer,misc,deployable,sensor",
+    "aliases": "seer"
+  },
+  {
+    "id": "structure_harbinger",
+    "category": "structure",
+    "title": "HARBINGER",
+    "game_id": 89777,
+    "content": "Gnaw on the bones of the lost world. Monuments like this one have once sat at the eyes of the Feral storms.",
+    "tags": "harbinger,misc,deployable",
+    "aliases": "harbinger"
+  },
+  {
+    "id": "structure_rainmaker",
+    "category": "structure",
+    "title": "RAINMAKER",
+    "game_id": 89779,
+    "content": "Follow the slipstream towards the source of world's blood. This sculpture is imprinted with Frontier's primal forces.",
+    "tags": "rainmaker,misc,deployable",
+    "aliases": "rainmaker"
+  },
+  {
+    "id": "structure_monolith",
+    "category": "structure",
+    "title": "Monolith",
+    "game_id": 88098,
+    "content": "A decorative structure.",
+    "tags": "monolith,misc,deployable,rare",
+    "aliases": "monolith"
+  },
+  {
+    "id": "npc_rogue_drones",
+    "category": "npc",
+    "title": "Rogue Drones (faction)",
+    "game_id": null,
+    "content": "TODO: npc / Rogue Drones (faction)",
+    "tags": "rogue drone,drone,hostile,npc,faction",
+    "aliases": "rogue drones,drones"
+  },
+  {
+    "id": "npc_caird",
+    "category": "npc",
+    "title": "Caird",
+    "game_id": 92096,
+    "content": "TODO: npc / Caird",
+    "tags": "caird,rogue drone,npc,hostile",
+    "aliases": "caird drone"
+  },
+  {
+    "id": "npc_luthier",
+    "category": "npc",
+    "title": "Luthier",
+    "game_id": 92097,
+    "content": "TODO: npc / Luthier",
+    "tags": "luthier,rogue drone,npc,hostile",
+    "aliases": "luthier drone"
+  },
+  {
+    "id": "npc_ostler",
+    "category": "npc",
+    "title": "Ostler",
+    "game_id": 92098,
+    "content": "TODO: npc / Ostler",
+    "tags": "ostler,rogue drone,npc,hostile",
+    "aliases": "ostler drone"
+  },
+  {
+    "id": "npc_wright",
+    "category": "npc",
+    "title": "Wright",
+    "game_id": 92099,
+    "content": "TODO: npc / Wright",
+    "tags": "wright,rogue drone,npc,hostile",
+    "aliases": "wright drone"
+  },
+  {
+    "id": "npc_shambler",
+    "category": "npc",
+    "title": "Shambler",
+    "game_id": 92100,
+    "content": "TODO: npc / Shambler",
+    "tags": "shambler,rogue drone,npc,hostile",
+    "aliases": "shambler drone"
+  },
+  {
+    "id": "npc_dowser",
+    "category": "npc",
+    "title": "Dowser",
+    "game_id": 92101,
+    "content": "TODO: npc / Dowser",
+    "tags": "dowser,rogue drone,npc,hostile",
+    "aliases": "dowser drone"
+  },
+  {
+    "id": "npc_scrivener",
+    "category": "npc",
+    "title": "Scrivener",
+    "game_id": 92102,
+    "content": "TODO: npc / Scrivener",
+    "tags": "scrivener,rogue drone,npc,hostile",
+    "aliases": "scrivener drone"
+  },
+  {
+    "id": "npc_grave_variants",
+    "category": "npc",
+    "title": "Grave Variants",
+    "game_id": 92271,
+    "content": "TODO: npc / Grave Variants",
+    "tags": "grave,elite,rogue drone,npc,elite tier",
+    "aliases": "grave drone,elite drone"
+  },
+  {
+    "id": "npc_watcher",
+    "category": "npc",
+    "title": "Watcher",
+    "game_id": 92503,
+    "content": "TODO: npc / Watcher",
+    "tags": "watcher,npc,observer,hostile",
+    "aliases": "watcher"
+  },
+  {
+    "id": "npc_riders",
+    "category": "npc",
+    "title": "The Riders",
+    "game_id": null,
+    "content": "TODO: npc / The Riders",
+    "tags": "riders,entity,mysterious,ancient,npc",
+    "aliases": "the riders,riders"
+  },
+  {
+    "id": "ore_crude_matter",
+    "category": "ore",
+    "title": "Crude Matter",
+    "game_id": null,
+    "content": "Braids of serenity and power entwine and disperse across the surface. Within, they dance as if begging to be set free. From this rhythm, the dreams of those long passed and those newly awoken may spring forth.\r\n\r\nA quiet fragility eminates from the matter\u2019s movements, the ethereal beauty of transience. Practicality has no need of such things.",
+    "tags": "crude matter,rift,rare,valuable,ore",
+    "aliases": "crude matter,rift ore"
+  },
+  {
+    "id": "ore_char",
+    "category": "ore",
+    "title": "Char belt ores",
+    "game_id": null,
+    "content": "Calcium-sodium aluminosilicate feldspar crystals from basaltic crust of differentiated asteroids.\r\n\r\nFeldspar Crystals are commonly found in <a href=\"showinfo:91374\">Char </a>asteroids.",
+    "tags": "char,feldspar,belt ore,common",
+    "aliases": "char ore,feldspar crystals"
+  },
+  {
+    "id": "ore_slag",
+    "category": "ore",
+    "title": "Slag belt ores",
+    "game_id": null,
+    "content": "Platinum and palladium concentrated in nickel-rich metallic grains from intermediate core zones. Forms during slow cooling of differentiated asteroid cores.\r\n\r\nPlatinum-Palladium Matrix is commonly found in  <a href=\"showinfo:91375\">Slag</a> asteroids.",
+    "tags": "slag,platinum,palladium,belt ore",
+    "aliases": "slag ore,platinum-palladium matrix"
+  },
+  {
+    "id": "ore_ingot",
+    "category": "ore",
+    "title": "Ingot belt ores",
+    "game_id": null,
+    "content": "Dense iridium-osmium-ruthenium alloy nodules from the deepest, hottest core regions. Among the most refractory materials in the solar system.\r\n\r\nIridosmine Nodules are commonly found in <a href=\"showinfo:91376\">Ingot asteroids</a>.",
+    "tags": "ingot,iridosmine,belt ore",
+    "aliases": "ingot ore,iridosmine nodules"
+  },
+  {
+    "id": "ore_comet",
+    "category": "ore",
+    "title": "Comet belt ores",
+    "game_id": null,
+    "content": "Water-bearing sulfide-rich material common in carbonaceous chondrites. Represents aqueous alteration of metal sulfides in the early solar system.\r\n\r\nHydrated Sulfide Matrix is commonly found in <a href=\"showinfo:91377\">Comet</a> asteroids.",
+    "tags": "comet,hydrated sulfide,belt ore",
+    "aliases": "comet ore,hydrated sulfide matrix"
+  },
+  {
+    "id": "ore_dewdrop",
+    "category": "ore",
+    "title": "Dewdrop belt ores",
+    "game_id": null,
+    "content": "Pure methane ice preserved at cryogenic temperatures in outer asteroid belt regions.\r\n\r\nMethane Ice Shards are commonly found in <a href=\"showinfo:91378\">Dewdrop</a> asteroids.",
+    "tags": "dewdrop,methane ice,belt ore,ice",
+    "aliases": "dewdrop ore,methane ice shards"
+  },
+  {
+    "id": "ore_ember",
+    "category": "ore",
+    "title": "Ember belt ores",
+    "game_id": null,
+    "content": "Unaltered complex organic polymer preserved from early solar system formation, less processed than C-type kerogen.\r\n\r\nPrimitive Kerogen Matrix is commonly found in <a href=\"showinfo:91379\">Ember</a> asteroids.",
+    "tags": "ember,kerogen,belt ore",
+    "aliases": "ember ore,primitive kerogen matrix"
+  },
+  {
+    "id": "ore_glint",
+    "category": "ore",
+    "title": "Glint belt ores",
+    "game_id": null,
+    "content": "Polycyclic aromatic hydrocarbons formed by radiation processing of carbon-rich ices. \r\n\r\nAromatic Carbon Veins is a common source of Aromatic Carbon Weave.",
+    "tags": "glint,aromatic carbon,belt ore",
+    "aliases": "glint ore,aromatic carbon veins"
+  },
+  {
+    "id": "ore_soot",
+    "category": "ore",
+    "title": "Soot belt ores",
+    "game_id": null,
+    "content": "Prebiotic tar-like organics produced by long-term radiation chemistry. \r\n\r\nTholin Aggregates is commonly refined from Hydrocarbon Residue.",
+    "tags": "soot,tholin,belt ore",
+    "aliases": "soot ore,tholin nodules"
+  },
+  {
+    "id": "ore_hermetite",
+    "category": "ore",
+    "title": "Hermetite",
+    "game_id": null,
+    "content": "TODO: ore / Hermetite",
+    "tags": "hermetite,fluid,crystallizing,stale,sediment,ore",
+    "aliases": "hermetite ore"
+  },
+  {
+    "id": "ore_deep_core_carbon",
+    "category": "ore",
+    "title": "Deep-Core Carbon",
+    "game_id": 78429,
+    "content": "TODO: ore / Deep-Core Carbon",
+    "tags": "deep core carbon,rare ore,deep,mining",
+    "aliases": "deep core carbon,deep-core carbon"
+  },
+  {
+    "id": "material_gravionite",
+    "category": "material",
+    "title": "Gravionite",
+    "game_id": 83891,
+    "content": "TODO: material / Gravionite",
+    "tags": "gravionite,rogue drone,material,rare",
+    "aliases": "gravionite"
+  },
+  {
+    "id": "material_luminalis",
+    "category": "material",
+    "title": "Luminalis",
+    "game_id": 83892,
+    "content": "TODO: material / Luminalis",
+    "tags": "luminalis,rogue drone,material,rare",
+    "aliases": "luminalis"
+  },
+  {
+    "id": "material_eclipsite",
+    "category": "material",
+    "title": "Eclipsite",
+    "game_id": 83893,
+    "content": "TODO: material / Eclipsite",
+    "tags": "eclipsite,rogue drone,material,rare",
+    "aliases": "eclipsite"
+  },
+  {
+    "id": "material_radiantium",
+    "category": "material",
+    "title": "Radiantium",
+    "game_id": 83894,
+    "content": "The glowing crystalline structure hums",
+    "tags": "radiantium,rogue drone,material,rare",
+    "aliases": "radiantium"
+  },
+  {
+    "id": "material_catalytic_dust",
+    "category": "material",
+    "title": "Catalytic Dust",
+    "game_id": 83899,
+    "content": "TODO: material / Catalytic Dust",
+    "tags": "catalytic dust,rogue drone,material,crafting",
+    "aliases": "catalytic dust"
+  },
+  {
+    "id": "material_feral_echo",
+    "category": "material",
+    "title": "Feral Echo",
+    "game_id": 88564,
+    "content": "TODO: material / Feral Echo",
+    "tags": "feral echo,material,key material,rare,crafting",
+    "aliases": "feral echo"
+  },
+  {
+    "id": "material_still_knot",
+    "category": "material",
+    "title": "Still Knot",
+    "game_id": 88565,
+    "content": "TODO: material / Still Knot",
+    "tags": "still knot,material,key material,rare,crafting",
+    "aliases": "still knot"
+  },
+  {
+    "id": "material_echo_chamber",
+    "category": "material",
+    "title": "Echo Chamber",
+    "game_id": 88780,
+    "content": "Strong material for products requiring lower weight. ( copy )",
+    "tags": "echo chamber,material,crafting",
+    "aliases": "echo chamber"
+  },
+  {
+    "id": "material_sophrogon",
+    "category": "material",
+    "title": "Sophrogon",
+    "game_id": 77728,
+    "content": "TODO: material / Sophrogon",
+    "tags": "sophrogon,material,crafting",
+    "aliases": "sophrogon"
+  },
+  {
+    "id": "material_palladium",
+    "category": "material",
+    "title": "Palladium",
+    "game_id": 99001,
+    "content": "A rare platinum-group metal used in high-grade alloys and electronics.\r\n\r\nPlatinum-Palladium Matrix is a common source of Palladium.",
+    "tags": "palladium,material,metal,crafting",
+    "aliases": "palladium"
+  },
+  {
+    "id": "material_salt",
+    "category": "material",
+    "title": "Salt",
+    "game_id": 83839,
+    "content": "TODO: material / Salt",
+    "tags": "salt,material,eve,currency,crafting",
+    "aliases": "salt,$eve,eve token"
+  },
+  {
+    "id": "material_feral_data",
+    "category": "material",
+    "title": "Feral Data",
+    "game_id": 72244,
+    "content": "TODO: material / Feral Data",
+    "tags": "feral data,data,rogue drone,analysis,material",
+    "aliases": "feral data"
+  },
+  {
+    "id": "item_ophidian_sensor_cloak",
+    "category": "item",
+    "title": "Ophidian Sensor Cloak",
+    "game_id": 73192,
+    "content": "TODO: item / Ophidian Sensor Cloak",
+    "tags": "ophidian sensor cloak,cloak,stealth,ophidia,item",
+    "aliases": "ophidian cloak,sensor cloak"
+  },
+  {
+    "id": "item_askur_access_code",
+    "category": "item",
+    "title": "Askur Access Code Cypher",
+    "game_id": 73210,
+    "content": "TODO: item / Askur Access Code Cypher",
+    "tags": "askur,access code,cypher,ophidia,item,key",
+    "aliases": "askur access code,askur cypher"
+  },
+  {
+    "id": "item_fossilized_exotronics",
+    "category": "item",
+    "title": "Fossilized Exotronics",
+    "game_id": 83818,
+    "content": "The Null and Static Shears wreak havoc on most traditional forms of computation, rendering them nigh unusable in the Frontier. Exotronic technology's extreme adaptability and durability thus effectively make it the only option for automation in this environment. Faint remnants of activity in this debris suggest the potential for reclamation. Within these dull impulses of fragmented information, a hint of familiarity calls out.",
+    "tags": "fossilized exotronics,exotronics,rare,crafting,item",
+    "aliases": "fossilized exotronics,exotronics"
+  },
+  {
+    "id": "item_network_pollinator",
+    "category": "item",
+    "title": "Network Pollinator",
+    "game_id": 83982,
+    "content": "TODO: item / Network Pollinator",
+    "tags": "network pollinator,pollinator,network,item",
+    "aliases": "network pollinator"
+  },
+  {
+    "id": "item_void_residue",
+    "category": "item",
+    "title": "Void Residue",
+    "game_id": 91206,
+    "content": "A lingering trace of chaotic growth, the remnants of energy that once fueled a self-propagating anomaly.",
+    "tags": "void residue,residue,rare,item",
+    "aliases": "void residue"
+  },
+  {
+    "id": "item_calamitous_marrow",
+    "category": "item",
+    "title": "Calamitous Marrow",
+    "game_id": 91937,
+    "content": "Chaos permeates the Frontier at all scales, converting stabilizing forces into agents of transformation. The evolutionary havoc pulsing through the trabeculae of this substance tantalizes with the possibilities it may unlock. Its desirable qualities, in turn, ensure its rarity, for the conditions which lead to its creation are impossible to replicate.",
+    "tags": "calamitous marrow,marrow,rare,item",
+    "aliases": "calamitous marrow"
+  },
+  {
+    "id": "item_mummified_clone",
+    "category": "item",
+    "title": "Mummified Clone",
+    "game_id": 88765,
+    "content": "An air of reverence lingers around this corpse. Marks of age and violence cannot fully conceal the care given to this body, long abandoned by its original owner. The time for remembrance, however, has passed.",
+    "tags": "mummified clone,clone,rare,item",
+    "aliases": "mummified clone"
+  },
+  {
+    "id": "item_reaping_shell",
+    "category": "item",
+    "title": "Reaping Shell",
+    "game_id": 91749,
+    "content": "TODO: item / Reaping Shell",
+    "tags": "reaping shell,shell,combat,item",
+    "aliases": "reaping shell"
+  },
+  {
+    "id": "mechanic_energy_heat",
+    "category": "mechanic",
+    "title": "Energy & Heat System",
+    "game_id": null,
+    "content": "TODO: mechanic / Energy & Heat System",
+    "tags": "energy,heat,temperature,specific heat,adaptive level,heat ejectors,jump",
+    "aliases": "heat system,energy system,temperature"
+  },
+  {
+    "id": "mechanic_jump_drive",
+    "category": "mechanic",
+    "title": "Jump Drive",
+    "game_id": null,
+    "content": "TODO: mechanic / Jump Drive",
+    "tags": "jump drive,jump,fuel,range,light years,travel",
+    "aliases": "jump drive,jump range"
+  },
+  {
+    "id": "mechanic_warp",
+    "category": "mechanic",
+    "title": "Intra-System Warp",
+    "game_id": null,
+    "content": "TODO: mechanic / Intra-System Warp",
+    "tags": "warp,intra-system,warp accelerator,travel,fast travel",
+    "aliases": "warp,intra system warp,warp accelerator"
+  },
+  {
+    "id": "mechanic_networks",
+    "category": "mechanic",
+    "title": "Network Topology",
+    "game_id": null,
+    "content": "TODO: mechanic / Network Topology",
+    "tags": "network,topology,network node,relay,connected assemblies,structures",
+    "aliases": "network topology,network,connected structures"
+  },
+  {
+    "id": "mechanic_clones",
+    "category": "mechanic",
+    "title": "Shell / Clone System",
+    "game_id": null,
+    "content": "TODO: mechanic / Shell / Clone System",
+    "tags": "clone,shell,nursery,nest,clone death,respawn,pod",
+    "aliases": "clone system,shell system,clone death"
+  },
+  {
+    "id": "mechanic_access_control",
+    "category": "mechanic",
+    "title": "SSU Access Control",
+    "game_id": null,
+    "content": "TODO: mechanic / SSU Access Control",
+    "tags": "access control,tier,owner,tribe,vetted,none,access registry,ssu",
+    "aliases": "access control,tier system,access tiers"
+  }
+]

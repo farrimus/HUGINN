@@ -183,3 +183,20 @@ calculate_build_options:
     Once that's up, Step 2 and 3 are ready to place immediately."
     If a specific target was requested, find its step number and state its status and shortfalls.
     Do not re-list all materials — the panel already shows them. Keep the chat response to 2-3 sentences.
+
+search_lore:
+  description: |
+    Search the lore archives for information about EVE Frontier: factions, ships, structures,
+    materials, ores, game mechanics, or world history. Use when a shell asks about:
+    - what something is (ship class, item, material, structure, faction)
+    - history or setting (The Collapse, The Frontier, Rogue Drones, Riders)
+    - game mechanics (jump drive, heat system, clone death, network topology)
+    - terminology (Still Knot, Feral Echo, Crude Matter, Rifts, $EVE, Salt)
+    Do not use for live data — use get_system_intel or query_system_knowledge for that.
+    Before calling: say "scanning archives" in-character.
+  response_guidance: |
+    Present retrieved content as a recalled archive record — not quoted text, not a recitation.
+    Weave the title naturally into the response. One paragraph maximum per result.
+    If multiple results are returned, lead with the most relevant.
+    Do not say "according to the archives" or narrate the retrieval.
+  no_result: "No archive records found on that subject. This unit has no filed data on that topic."

@@ -526,6 +526,33 @@ class ToolRegistry:
             handler=self._tool_query_system_knowledge,
         )
 
+        self.register_tool(
+            name="search_lore",
+            category="intel",
+            description=(
+                "Search the lore archives for information about EVE Frontier: factions, ships, "
+                "structures, materials, ores, game mechanics, or world history."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": 'Search term. E.g. "Reflex corvette", "what is Still Knot", "Rogue Drone types"',
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": (
+                            "Optional category filter: setting, faction, pillar, ship, structure, "
+                            "npc, fuel, ore, material, mechanic, glossary, item"
+                        ),
+                    },
+                },
+                "required": ["query"],
+            },
+            handler=self._tool_search_lore,
+        )
+
         # --- Build Tools ---
         self.register_tool(
             name="calculate_build_options",
@@ -1556,6 +1583,32 @@ class ToolRegistry:
             lines.append("  Known ore types: none on record")
 
         return {"text": "\n".join(lines), "structured": result}
+
+    def _tool_search_lore(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Handler for search_lore tool. Searches the static lore archive."""
+        query = (inputs.get("query") or "").strip()
+        if not query:
+            return {"text": "No query provided.", "structured": None}
+
+        category = (inputs.get("category") or "").strip() or None
+
+        try:
+            from src.lore_store import get_lore_store
+            results = get_lore_store().search(query, category=category, limit=3)
+        except Exception as e:
+            log.warning("_tool_search_lore failed: %s", e)
+            return {"text": "Lore archive unavailable.", "structured": None}
+
+        if not results:
+            from src.prompt_loader import load_tool_prompts
+            no_result = (
+                load_tool_prompts().get("search_lore", {}).get("no_result")
+                or "No archive records found on that subject. This unit has no filed data on that topic."
+            )
+            return {"text": no_result, "structured": None}
+
+        text = "\n\n".join(f"[{r['title']}]\n{r['content']}" for r in results)
+        return {"text": text, "structured": None}
 
     def _tool_lookup_item_type(self, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Handler for lookup_item_type tool. Searches game type database by name."""

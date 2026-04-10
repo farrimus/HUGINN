@@ -31,6 +31,7 @@ TIERS: dict = {
             "lookup_item_type",
             "query_intel",
             "query_system_knowledge",
+            "search_lore",
         ],
     },
     "VETTED": {
@@ -50,6 +51,7 @@ TIERS: dict = {
             "query_system_knowledge",
             "log_intel",
             "record_field_observation",
+            "search_lore",
         ],
     },
     "TRIBE": {
@@ -80,6 +82,7 @@ TIERS: dict = {
             "manage_courier",
             "manage_tribe",
             "calculate_build_options",
+            "search_lore",
         ],
     },
     "OWNER": {
@@ -110,6 +113,7 @@ TIERS: dict = {
             "manage_courier",
             "manage_tribe",
             "calculate_build_options",
+            "search_lore",
         ],
     },
 }
