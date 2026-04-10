@@ -16,8 +16,14 @@ Use this file to find the right document for a given question. One document per 
 | What is the access control model? | `docs/ARCHITECTURE.md` → Access Control Model |
 | How does the blockchain integration work? | `docs/ARCHITECTURE.md` → Blockchain Role |
 | Why was X designed this way? | `docs/KEY_CONCEPTS_AND_DECISIONS.md` |
-| How does HUGINN's tool output formatting work? | `docs/ARCHITECTURE.md` → Prompt Layer |
+| How does HUGINN's tool output formatting work? | `docs/FRONTEND_UI.md` → Panel Rendering System |
 | Where do I edit tool descriptions or response style? | `prompts/tools.yaml` — see `docs/ARCHITECTURE.md` → Prompt Layer |
+| How does the React UI render AI tool output? | `docs/FRONTEND_UI.md` → AI Tool Output Data Flow |
+| What does each frontend component do? | `docs/FRONTEND_UI.md` → Component Map |
+| How is the frontend CSS organized? | `docs/FRONTEND_UI.md` → CSS Architecture |
+| What are the frontend color variables? | `docs/FRONTEND_UI.md` → CSS Architecture → Color variables |
+| How do feature flags and tier access work? | `docs/FRONTEND_UI.md` → Tier and Feature System |
+| How do I add a new AI tool output panel? | `docs/FRONTEND_UI.md` → Adding a New Tool Output Type |
 | What are the Python/frontend dependencies and why? | `docs/TECH_STACK_AND_DEPENDENCIES.md` |
 | How is the dapp-kit multi-tenant cache structured? | `docs/TECH_STACK_AND_DEPENDENCIES.md` → dapp-kit multi-tenant cache |
 | What does dapp-kit own vs backend? | `CLAUDE.md` — Data Layer Boundary section |
@@ -47,6 +53,7 @@ Use this file to find the right document for a given question. One document per 
 | `docs/REPO_STRUCTURE.md` | Every file, every directory, every entry point | Developers / AI agents |
 | `docs/DATA_REFERENCE.md` | Data schemas: structures, sessions, killmails, intel | Developers |
 | `docs/DAPP_KIT_API.md` | Full dapp-kit hook and API reference | Frontend developers |
+| `docs/FRONTEND_UI.md` | React component map, panel rendering, CSS architecture, data flow | Frontend developers |
 | `docs/SETUP.md` | Local development setup | Developers |
 | `docs/roadmap/eval-ui-components-library.md` | Evaluation of official EVE Frontier UI components — what to adopt, copy, or skip | Frontend developers |
 | `docs/DOC_STANDARDS.md` | How to write, maintain, and audit all project documentation | All / AI agents |

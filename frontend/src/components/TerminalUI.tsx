@@ -94,7 +94,6 @@ export function TerminalUI() {
     { text: `HUGINN initializing...  [build ${buildLabel}]`, type: 'info', timestamp: Date.now() },
   ]);
   const [inputValue, setInputValue] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [feralTickMs, setFeralTickMs] = useState(300);
@@ -231,6 +230,7 @@ export function TerminalUI() {
       const active = document.activeElement;
       if (active && active !== document.body) return;  // something already has focus
       inputRef.current?.focus();
+      setInputValue(prev => prev + e.key);   // include the triggering character
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
@@ -1107,7 +1107,7 @@ export function TerminalUI() {
                   </span>
                 )
               )}
-              {isFocused && !isLoading && <span className="cursor-blink">_</span>}
+              {!isLoading && <span className="cursor-blink">_</span>}
             </div>
             <input
               ref={inputRef}
@@ -1115,8 +1115,7 @@ export function TerminalUI() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
+
               placeholder=""
               disabled={isLoading}
               autoFocus

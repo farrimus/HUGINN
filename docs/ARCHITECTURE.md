@@ -223,6 +223,8 @@ frontend/src/
 └── data/                 — Static data assets
 ```
 
+For component responsibilities, panel rendering system, CSS architecture, data flow, and hooks reference, see `docs/FRONTEND_UI.md`.
+
 ### Build and Deployment
 
 ```bash
