@@ -11,6 +11,7 @@ import {
   executeGraphQLQuery,
   GET_WALLET_CHARACTERS,
   parseCharacterFromJson,
+  abbreviateAddress,
 } from '@evefrontier/dapp-kit';
 import {
   FeatureFlags, ToolFlags, ToolRegistryEntry,
@@ -40,6 +41,7 @@ export function useSession(
   assemblyId: string | undefined,
   tenant: string,
   currentLocation: string,
+  resolvedCharacterName?: string,
 ): SessionState {
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(
     () => loadCachedAdminConfig().features
@@ -93,7 +95,7 @@ export function useSession(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         wallet_address: walletAddress,
-        character_name: visitorName || walletAddress.slice(0, 10),
+        character_name: visitorName || abbreviateAddress(walletAddress),
         assembly_id: assemblyId,
         tenant: (sessionTenant || tenant),
         character_id: characterId || null,
@@ -113,7 +115,12 @@ export function useSession(
   }, [walletAddress, visitorName, assemblyId, tribeId, characterId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 3. Character name + tribe ID from chain
+  // Skipped when resolvedCharacterName is provided by the caller (e.g. from EntityContext).
   useEffect(() => {
+    if (resolvedCharacterName) {
+      setVisitorName(resolvedCharacterName);
+      return;
+    }
     if (!walletAddress || !tenant) return;
     const pkgId = TENANT_PACKAGE_MAP[tenant];
     if (!pkgId) return;
@@ -129,14 +136,14 @@ export function useSession(
         ?.contents?.extract?.asAddress?.asObject?.asMoveObject?.contents?.json;
       const char = parseCharacterFromJson(charJson);
       if (char?.name) setVisitorName(char.name);
-      else setVisitorName(walletAddress.slice(0, 10));
+      else setVisitorName(abbreviateAddress(walletAddress));
       if (char?.tribeId && char.tribeId > 0) setTribeId(char.tribeId);
       if (char?.characterId && char.characterId > 0) setCharacterId(char.characterId);
     }).catch(() => {
-      if (!cancelled) setVisitorName(walletAddress.slice(0, 10));
+      if (!cancelled) setVisitorName(abbreviateAddress(walletAddress));
     });
     return () => { cancelled = true; };
-  }, [walletAddress, tenant]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [walletAddress, tenant, resolvedCharacterName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 4. Tribe presence ping — once when wallet + tribeId first known
   useEffect(() => {

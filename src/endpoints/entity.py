@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.entity_resolver import EntityResolver, get_entity_resolver, get_resolver_for_tenant
 from src.world_api import world_api
+from src.utils import parse_status as _status
 
 _DEFAULT_TENANT = os.getenv("DEPLOYMENT_ENV", "utopia")
 
@@ -288,19 +289,3 @@ async def get_types_by_category(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _status(val, _depth: int = 0) -> str:
-    if val is None:
-        return "UNKNOWN"
-    if isinstance(val, str):
-        return val
-    if isinstance(val, dict) and _depth < 3:
-        for key in ("@variant", "variant", "name"):
-            v = val.get(key)
-            if isinstance(v, str):
-                return v
-        for key in ("status",):
-            v = val.get(key)
-            if v is not None:
-                return _status(v, _depth + 1)
-    return str(val)

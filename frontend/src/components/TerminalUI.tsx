@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useConnection, useSmartObject, type SmartAssemblyResponse } from '@evefrontier/dapp-kit';
+import { useQuery } from '@tanstack/react-query';
+import { useConnection, useSmartObject, abbreviateAddress, getDatahubGameInfo, type SmartAssemblyResponse } from '@evefrontier/dapp-kit';
 import { useToolOutput } from '../hooks/useToolOutput';
 import { BaselinePanelData, HuginnNewsData, BuildOptionsData } from '../types/terminal';
 import { TripCalculatorForm } from './TripCalculatorForm';
@@ -77,6 +78,21 @@ export function TerminalUI() {
   const assemblyId = assembly?.id;
   const itemId = new URLSearchParams(window.location.search).get('itemId') || '';
 
+  // Game type enrichment from Datahub — populates the TYPE/CATEGORY block in BaselinePanel
+  const { data: gameTypeData, isLoading: typeLoading } = useQuery({
+    queryKey: ['datahub-type', enrichedAssembly?.type_id],
+    queryFn: async () => {
+      if (!enrichedAssembly?.type_id) return null;
+      try {
+        return await getDatahubGameInfo(Number(enrichedAssembly.type_id));
+      } catch {
+        return null;
+      }
+    },
+    staleTime: Infinity,
+    enabled: !!enrichedAssembly?.type_id,
+  });
+
   // Splash screen: show once per session, gate baseline animations until it exits
   const splashAlreadyPlayed = sessionStorage.getItem('crud_splash') === '1';
   const [splashDone, setSplashDone] = useState(splashAlreadyPlayed);
@@ -111,7 +127,8 @@ export function TerminalUI() {
     sessionRegistered,
     visitorName,
     tribeId,
-  } = useSession(walletAddress, assemblyId, tenant, assembly?.solarSystem?.name || currentSystem);
+  } = useSession(walletAddress, assemblyId, tenant, assembly?.solarSystem?.name || currentSystem,
+    characterAssemblies?.character_name || undefined);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreeted = useRef(false);
@@ -133,7 +150,12 @@ export function TerminalUI() {
   // handleSplashComplete applies the latest data directly via setDirect.
   useEffect(() => {
     const location = assembly?.solarSystem?.name || currentSystem || '[REDACTED]';
-    const baselineData = buildBaselineData(walletAddress, assemblyId, visitorName, tier, location, enrichedAssembly);
+    const baselineData = {
+      ...buildBaselineData(walletAddress, assemblyId, visitorName, tier, location, enrichedAssembly),
+      gameTypeName: (gameTypeData as Record<string, unknown> | null)?.name as string | undefined,
+      gameTypeCategory: (gameTypeData as Record<string, unknown> | null)?.categoryName as string | undefined,
+      enrichmentLoading: typeLoading && !!enrichedAssembly?.type_id,
+    };
 
     latestBaselineRef.current = baselineData;
 
@@ -144,7 +166,7 @@ export function TerminalUI() {
   }, [
     walletAddress, assemblyId, visitorName, tier,
     assembly?.solarSystem?.name, currentSystem,
-    enrichedAssembly, displayToolOutput,
+    enrichedAssembly, gameTypeData, typeLoading, displayToolOutput,
   ]);
 
   // Called by SplashScreen when its animation completes and exit begins.
@@ -277,7 +299,7 @@ export function TerminalUI() {
         history: chatHistory,
         debug: debugMode,
         owner_address: walletAddress || '',
-        character_name: visitorName || walletAddress?.slice(0, 10) || '',
+        character_name: visitorName || (walletAddress ? abbreviateAddress(walletAddress) : ''),
         item_id: itemId,
         assembly_name: enrichedAssembly?.name ?? assembly?.name ?? '',
         assembly_type: enrichedAssembly?.assembly_type ?? assembly?.typeDetails?.name ?? '',
@@ -286,6 +308,11 @@ export function TerminalUI() {
         system_id: assembly?.solarSystem?.id,
         disabled_tools: getDisabledTools(toolFlags),
         tenant: (sessionTenant || tenant),
+        entity_snapshot: chatHistory.length === 0 ? {
+          assembly: enrichedAssembly,
+          network: networkData,
+          inventory: inventoryData,
+        } : null,
       },
       {
         onTextChunk: (text) => {

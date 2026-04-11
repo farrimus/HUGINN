@@ -9,6 +9,8 @@ import asyncio
 import logging
 from typing import Optional
 
+from src.utils import classify_assembly_type
+
 log = logging.getLogger(__name__)
 
 
@@ -174,24 +176,20 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
         log.info("poll_ssu_state: updated profile for %s", structure_id)
 
 
-_TYPE_LABELS = {
-    # Real on-chain struct names (confirmed from sui_getObject 2026-03-16)
-    "StorageUnit": "SSU",
-    "Turret": "Smart Turret",
-    "Gate": "Smart Gate",
-    "MiningLaser": "Mining Laser",
-    # Legacy names kept for compatibility
+_CANONICAL_TO_LABEL = {
+    "SmartStorageUnit": "SSU",
     "SmartTurret": "Smart Turret",
     "SmartGate": "Smart Gate",
-    "SmartStorageUnit": "SSU",
-    "SmartMiningLaser": "Mining Laser",
+    "NetworkNode": "Network Node",
+    "Manufacturing": "Manufacturing",
+    "Refinery": "Refinery",
 }
 
 
 def _assembly_type_label(type_str: str) -> str:
-    """Extract struct name from 'package::module::StructName' and map to human label."""
-    struct_name = type_str.split("::")[-1] if "::" in type_str else type_str
-    return _TYPE_LABELS.get(struct_name, struct_name)
+    """Map a Move type repr string to a human-readable assembly label."""
+    canonical = classify_assembly_type(type_str)
+    return _CANONICAL_TO_LABEL.get(canonical, canonical)
 
 
 async def poll_connected_assemblies(structure_id: str, assembly_ids: list) -> None:

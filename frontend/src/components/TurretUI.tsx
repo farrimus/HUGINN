@@ -7,6 +7,10 @@ import {
   Assemblies,
   SponsoredTransactionActions,
   Severity,
+  parseStatus,
+  State,
+  abbreviateAddress,
+  getTxUrl,
   type SmartAssemblyResponse,
   type DetailedSmartCharacterResponse,
   type AssemblyType,
@@ -43,7 +47,7 @@ export function TurretUI() {
   const isReady = isConnected && !!assemblyId;
 
   const state = enrichedAssembly?.status ?? assembly?.state ?? 'UNKNOWN';
-  const isOnline = state.toLowerCase() === 'online' || state.toLowerCase() === 'anchored';
+  const isOnline = parseStatus(state) === State.ONLINE || parseStatus(state) === State.ANCHORED;
   const turretName = enrichedAssembly?.name ?? assembly?.name ?? 'TURRET';
 
   const [responses, setResponses] = useState<ResponseLine[]>([
@@ -82,7 +86,7 @@ export function TurretUI() {
         assembly: assembly as AssemblyType<Assemblies>,
         tenant: tenant,
       });
-      notify({ type: Severity.Success, txHash: result.digest });
+      notify({ type: Severity.Success, txHash: getTxUrl('sui:testnet', result.digest) });
       addResponse(`${label} confirmed. Tx: ${result.digest.slice(0, 10)}...`, 'info');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -110,6 +114,7 @@ export function TurretUI() {
         assembly_state: state,
         system_name: assembly?.solarSystem?.name || '',
         system_id: assembly?.solarSystem?.id,
+        entity_snapshot: { assembly: enrichedAssembly, network: null, inventory: null },
       },
       {
         onTextChunk: (text) => { textBuffer += text; },
@@ -149,7 +154,7 @@ export function TurretUI() {
         <div className="status-item">
           <span className="status-label">WALLET</span>
           <span className="status-value">
-            {isConnected ? walletAddress?.slice(0, 8) + '..' : 'NONE'}
+            {isConnected && walletAddress ? abbreviateAddress(walletAddress, 8) : 'NONE'}
           </span>
         </div>
       </div>

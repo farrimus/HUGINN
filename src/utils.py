@@ -1,6 +1,5 @@
 """
-Utility functions for auth and world API queries.
-Extracted from deleted custom auth modules (using official DApp Kit for production auth).
+Utility functions shared across the backend.
 """
 
 import os
@@ -8,6 +7,48 @@ import logging
 from fastapi import Header, HTTPException
 
 log = logging.getLogger(__name__)
+
+
+def parse_status(raw, _depth: int = 0) -> str:
+    """Extract a human-readable status string from a nested Sui Move variant dict.
+
+    Handles strings, None, and nested {"@variant": "ONLINE"} / {"status": {...}} structures.
+    """
+    if raw is None:
+        return "UNKNOWN"
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, dict) and _depth < 3:
+        for key in ("@variant", "variant", "name"):
+            v = raw.get(key)
+            if isinstance(v, str):
+                return v
+        v = raw.get("status")
+        if v is not None:
+            return parse_status(v, _depth + 1)
+    return str(raw)
+
+
+def classify_assembly_type(move_type_repr: str) -> str:
+    """Map a Move type repr string to a canonical assembly type name.
+
+    E.g. '0x...::storage_unit::StorageUnit<...>' → 'SmartStorageUnit'.
+    """
+    if "::storage_unit::StorageUnit" in move_type_repr:
+        return "SmartStorageUnit"
+    if "::turret::Turret" in move_type_repr:
+        return "SmartTurret"
+    if "::gate::Gate" in move_type_repr:
+        return "SmartGate"
+    if "::network_node::NetworkNode" in move_type_repr:
+        return "NetworkNode"
+    if "::manufacturing::Manufacturing" in move_type_repr:
+        return "Manufacturing"
+    if "::refinery::Refinery" in move_type_repr:
+        return "Refinery"
+    if "::assembly::Assembly" in move_type_repr:
+        return "Assembly"
+    return "Unknown"
 
 
 def require_token(x_server_token: str = Header(default="")):

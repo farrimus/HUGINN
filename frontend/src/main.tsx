@@ -3,7 +3,7 @@ export const BUILD_TIME: string = __BUILD_TIME__;
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 import { EveFrontierProvider } from '@evefrontier/dapp-kit'
 import './index.css'
 import App from './App.tsx'
@@ -20,11 +20,9 @@ try {
 
   createRoot(root).render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <EveFrontierProvider queryClient={queryClient}>
-          <App />
-        </EveFrontierProvider>
-      </QueryClientProvider>
+      <EveFrontierProvider queryClient={queryClient}>
+        <App />
+      </EveFrontierProvider>
     </StrictMode>,
   )
 

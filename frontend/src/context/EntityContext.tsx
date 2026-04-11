@@ -21,6 +21,7 @@ import {
   useConnection,
   useSmartObject,
   getCharacterAndOwnedObjects,
+  getCharacterOwnedObjectsJson,
   parseCharacterFromJson,
   getAssemblyType,
   executeGraphQLQuery,
@@ -290,16 +291,10 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       // Owned assemblies: getCharacterAndOwnedObjects uses VITE_EVE_WORLD_PACKAGE_ID;
       // will return empty on tenants that differ from the build-time env var.
       const result = await getCharacterAndOwnedObjects(walletAddress!);
-      const charPath = result.data?.address?.objects?.nodes?.[0]?.contents?.extract?.asAddress;
-
-      const ownedNodes = charPath?.objects?.nodes ?? [];
+      const ownedJsons = getCharacterOwnedObjectsJson(result.data) ?? [];
       const assemblies: CharacterAssembly[] = [];
 
-      for (const node of ownedNodes) {
-        const asmContents = node?.contents?.extract?.asAddress?.asObject?.asMoveObject?.contents;
-        const asmJson = asmContents?.json as Record<string, unknown> | undefined;
-        const typeRepr = (asmContents as { type?: { repr?: string } } | undefined)?.type?.repr ?? '';
-
+      for (const asmJson of ownedJsons) {
         if (!asmJson) continue;
         const asmId = typeof asmJson.id === 'string' ? asmJson.id : '';
         if (!asmId) continue;
@@ -341,10 +336,16 @@ export function EntityProvider({ children }: { children: ReactNode }) {
           ? (typeof lgRaw === 'string' && lgRaw.length > 0)
           : undefined;
 
+        // Infer assembly type from json field presence (typeRepr not available via getCharacterOwnedObjectsJson)
+        const inferredType = 'linked_gate_id' in asmJson ? 'SmartGate'
+          : 'fuel' in asmJson ? 'NetworkNode'
+          : 'inventory_keys' in asmJson ? 'SmartStorageUnit'
+          : getAssemblyType('');
+
         assemblies.push({
           assembly_id:   asmId,
           name:          typeof meta?.name === 'string' ? meta.name : asmId.slice(0, 10),
-          assembly_type: getAssemblyType(typeRepr),
+          assembly_type: inferredType,
           status:        variant?.toUpperCase() ?? 'UNKNOWN',
           is_current:    asmId === assemblyId,
           fuel_percent,

@@ -18,6 +18,7 @@ export interface CompanionStreamPayload {
   debug?: boolean;
   disabled_tools?: string[];
   tenant?: string;
+  entity_snapshot?: Record<string, unknown> | null;
 }
 
 export interface CompanionStreamCallbacks {

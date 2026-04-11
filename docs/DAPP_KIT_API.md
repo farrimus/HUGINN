@@ -148,7 +148,6 @@ React Query mutation for gas-sponsored transactions. Requires EVE Vault (wallet 
 ```typescript
 type UseSponsoredTransactionArgs = {
   txAction: SponsoredTransactionActions;
-  chain: string;       // REQUIRED — e.g. "sui:testnet" or "sui:mainnet"
   assembly: AssemblyType<Assemblies>;  // REQUIRED
   tenant?: string;     // Optional: resolved from URL ?tenant= → fallback "testevenet"
   account?: string;
@@ -272,7 +271,7 @@ Low-level executor for custom GraphQL queries.
 ```typescript
 executeGraphQLQuery<T>(
   query: string,
-  variables?: Record<string, unknown>
+  variables: Record<string, unknown>
 ): Promise<GraphQLResponse<T>>
 ```
 
@@ -360,7 +359,7 @@ All exported query string constants from `graphql/queries.ts`:
 | `GET_OBJECT_BY_ADDRESS` | Object with BCS-encoded contents |
 | `GET_OBJECT_WITH_JSON` | Object with JSON-decoded contents |
 | `GET_OBJECT_WITH_DYNAMIC_FIELDS` | Object with dynamic fields in JSON format |
-| `GET_OBJECT_DYNAMICFIELD_CHARACTER_WITH_JSON` | Assembly with owner chain + character resolution |
+| `GET_OBJECT_DYNAMICFIELD_CHARACTER_WITH_JSON` | Assembly with owner chain + character resolution — **internal, not a public export** |
 | `GET_OBJECT_OWNER_AND_OWNED_OBJECTS_BY_TYPE` | Owner + owned objects (BCS) |
 | `GET_OBJECT_OWNER_AND_OWNED_OBJECTS_WITH_JSON` | Owner + owned objects (JSON) |
 | `GET_OWNED_OBJECTS_BY_TYPE` | Objects by address filtered by type |
@@ -1388,7 +1387,6 @@ function BringOnlineForm() {
       const result = await sendTx({
         txAction: SponsoredTransactionActions.BRING_ONLINE,
         assembly: assembly!,
-        chain: 'sui:testnet',
       });
       notify({ type: Severity.Success, message: 'Online!', txHash: result.digest });
     } catch (err) {

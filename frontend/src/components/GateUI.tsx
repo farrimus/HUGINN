@@ -7,17 +7,22 @@ import {
   Assemblies,
   SponsoredTransactionActions,
   Severity,
+  parseStatus,
+  State,
+  abbreviateAddress,
+  getTxUrl,
   type SmartAssemblyResponse,
   type AssemblyType,
 } from '@evefrontier/dapp-kit';
 import { useToolOutput } from '../hooks/useToolOutput';
 import { useCompanionStream } from '../hooks/useCompanionStream';
 import { useEntityContext } from '../context/EntityContext';
+import { useSession } from '../hooks/useSession';
 import { InfoPanel } from './InfoPanel';
 import { AdminPanel } from './AdminPanel';
 import {
-  getDisabledTools, getActiveNavItems, FeatureFlags, ToolFlags, ToolRegistryEntry,
-  loadCachedAdminConfig, saveCachedAdminConfig, defaultFeatureFlags, defaultToolFlags,
+  getDisabledTools, getActiveNavItems, FeatureFlags, ToolFlags,
+  saveCachedAdminConfig,
 } from '../features/featureFlags';
 import type { ChatMessage } from '../types/terminal';
 import '../styles/terminal.css';
@@ -58,7 +63,7 @@ export function GateUI() {
   // Use visitor's character name from EntityContext (same source as TerminalUI's visitorName).
   // assemblyOwner?.name falls back to wallet address in dapp-kit when name is unresolved —
   // characterAssemblies?.character_name returns '' instead, so we fall back to truncated wallet.
-  const characterName = characterAssemblies?.character_name || walletAddress?.slice(0, 10) || null;
+  const characterName = characterAssemblies?.character_name || (walletAddress ? abbreviateAddress(walletAddress, 8) : null);
   const itemId = new URLSearchParams(window.location.search).get('itemId') || '';
   const isReady = isConnected && !!assemblyId;
 
@@ -74,14 +79,8 @@ export function GateUI() {
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [tier, setTier] = useState<string>('NONE');
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(
-    () => loadCachedAdminConfig().features
-  );
-  const [toolFlags, setToolFlags] = useState<ToolFlags>(
-    () => loadCachedAdminConfig().tools
-  );
-  const [toolRegistry, setToolRegistry] = useState<ToolRegistryEntry[]>([]);
+  const { tier, featureFlags, setFeatureFlags, toolFlags, setToolFlags, toolRegistry } =
+    useSession(walletAddress, assemblyId, tenant, assembly?.solarSystem?.name || '');
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreeted = useRef(false);
@@ -126,49 +125,8 @@ export function GateUI() {
     if (!isConnected && hasEveVault) handleConnect();
   }, [hasEveVault]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Session register — resolves tier (OWNER / TRIBE / GUEST)
-  useEffect(() => {
-    if (!walletAddress || !assemblyId) return;
-    fetch(`${API_BASE_URL}/session/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet_address: walletAddress, assembly_id: assemblyId, character_name: walletAddress.slice(0, 10) }),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.tier) setTier(data.tier); })
-      .catch(() => {});
-  }, [walletAddress, assemblyId]);
-
   useEffect(() => {
     if (!itemId) addLog('No itemId in URL — gate cannot be identified.', 'warning');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    Promise.all([
-      fetch(`${API_BASE_URL}/admin/config`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE_URL}/admin/tool-registry`).then(r => r.ok ? r.json() : []),
-    ]).then(([configData, registry]) => {
-      if (Array.isArray(registry) && registry.length > 0) {
-        setToolRegistry(registry);
-        const toolDefaults = Object.fromEntries(registry.map((t: ToolRegistryEntry) => [t.name, t.default_enabled]));
-        const merged = {
-          features: { ...defaultFeatureFlags(), ...(configData?.features || {}) },
-          tools:    { ...toolDefaults,           ...(configData?.tools    || {}) },
-        };
-        setFeatureFlags(merged.features);
-        setToolFlags(merged.tools);
-        saveCachedAdminConfig(merged);
-      } else if (configData) {
-        const merged = {
-          features: { ...defaultFeatureFlags(), ...(configData.features || {}) },
-          tools:    { ...defaultToolFlags(),    ...(configData.tools    || {}) },
-        };
-        setFeatureFlags(merged.features);
-        setToolFlags(merged.tools);
-        saveCachedAdminConfig(merged);
-      }
-    }).catch(() => { /* keep cached state on failure */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -191,8 +149,8 @@ export function GateUI() {
         tenant: tenant,
         metadata,
       });
-      notify({ type: Severity.Success, txHash: result.digest });
-      addLog(`${label} confirmed. ${result.digest.slice(0, 12)}...`, 'info');
+      notify({ type: Severity.Success, txHash: getTxUrl('sui:testnet', result.digest) });
+      addLog(`${label} confirmed. Tx: ${result.digest.slice(0, 12)}...`, 'info');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       notify({ type: Severity.Error, message: msg });
@@ -409,6 +367,11 @@ export function GateUI() {
         system_id: assembly?.solarSystem?.id,
         disabled_tools: getDisabledTools(toolFlags),
         tenant: tenant,
+        entity_snapshot: chatHistory.length === 0 ? {
+          assembly: enrichedAssembly,
+          network: networkData,
+          inventory: null,
+        } : null,
       },
       {
         onTextChunk: (text) => { textBuffer += text; },
@@ -443,8 +406,8 @@ export function GateUI() {
         ? `FUEL: ${net.fuel.fuel_percent.toFixed(0)}%`
         : 'FUEL: NOT BURNING';
       const sorted = [...(net.connected_assemblies ?? [])].sort((a: any, b: any) => {
-        const aOn = a.status === 'ONLINE' ? 0 : 1;
-        const bOn = b.status === 'ONLINE' ? 0 : 1;
+        const aOn = parseStatus(a.status) === State.ONLINE ? 0 : 1;
+        const bOn = parseStatus(b.status) === State.ONLINE ? 0 : 1;
         return aOn !== bOn ? aOn - bOn : a.name.localeCompare(b.name);
       });
       const asmLines = sorted.map((a: any) => {

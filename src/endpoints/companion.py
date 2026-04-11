@@ -19,6 +19,7 @@ from anthropic import Anthropic, AsyncAnthropic
 
 from src.structure_persistence import StructureProfile, load_profile, save_profile
 from src.prompt_loader import load_prompt
+from src.utils import parse_status as _fmt_status
 
 _ASSEMBLY_ID_RE = re.compile(r"^0x[0-9a-fA-F]{1,64}$")
 
@@ -93,6 +94,7 @@ class CompanionChatRequest(BaseModel):
     debug: bool = False         # set by /debug CLI command — triggers session dump
     disabled_tools: List[str] = []
     tenant: str = ""            # forwarded from frontend EntityContext; falls back to DEPLOYMENT_ENV
+    entity_snapshot: Optional[dict] = None  # enriched entity context from frontend EntityContext
 
 
 def _authenticate(x_api_key: Optional[str]) -> None:
@@ -263,6 +265,10 @@ async def _preload_context(req: CompanionChatRequest, profile: StructureProfile)
     # Validate assembly ID format
     if not _ASSEMBLY_ID_RE.match(req.assembly_id):
         return _build_context(profile, req)
+
+    # Fast path: use frontend entity snapshot when provided — no chain call needed
+    if req.entity_snapshot:
+        return _build_context_from_snapshot(req, profile, req.entity_snapshot)
 
     try:
         from src.entity_resolver import get_resolver_for_tenant
@@ -524,20 +530,160 @@ def _write_debug_dump(messages: list, req: "CompanionChatRequest",
     return path
 
 
-def _fmt_status(val, _depth: int = 0) -> str:
-    if val is None:
-        return "UNKNOWN"
-    if isinstance(val, str):
-        return val
-    if isinstance(val, dict) and _depth < 3:
-        for key in ("@variant", "variant", "name"):
-            v = val.get(key)
-            if isinstance(v, str):
-                return v
-        v = val.get("status")
-        if v is not None:
-            return _fmt_status(v, _depth + 1)
-    return str(val)
+def _build_context_from_snapshot(req: "CompanionChatRequest", profile: StructureProfile,
+                                  snapshot: dict) -> str:
+    """
+    Build the first-message context string from a frontend-provided entity snapshot.
+
+    Replaces the chain fetch in _preload_context when the frontend supplies
+    entity_snapshot (enrichedAssembly + networkData + inventoryData from EntityContext).
+    The system geography lookup (galaxy_db) still runs — it is a local cache, not a chain call.
+    """
+    asm = snapshot.get("assembly") or {}
+    net = snapshot.get("network") or {}
+    inv = snapshot.get("inventory") or {}
+
+    lines = [
+        f"STRUCTURE: {asm.get('name') or profile.structure_name} "
+        f"({asm.get('assembly_type', profile.structure_type)}, "
+        f"{asm.get('status', 'UNKNOWN')})",
+    ]
+
+    # Owner
+    owner = asm.get("owner") or {}
+    char_name = owner.get("character_name") or ""
+    tribe_id  = owner.get("tribe_id") or ""
+    if char_name:
+        lines.append(f"OWNER: {char_name} (tribeId: {tribe_id})")
+
+    if req.character_name:
+        lines.append(f"SHELL: {req.character_name}")
+
+    # System — local cache lookup, no chain call
+    system_name = req.system_name or profile.system_name
+    if system_name:
+        try:
+            from src.entity_resolver import get_resolver_for_tenant
+            _tenant = req.tenant or os.getenv("DEPLOYMENT_ENV", "utopia")
+            resolver = get_resolver_for_tenant(_tenant)
+            sys_info = resolver.get_system(system_name)
+            if sys_info:
+                sec = sys_info.get("security") or sys_info.get("securityStatus") or ""
+                sec_str = f" | SEC {sec:.2f}" if isinstance(sec, (int, float)) else ""
+                region = sys_info.get("regionName") or ""
+                lines.append(f"SYSTEM: {system_name}{sec_str}")
+                if region:
+                    lines.append(f"REGION: {region}")
+            else:
+                lines.append(f"SYSTEM: {system_name}")
+        except Exception:
+            lines.append(f"SYSTEM: {system_name}")
+
+    # Network node / fuel (from networkData)
+    if net:
+        fuel          = net.get("fuel") or {}
+        fuel_pct      = float(fuel.get("fuel_percent") or 0.0)
+        hours_remaining = float(fuel.get("hours_remaining") or 0.0)
+        days_remaining  = hours_remaining / 24.0
+        is_burning    = bool(fuel.get("is_burning", False))
+        units_per_hr  = float(fuel.get("burn_rate_units_per_hr") or 0.0)
+
+        node_name   = net.get("name") or ""
+        node_status = net.get("status") or "UNKNOWN"
+        lines.append(f"\nNETWORK NODE: {node_name} ({node_status})")
+
+        if is_burning and units_per_hr > 0:
+            fuel_line = (f"FUEL: {fuel_pct:.0f}% — ~{days_remaining:.1f}d remaining "
+                         f"({units_per_hr:.2f} units/hr)")
+        elif fuel_pct > 0:
+            fuel_line = f"FUEL: {fuel_pct:.0f}% — NOT BURNING"
+        else:
+            fuel_line = None
+
+        if fuel_line:
+            lines.append(f"  {fuel_line}")
+
+        # Connected assemblies — names already resolved by the frontend
+        connected = net.get("connected_assemblies") or []
+        if connected:
+            conn_parts = []
+            for ca in connected[:8]:
+                name   = ca.get("name") or (ca.get("id") or "")[:10]
+                atype  = ca.get("assembly_type") or "?"
+                status = ca.get("status") or "?"
+                conn_parts.append(f"{name}({atype},{status})")
+            if conn_parts:
+                conn_str = ", ".join(conn_parts)
+                if len(conn_str) > 300:
+                    conn_str = conn_str[:297] + "..."
+                lines.append(f"  CONNECTED ({len(connected)}): {conn_str}")
+
+    # Inventory (SSU only)
+    items = inv.get("items") or []
+    if items:
+        cap_pct = inv.get("capacity_percent")
+        used    = float(inv.get("used_capacity") or 0)
+        top = sorted(items, key=lambda x: x.get("quantity", 0), reverse=True)[:5]
+        lines.append(
+            f"\nINVENTORY: {len(items)} types, {used:.0f} m³"
+            + (f" ({cap_pct:.1f}%)" if cap_pct is not None else "")
+        )
+        for item in top:
+            lines.append(f"  {item.get('quantity', 0)}x {item.get('type_name', '?')}")
+        profile.cached_inventory = {
+            "item_count": len(items),
+            "used_m3": used,
+            "capacity_percent": cap_pct,
+            "items": [{"type_name": it.get("type_name"), "quantity": it.get("quantity", 0)}
+                      for it in sorted(items, key=lambda x: x.get("quantity", 0), reverse=True)[:10]],
+        }
+        save_profile(profile)
+        try:
+            from src.log_intel_store import register_items
+            register_items([it.get("type_name") for it in items if it.get("type_name")])
+        except Exception as e:
+            log.debug("companion: register_items failed: %s", e)
+
+    lines.append(_ship_context_block(req.owner_address))
+
+    # Global network registry
+    try:
+        from src.log_intel_store import load_known_types
+        kt = load_known_types()
+        registry_lines = []
+        if kt.get("items"):
+            registry_lines.append(f"  ITEMS: {', '.join(kt['items'][:30])}")
+        if kt.get("hostiles"):
+            registry_lines.append(f"  ENEMIES: {', '.join(kt['hostiles'][:20])}")
+        if kt.get("ores"):
+            registry_lines.append(f"  ORES: {', '.join(kt['ores'][:20])}")
+        if registry_lines:
+            lines.append("\nNETWORK REGISTRY:\n" + "\n".join(registry_lines))
+    except Exception as e:
+        log.debug("companion: network registry inject failed: %s", e)
+
+    # Pilot record
+    pilot_block = _pilot_record_block(profile.assembly_id, req.owner_address)
+    if pilot_block:
+        lines.append(pilot_block)
+
+    # Field reports
+    try:
+        from src.intel_store import get_intel_store
+        intel = get_intel_store(req.assembly_id)
+        recent = intel.get_recent(4)
+        if recent:
+            lines.append("\nFIELD REPORTS (pilot-logged):")
+            for r in recent:
+                by = r.get("reported_by", "unknown")
+                lines.append(f"  [{r['id']}] {by}: {r['content'][:120]}")
+    except Exception as e:
+        log.debug("companion: intel inject failed: %s", e)
+
+    context = "\n".join(lines)
+    if len(context) > 3500:
+        context = context[:3497] + "..."
+    return context
 
 
 @companion_router.post("/companion/chat")

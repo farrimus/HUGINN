@@ -115,7 +115,7 @@ async def lifespan(app):
     log.info("World API index loaded")
 
     # Step 5: Initialize EntityResolvers (one per supported tenant)
-    from src.graphql_queries import TENANT_CONFIG as _TENANT_CONFIG
+    from src.sui_adapter import TENANT_CONFIG as _TENANT_CONFIG
     deployment_env = config["deployment_env"]
     _entity_resolver_module._default_tenant = deployment_env
     for _tenant_name in ("utopia", "stillness"):
