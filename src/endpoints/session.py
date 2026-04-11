@@ -92,8 +92,10 @@ async def register_session(req: RegisterRequest):
     if req.tribe_id is not None:
         session.tribe_id = req.tribe_id
 
-    tier = "NONE"
-    if req.assembly_id:
+    # Tier is a passport — stamped once at first contact, never downgraded by re-registration.
+    # Only resolve from chain when the session has no tier yet.
+    tier = session.tier
+    if session.tier == "NONE" and req.assembly_id:
         try:
             from src.structure_persistence import load_profile
             from src.blockchain_queries import sui_rpc_client
@@ -108,7 +110,7 @@ async def register_session(req: RegisterRequest):
         except Exception as e:
             log.warning("session/register: tier resolution failed: %s", e)
 
-    # Apply any server-side vouch override (elevation only)
+    # Apply vouches on every call — so newly-granted overrides take effect immediately
     tier = apply_override(tier, req.wallet_address)
 
     session.tier = tier

@@ -3,9 +3,8 @@
 This file governs Claude Code behavior for this project only.
 
 **Owner:** Markús Þór
-**Hackathon:** EVE Frontier × Sui Hackathon 2026
-**Deadline:** March 31, 2026
-**Status:** MVP complete and running — companion chat end-to-end, route architecture decided.
+**Project:** EVE Frontier AI Companion (post-hackathon)
+**Status:** MVP shipped. Actively developing: SystemKnowledgeStore, Signal Broadcast refinement, session/admin fixes.
 
 ---
 
@@ -54,11 +53,12 @@ Before writing any fetch, query, GraphQL call, parser, formatter, or data transf
 
 ---
 
-## Scope: Backend Only
+## Scope
 
-**This CLAUDE.md governs the Python backend and documentation.**
+This CLAUDE.md governs the full stack: Python backend, React frontend, and documentation.
 
-**Frontend work:** See `frontend/src/` for React dApp source. Architecture in `/docs/ARCHITECTURE.md`.
+**Backend:** `src/` + `main.py` — FastAPI, AI companion, game data endpoints.
+**Frontend:** `frontend/src/` — React dApp. Components in `components/`, hooks in `hooks/`. Architecture in `/docs/ARCHITECTURE.md`.
 
 ## Tech Stack
 
@@ -69,6 +69,10 @@ Before writing any fetch, query, GraphQL call, parser, formatter, or data transf
 - **Interface:** React frontend (`/frontend/`) served by FastAPI
 
 ---
+
+## Current Priorities
+
+**Active work and known bugs:** `memory/MEMORY.md` — read this first for current state, open bugs, and next tasks.
 
 ## Documentation
 

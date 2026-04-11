@@ -87,7 +87,9 @@ export function useSession(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2. Session registration — runs when wallet + assembly known (visitorName may still be loading)
+  // 2. Session registration — fires on wallet + assembly + visitorName only.
+  // Tier is resolved server-side on first contact only (passport model).
+  // characterId / tribeId enrichment is sent separately via effect 5 (PATCH).
   useEffect(() => {
     if (!walletAddress || !assemblyId) return;
     fetch(`${API_BASE_URL}/session/register`, {
@@ -98,8 +100,6 @@ export function useSession(
         character_name: visitorName || abbreviateAddress(walletAddress),
         assembly_id: assemblyId,
         tenant: (sessionTenant || tenant),
-        character_id: characterId || null,
-        tribe_id: tribeId || null,
       }),
     })
       .then(r => r.ok ? r.json() : null)
@@ -112,7 +112,7 @@ export function useSession(
       .catch(() => {
         setSessionRegistered(true); // fail-open: unlock terminal even if backend is down
       });
-  }, [walletAddress, visitorName, assemblyId, tribeId, characterId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [walletAddress, assemblyId, visitorName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 3. Character name + tribe ID from chain
   // Skipped when resolvedCharacterName is provided by the caller (e.g. from EntityContext).
@@ -144,6 +144,23 @@ export function useSession(
     });
     return () => { cancelled = true; };
   }, [walletAddress, tenant, resolvedCharacterName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 5. Session enrichment — sends characterId / tribeId via PATCH once resolved.
+  // Waits for sessionRegistered so the session exists before patching.
+  useEffect(() => {
+    if (!walletAddress || !sessionRegistered || (!characterId && !tribeId)) return;
+    fetch(`${API_BASE_URL}/session/${walletAddress}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Wallet-Address': walletAddress,
+      },
+      body: JSON.stringify({
+        ...(characterId ? { character_id: characterId } : {}),
+        ...(tribeId   ? { tribe_id:     tribeId   } : {}),
+      }),
+    }).catch(() => {}); // best-effort — session still works without enrichment
+  }, [walletAddress, sessionRegistered, characterId, tribeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 4. Tribe presence ping — once when wallet + tribeId first known
   useEffect(() => {
