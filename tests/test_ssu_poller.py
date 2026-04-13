@@ -75,7 +75,7 @@ def _node_response(quantity=500, max_capacity=1000, connected_count=3):
 def _profile(fuel_pct=100.0, services_online=0, shield_pct=85.0, connected_assembly_ids=None,
              connected_assemblies=None):
     return StructureProfile(
-        structure_id=STRUCT_ID,
+        assembly_id=STRUCT_ID,
         owner_address="0xOWNER",
         fuel_pct=fuel_pct,
         services_online=services_online,
@@ -327,7 +327,7 @@ async def test_poll_connected_assemblies_updates_profile():
 
     mock_nova = MagicMock()
     mock_nova._rpc = AsyncMock(return_value=_assembly_obj_response(
-        "0xpkg::smart_gate::SmartGate", "ONLINE"
+        "0xpkg::gate::Gate", "ONLINE"
     ))
     orig_nova = poller_mod.nova_client
     orig_load = poller_mod.load_profile
@@ -362,7 +362,7 @@ async def test_poll_connected_assemblies_swallows_per_assembly_errors():
         obj_id = params[0]
         if obj_id == bad_id:
             raise RuntimeError("simulated RPC failure")
-        return _assembly_obj_response("0xpkg::smart_turret::SmartTurret", "ONLINE")
+        return _assembly_obj_response("0xpkg::turret::Turret", "ONLINE")
 
     mock_nova = MagicMock()
     mock_nova._rpc = rpc_side

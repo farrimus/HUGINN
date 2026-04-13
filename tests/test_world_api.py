@@ -111,35 +111,35 @@ async def test_get_system_returns_none_on_api_error():
     assert result is None
 
 # ------------------------------------------------------------------
-# WORLD_API_ENV switching tests
+# DEPLOYMENT_ENV switching tests
 # ------------------------------------------------------------------
 
 import os
 
 def test_utopia_env_sets_base_url():
     from src.world_api import WorldAPIClient
-    with patch.dict(os.environ, {"WORLD_API_ENV": "utopia", "WORLD_API_BASE_URL": ""}):
+    with patch.dict(os.environ, {"DEPLOYMENT_ENV": "utopia", "WORLD_API_BASE_URL": ""}):
         client = WorldAPIClient()
         assert "utopia" in client.base_url
 
 def test_stillness_env_sets_base_url():
     from src.world_api import WorldAPIClient
-    with patch.dict(os.environ, {"WORLD_API_ENV": "stillness", "WORLD_API_BASE_URL": ""}):
+    with patch.dict(os.environ, {"DEPLOYMENT_ENV": "stillness", "WORLD_API_BASE_URL": ""}):
         client = WorldAPIClient()
         assert "stillness" in client.base_url
 
 def test_world_api_env_default_is_utopia():
-    """When WORLD_API_ENV is unset, default must be utopia (hackathon default)."""
+    """When DEPLOYMENT_ENV is unset, default must be utopia (hackathon default)."""
     from src.world_api import WorldAPIClient
     env_without_overrides = {k: v for k, v in os.environ.items()
-                             if k not in ("WORLD_API_ENV", "WORLD_API_BASE_URL")}
+                             if k not in ("DEPLOYMENT_ENV", "WORLD_API_BASE_URL")}
     with patch.dict(os.environ, env_without_overrides, clear=True):
         client = WorldAPIClient()
         assert "utopia" in client.base_url
 
 def test_base_url_override_takes_precedence():
     from src.world_api import WorldAPIClient
-    with patch.dict(os.environ, {"WORLD_API_BASE_URL": "http://custom", "WORLD_API_ENV": "utopia"}):
+    with patch.dict(os.environ, {"WORLD_API_BASE_URL": "http://custom", "DEPLOYMENT_ENV": "utopia"}):
         client = WorldAPIClient()
         assert client.base_url == "http://custom"
 

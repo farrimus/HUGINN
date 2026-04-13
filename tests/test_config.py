@@ -16,7 +16,7 @@ def test_get_network_config_stillness():
     """Test fetching Stillness network config."""
     config = get_network_config("stillness")
     assert config["world_api_url"] == "https://world-api-stillness.live.tech.evefrontier.com"
-    assert "stillness.sui.io" in config["nova_rpc_url"]
+    assert "testnet.sui.io" in config["nova_rpc_url"]
 
 
 def test_get_network_config_invalid():

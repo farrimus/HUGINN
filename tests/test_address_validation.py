@@ -36,7 +36,7 @@ class TestVerifyRequestValidation:
             address=VALID_SUI_ADDRESS,
             signature="sig",
             nonce="nonce",
-            structure_id="keep-7a"
+            assembly_id="keep-7a"
         )
         assert req.address == VALID_SUI_ADDRESS
 
@@ -46,7 +46,7 @@ class TestVerifyRequestValidation:
             address=VALID_SUI_ADDRESS_UPPERCASE,
             signature="sig",
             nonce="nonce",
-            structure_id="keep-7a"
+            assembly_id="keep-7a"
         )
         assert req.address == VALID_SUI_ADDRESS_UPPERCASE.lower()
 
@@ -56,7 +56,7 @@ class TestVerifyRequestValidation:
             address=VALID_SUI_ADDRESS_MIXED,
             signature="sig",
             nonce="nonce",
-            structure_id="keep-7a"
+            assembly_id="keep-7a"
         )
         assert req.address == VALID_SUI_ADDRESS_MIXED.lower()
 
@@ -67,7 +67,7 @@ class TestVerifyRequestValidation:
                 address="1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
         assert "must be 0x followed by 64 hexadecimal characters" in str(exc_info.value)
 
@@ -78,7 +78,7 @@ class TestVerifyRequestValidation:
                 address="0x1234567890abcdef",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
         assert "must be 0x followed by 64 hexadecimal characters" in str(exc_info.value)
 
@@ -89,7 +89,7 @@ class TestVerifyRequestValidation:
                 address="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef00",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
         assert "must be 0x followed by 64 hexadecimal characters" in str(exc_info.value)
 
@@ -100,7 +100,7 @@ class TestVerifyRequestValidation:
                 address="0xZZZZZZZZ90abcdefZZZZZZZZ90abcdefZZZZZZZZ90abcdefZZZZZZZZ90abcdef",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
         assert "contains non-hexadecimal characters" in str(exc_info.value)
 
@@ -112,7 +112,7 @@ class TestVerifyRequestValidation:
                 address="0x1234567890abcdef\\1234567890abcdef1234567890abcdef1234567890abcd",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
         # Should fail on hex validation (backslash is not hex)
         error_str = str(exc_info.value).lower()
@@ -126,7 +126,7 @@ class TestVerifyRequestValidation:
                 address="0x1234567890abcdef/1234567890abcdef1234567890abcdef1234567890abcd",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
         error_str = str(exc_info.value).lower()
         assert "hexadecimal" in error_str or "characters" in error_str
@@ -139,7 +139,7 @@ class TestVerifyRequestValidation:
                 address="0x1234567890abcdef..1234567890abcdef1234567890abcdef1234567890abc",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
         error_str = str(exc_info.value).lower()
         assert "hexadecimal" in error_str or "characters" in error_str
@@ -151,7 +151,7 @@ class TestVerifyRequestValidation:
                 address="",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
         assert "must be 0x followed by 64 hexadecimal characters" in str(exc_info.value)
 
@@ -162,7 +162,7 @@ class TestVerifyRequestValidation:
                 address=None,
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
 
 
@@ -174,7 +174,7 @@ class TestDealClaimRequestValidation:
         req = DealClaimRequest(
             nonce="nonce",
             address=VALID_SUI_ADDRESS,
-            structure_id="keep-7a",
+            assembly_id="keep-7a",
             signature="sig",
             payment_method="sui"
         )
@@ -185,7 +185,7 @@ class TestDealClaimRequestValidation:
         req = DealClaimRequest(
             nonce="nonce",
             address=VALID_SUI_ADDRESS_UPPERCASE,
-            structure_id="keep-7a",
+            assembly_id="keep-7a",
             signature="sig",
             payment_method="sui"
         )
@@ -197,7 +197,7 @@ class TestDealClaimRequestValidation:
             DealClaimRequest(
                 nonce="nonce",
                 address="1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                structure_id="keep-7a",
+                assembly_id="keep-7a",
                 signature="sig",
                 payment_method="sui"
             )
@@ -209,7 +209,7 @@ class TestDealClaimRequestValidation:
             DealClaimRequest(
                 nonce="nonce",
                 address="0xGGGGGGGG90abcdefGGGGGGGG90abcdefGGGGGGGG90abcdefGGGGGGGG90abcdef",
-                structure_id="keep-7a",
+                assembly_id="keep-7a",
                 signature="sig",
                 payment_method="sui"
             )
@@ -221,7 +221,7 @@ class TestDealClaimRequestValidation:
             DealClaimRequest(
                 nonce="nonce",
                 address="0x1234567890abcdef:1234567890abcdef1234567890abcdef1234567890abcd",
-                structure_id="keep-7a",
+                assembly_id="keep-7a",
                 signature="sig",
                 payment_method="sui"
             )
@@ -359,7 +359,7 @@ class TestWindowsEscapeSequences:
                 address="0x\\\\server\\share1234567890abcdef1234567890abcdef1234567890",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
 
     def test_drive_letter_escape(self):
@@ -369,7 +369,7 @@ class TestWindowsEscapeSequences:
                 address="0xC:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
                 signature="sig",
                 nonce="nonce",
-                structure_id="keep-7a"
+                assembly_id="keep-7a"
             )
 
 
@@ -387,7 +387,7 @@ class TestAddressIntegration:
             address=VALID_SUI_ADDRESS,
             signature="sig",
             nonce="nonce",
-            structure_id="keep-7a"
+            assembly_id="keep-7a"
         )
         # The request normalized the address to lowercase
         path = memory_store._pilot_path(req.address)
@@ -400,7 +400,7 @@ class TestAddressIntegration:
             address=VALID_SUI_ADDRESS_UPPERCASE,
             signature="sig",
             nonce="nonce",
-            structure_id="keep-7a"
+            assembly_id="keep-7a"
         )
         # Both should produce the same normalized path
         path = memory_store._pilot_path(req.address)

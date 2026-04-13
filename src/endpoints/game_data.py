@@ -25,7 +25,7 @@ game_data_router = APIRouter()
 @game_data_router.get("/data/systems", dependencies=[Depends(require_token)])
 async def get_systems(request: Request):
     """Serve systems.json for client-side RouteCalculator. ~7 MB; ETag + 304 supported."""
-    path = os.path.join(os.path.dirname(__file__), "..", "data", "systems.json")
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "systems.json")
     if not os.path.exists(path):
         return JSONResponse(status_code=503, content={"detail": "systems.json not found. Run build_universe.py."})
     # Read only built_at for ETag — avoids loading 7 MB into memory just for the tag.

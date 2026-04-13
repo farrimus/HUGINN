@@ -55,9 +55,9 @@ def test_network_env_changes_endpoints():
     utopia = get_network_config("utopia")
     stillness = get_network_config("stillness")
 
-    # Different RPC endpoints
-    assert "testnet" in utopia["nova_rpc_url"].lower()
-    assert "stillness" in stillness["nova_rpc_url"].lower()
+    # Both environments use testnet RPC (same Sui testnet for both)
+    assert "testnet.sui.io" in utopia["nova_rpc_url"].lower()
+    assert "testnet.sui.io" in stillness["nova_rpc_url"].lower()
 
     # Different API endpoints
     assert "utopia" in utopia["world_api_url"].lower()

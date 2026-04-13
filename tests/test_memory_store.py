@@ -39,7 +39,7 @@ def test_append_multiple_events(store):
 def test_search_events_finds_keyword(store):
     store.bootstrap()
     store.append_event("killmail", 1, {"kill_id": 42, "victim_name": "EVE_PILOT_X"})
-    store.append_event("docking", 1, {"pilot_address": "0xabc", "character_name": "Other"})
+    store.append_event("docking", 1, {"pilot_address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character_name": "Other"})
     results = store.search_events("EVE_PILOT_X", days=7)
     assert len(results) == 1
     assert results[0]["type"] == "killmail"
@@ -63,22 +63,22 @@ def test_search_events_returns_most_recent_first(store):
 
 def test_upsert_pilot_creates_new(store):
     store.bootstrap()
-    store.upsert_pilot("0xabc", character_name="Alice", character_id=123, tier="OWNER")
-    profile = store.get_pilot("0xabc")
+    store.upsert_pilot("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", character_name="Alice", character_id=123, tier="OWNER")
+    profile = store.get_pilot("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
     assert profile["character_name"] == "Alice"
     assert profile["visit_count"] == 1
     assert profile["first_seen"] == profile["last_seen"]
 
 def test_upsert_pilot_updates_existing(store):
     store.bootstrap()
-    store.upsert_pilot("0xabc", character_name="Alice", character_id=123, tier="OWNER")
-    store.upsert_pilot("0xabc", character_name="Alice", character_id=123, tier="OWNER")
-    profile = store.get_pilot("0xabc")
+    store.upsert_pilot("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", character_name="Alice", character_id=123, tier="OWNER")
+    store.upsert_pilot("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", character_name="Alice", character_id=123, tier="OWNER")
+    profile = store.get_pilot("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
     assert profile["visit_count"] == 2
 
 def test_get_pilot_returns_none_if_missing(store):
     store.bootstrap()
-    assert store.get_pilot("0xnotexist") is None
+    assert store.get_pilot("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") is None
 
 def test_rebuild_summary(store):
     store.bootstrap()
