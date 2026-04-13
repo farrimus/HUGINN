@@ -17,7 +17,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from main import VerifyRequest, DealClaimRequest
+from src.schemas import VerifyRequest, DealClaimRequest
 from src.memory_store import MemoryStore
 
 
