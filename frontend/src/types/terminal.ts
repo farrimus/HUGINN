@@ -4,6 +4,33 @@
  * All tool output types and baseline panel data
  */
 
+import type { FeatureFlags, ToolFlags } from '../features/featureFlags';
+
+// ---------------------------------------------------------------------------
+// Terminal log entries
+// ---------------------------------------------------------------------------
+
+export interface HelpGroup {
+  label: string;
+  cmds: Array<{ text: string; action: string }>;
+}
+
+export interface TerminalLog {
+  text: string;
+  type: 'info' | 'user' | 'ai' | 'error' | 'warning' | 'command' | 'form' | 'help' | 'board' | 'upload' | 'admin' | 'recon';
+  timestamp: number;
+  action?: string;
+  id?: string;
+  helpGroups?: HelpGroup[];
+  adminFeatureFlags?: FeatureFlags;
+  adminToolFlags?: ToolFlags;
+  boardPosts?: TribePost[];
+  boardConfirmDeleteId?: string | null;
+  boardShowPostForm?: boolean;
+  boardPostDraft?: string;
+  copyText?: string;
+}
+
 export interface BaselinePanelData {
   crudVersion: string;
   signature: string;
