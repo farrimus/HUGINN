@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useConnection, useSmartObject, abbreviateAddress, getDatahubGameInfo, type SmartAssemblyResponse } from '@evefrontier/dapp-kit';
+import { abbreviateAddress, getDatahubGameInfo } from '@evefrontier/dapp-kit';
+import { useWalletReady } from '../hooks/useWalletReady';
+import { useChatPayload } from '../hooks/useChatPayload';
+import { fetchAndFormatNode } from '../utils/printNode';
 import { useToolOutput } from '../hooks/useToolOutput';
 import { BaselinePanelData, HuginnNewsData, BuildOptionsData } from '../types/terminal';
 import { TripCalculatorForm } from './TripCalculatorForm';
@@ -60,10 +63,10 @@ interface TerminalLog {
  * Wallet and assembly resolved via dapp-kit. Chat via /companion/chat.
  */
 export function TerminalUI() {
-  const { isConnected, walletAddress, handleConnect, handleDisconnect, hasEveVault } = useConnection();
-  const { assembly } = useSmartObject() as {
-    assembly: SmartAssemblyResponse | null;
-  };
+  const {
+    isConnected, walletAddress, handleConnect, handleDisconnect, hasEveVault,
+    assembly, assemblyId, itemId,
+  } = useWalletReady();
 
   const { currentToolType, currentData, isAnimating, display: displayToolOutput, finishAnimation, setDirect } = useToolOutput();
   const { sendMessage } = useCompanionStream();
@@ -74,9 +77,6 @@ export function TerminalUI() {
     characterAssemblies,
     tenant,
   } = useEntityContext();
-
-  const assemblyId = assembly?.id;
-  const itemId = new URLSearchParams(window.location.search).get('itemId') || '';
 
   // Game type enrichment from Datahub — populates the TYPE/CATEGORY block in BaselinePanel
   const { data: gameTypeData, isLoading: typeLoading } = useQuery({
@@ -135,6 +135,12 @@ export function TerminalUI() {
   const activeBoardLogIdRef = useRef<string | null>(null);
 
   const isReady = isConnected && !!assemblyId && sessionRegistered;
+  const resolvedCharName = visitorName || (walletAddress ? abbreviateAddress(walletAddress) : '');
+  const { buildPayload } = useChatPayload({
+    characterName: resolvedCharName,
+    tenant: sessionTenant || tenant,
+    systemFallback: currentSystem,
+  });
 
   const addLog = (text: string, type: TerminalLog['type'] = 'info', action?: string): void => {
     setLogs((prev) => [...prev, { text, type, timestamp: Date.now(), action }]);
@@ -293,27 +299,16 @@ export function TerminalUI() {
     let streamStarted = false;
 
     await sendMessage(
-      {
-        assembly_id: assemblyId!,
-        message: userInput,
+      buildPayload(userInput, {
         history: chatHistory,
         debug: debugMode,
-        owner_address: walletAddress || '',
-        character_name: visitorName || (walletAddress ? abbreviateAddress(walletAddress) : ''),
-        item_id: itemId,
-        assembly_name: enrichedAssembly?.name ?? assembly?.name ?? '',
-        assembly_type: enrichedAssembly?.assembly_type ?? assembly?.typeDetails?.name ?? '',
-        assembly_state: enrichedAssembly?.status ?? assembly?.state ?? '',
-        system_name: assembly?.solarSystem?.name || currentSystem,
-        system_id: assembly?.solarSystem?.id,
         disabled_tools: getDisabledTools(toolFlags),
-        tenant: (sessionTenant || tenant),
         entity_snapshot: chatHistory.length === 0 ? {
           assembly: enrichedAssembly,
           network: networkData,
           inventory: inventoryData,
         } : null,
-      },
+      }),
       {
         onTextChunk: (text) => {
           textBuffer += text;
@@ -897,27 +892,7 @@ export function TerminalUI() {
 
   const handlePrintNode = async (nodeId: string): Promise<void> => {
     try {
-      const t = (sessionTenant || tenant);
-      const res = await fetch(`${API_BASE_URL}/entity/network/${nodeId}?tenant=${t}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const net = await res.json();
-      const fuelStr = net.fuel.is_burning
-        ? `FUEL: ${net.fuel.fuel_percent.toFixed(0)}%`
-        : 'FUEL: NOT BURNING';
-      const sorted = [...(net.connected_assemblies ?? [])].sort((a: any, b: any) => {
-        const aOn = a.status === 'ONLINE' ? 0 : 1;
-        const bOn = b.status === 'ONLINE' ? 0 : 1;
-        return aOn !== bOn ? aOn - bOn : a.name.localeCompare(b.name);
-      });
-      const asmLines = sorted.map((a: any) => {
-        const isOff = a.status !== 'ONLINE';
-        return `  ${pad((isOff ? '~' : ' ') + a.name, 24)}${pad(a.group_name || a.assembly_type, 18)}${a.status}`;
-      });
-      const lines = [
-        `NETWORK — ${net.name} [${net.status}]   ${fuelStr}   (${sorted.length} structures)`,
-        ...asmLines,
-      ];
-      addLog('[PRINT]: ' + lines.join('\n'), 'info');
+      addLog(await fetchAndFormatNode(nodeId, sessionTenant || tenant, API_BASE_URL), 'info');
     } catch (err) {
       addLog(`Print failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }

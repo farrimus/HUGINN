@@ -1,23 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  useConnection,
-  useSmartObject,
-  useSponsoredTransaction,
-  useNotification,
   Assemblies,
   SponsoredTransactionActions,
-  Severity,
-  parseStatus,
-  State,
   abbreviateAddress,
-  getTxUrl,
-  type SmartAssemblyResponse,
   type AssemblyType,
 } from '@evefrontier/dapp-kit';
 import { useToolOutput } from '../hooks/useToolOutput';
 import { useCompanionStream } from '../hooks/useCompanionStream';
 import { useEntityContext } from '../context/EntityContext';
 import { useSession } from '../hooks/useSession';
+import { useWalletReady } from '../hooks/useWalletReady';
+import { useSponsoredTx } from '../hooks/useSponsoredTx';
+import { useChatPayload } from '../hooks/useChatPayload';
+import { fetchAndFormatNode } from '../utils/printNode';
 import { InfoPanel } from './InfoPanel';
 import { AdminPanel } from './AdminPanel';
 import {
@@ -49,23 +44,18 @@ interface TerminalLog {
  * This keeps the layout as two clean regions: InfoPanel + chat.
  */
 export function GateUI() {
-  const { isConnected, walletAddress, handleConnect, handleDisconnect, hasEveVault } = useConnection();
-  const { assembly } = useSmartObject() as {
-    assembly: SmartAssemblyResponse | null;
-  };
-  const { notify } = useNotification();
-  const { mutateAsync: sendTx, isPending: txPending } = useSponsoredTransaction();
+  const {
+    isConnected, walletAddress, handleConnect, handleDisconnect, hasEveVault,
+    assembly, assemblyId, itemId, isReady,
+  } = useWalletReady();
   const { currentToolType, currentData, isAnimating, display: displayToolOutput, finishAnimation } = useToolOutput();
   const { sendMessage } = useCompanionStream();
   const { enrichedAssembly, networkData, characterAssemblies, tenant } = useEntityContext();
 
-  const assemblyId = assembly?.id;
   // Use visitor's character name from EntityContext (same source as TerminalUI's visitorName).
   // assemblyOwner?.name falls back to wallet address in dapp-kit when name is unresolved —
   // characterAssemblies?.character_name returns '' instead, so we fall back to truncated wallet.
   const characterName = characterAssemblies?.character_name || (walletAddress ? abbreviateAddress(walletAddress, 8) : null);
-  const itemId = new URLSearchParams(window.location.search).get('itemId') || '';
-  const isReady = isConnected && !!assemblyId;
 
   // Gate link state from dapp-kit
   const gateAssembly = assembly as AssemblyType<Assemblies.SmartGate> | null;
@@ -84,6 +74,8 @@ export function GateUI() {
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasGreeted = useRef(false);
+  const { runTx, txPending } = useSponsoredTx({ assembly, isReady });
+  const { buildPayload } = useChatPayload({ characterName });
 
   const addLog = (text: string, type: TerminalLog['type'] = 'info', action?: string) => {
     setLogs((prev) => [...prev, { text, type, timestamp: Date.now(), action }]);
@@ -138,26 +130,6 @@ export function GateUI() {
     }
   }, [isReady, isLinked]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Sponsored transaction helpers ---
-
-  const runTx = async (action: SponsoredTransactionActions, label: string, metadata?: { name?: string }) => {
-    if (!assembly || txPending || !isReady) return;
-    try {
-      const result = await sendTx({
-        txAction: action,
-        assembly: assembly as AssemblyType<Assemblies>,
-        tenant: tenant,
-        metadata,
-      });
-      notify({ type: Severity.Success, txHash: getTxUrl('sui:testnet', result.digest) });
-      addLog(`${label} confirmed. Tx: ${result.digest.slice(0, 12)}...`, 'info');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      notify({ type: Severity.Error, message: msg });
-      addLog(`Error: ${msg}`, 'error');
-    }
-  };
-
   // --- Command handler ---
 
   const handleCommand = async (input: string) => {
@@ -182,12 +154,12 @@ export function GateUI() {
     } else if (command === '/online') {
       if (!isReady || txPending) { addLog('Not ready.', 'warning'); return; }
       addLog('Submitting: BRING ONLINE...', 'info');
-      await runTx(SponsoredTransactionActions.BRING_ONLINE, 'BRING ONLINE');
+      await runTx(SponsoredTransactionActions.BRING_ONLINE, 'BRING ONLINE', addLog);
 
     } else if (command === '/offline') {
       if (!isReady || txPending) { addLog('Not ready.', 'warning'); return; }
       addLog('Submitting: BRING OFFLINE...', 'info');
-      await runTx(SponsoredTransactionActions.BRING_OFFLINE, 'BRING OFFLINE');
+      await runTx(SponsoredTransactionActions.BRING_OFFLINE, 'BRING OFFLINE', addLog);
 
     } else if (command === '/link') {
       if (!isReady || txPending) { addLog('Not ready.', 'warning'); return; }
@@ -197,6 +169,7 @@ export function GateUI() {
       await runTx(
         SponsoredTransactionActions.LINK_SMART_GATE,
         'LINK GATE',
+        addLog,
         target ? { name: target } : undefined,
       );
 
@@ -204,7 +177,7 @@ export function GateUI() {
       if (!isReady || txPending) { addLog('Not ready.', 'warning'); return; }
       if (!isLinked) { addLog('Gate is not linked.', 'warning'); return; }
       addLog('Submitting: UNLINK GATE...', 'info');
-      await runTx(SponsoredTransactionActions.UNLINK_SMART_GATE, 'UNLINK GATE');
+      await runTx(SponsoredTransactionActions.UNLINK_SMART_GATE, 'UNLINK GATE', addLog);
 
     } else if (command === '/connect') {
       isConnected ? addLog('Already connected.', 'warning') : handleConnect();
@@ -353,26 +326,16 @@ export function GateUI() {
     setIsLoading(true);
     let textBuffer = '';
     await sendMessage(
-      {
-        assembly_id: assemblyId!,
-        message: userInput,
-        history: chatHistory,
-        owner_address: walletAddress || '',
-        character_name: characterName || '',
-        item_id: itemId,
-        assembly_name: enrichedAssembly?.name ?? assembly?.name ?? '',
+      buildPayload(userInput, {
         assembly_type: 'SmartGate',
-        assembly_state: enrichedAssembly?.status ?? assembly?.state ?? '',
-        system_name: assembly?.solarSystem?.name || '',
-        system_id: assembly?.solarSystem?.id,
+        history: chatHistory,
         disabled_tools: getDisabledTools(toolFlags),
-        tenant: tenant,
         entity_snapshot: chatHistory.length === 0 ? {
           assembly: enrichedAssembly,
           network: networkData,
           inventory: null,
         } : null,
-      },
+      }),
       {
         onTextChunk: (text) => { textBuffer += text; },
         onToolResult: (toolName, data) => { displayToolOutput(toolName, data); },
@@ -397,28 +360,7 @@ export function GateUI() {
 
   const handlePrintNode = async (nodeId: string): Promise<void> => {
     try {
-      const t = tenant;
-      const res = await fetch(`${API_BASE_URL}/entity/network/${nodeId}?tenant=${t}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const net = await res.json();
-      const pad = (s: string, len: number) => s.slice(0, len).padEnd(len);
-      const fuelStr = net.fuel.is_burning
-        ? `FUEL: ${net.fuel.fuel_percent.toFixed(0)}%`
-        : 'FUEL: NOT BURNING';
-      const sorted = [...(net.connected_assemblies ?? [])].sort((a: any, b: any) => {
-        const aOn = parseStatus(a.status) === State.ONLINE ? 0 : 1;
-        const bOn = parseStatus(b.status) === State.ONLINE ? 0 : 1;
-        return aOn !== bOn ? aOn - bOn : a.name.localeCompare(b.name);
-      });
-      const asmLines = sorted.map((a: any) => {
-        const isOff = a.status !== 'ONLINE';
-        return `  ${pad((isOff ? '~' : ' ') + a.name, 24)}${pad(a.group_name || a.assembly_type, 18)}${a.status}`;
-      });
-      const lines = [
-        `NETWORK — ${net.name} [${net.status}]   ${fuelStr}   (${sorted.length} structures)`,
-        ...asmLines,
-      ];
-      addLog('[PRINT]: ' + lines.join('\n'), 'info');
+      addLog(await fetchAndFormatNode(nodeId, tenant, API_BASE_URL), 'info');
     } catch (err) {
       addLog(`Print failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }

@@ -1,22 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  useConnection,
-  useSmartObject,
-  useSponsoredTransaction,
-  useNotification,
-  Assemblies,
   SponsoredTransactionActions,
-  Severity,
   parseStatus,
   State,
   abbreviateAddress,
-  getTxUrl,
-  type SmartAssemblyResponse,
-  type DetailedSmartCharacterResponse,
-  type AssemblyType,
 } from '@evefrontier/dapp-kit';
 import { useCompanionStream } from '../hooks/useCompanionStream';
 import { useEntityContext } from '../context/EntityContext';
+import { useWalletReady } from '../hooks/useWalletReady';
+import { useSponsoredTx } from '../hooks/useSponsoredTx';
+import { useChatPayload } from '../hooks/useChatPayload';
 import '../styles/turret.css';
 
 interface ResponseLine {
@@ -31,20 +24,16 @@ interface ResponseLine {
  * + AI query buttons (companion stream). No InfoPanel — too narrow.
  */
 export function TurretUI() {
-  const { isConnected, walletAddress, handleConnect, hasEveVault } = useConnection();
-  const { assembly, assemblyOwner } = useSmartObject() as {
-    assembly: SmartAssemblyResponse | null;
-    assemblyOwner: DetailedSmartCharacterResponse | null;
-  };
-  const { notify } = useNotification();
-  const { mutateAsync: sendTx, isPending: txPending } = useSponsoredTransaction();
+  const {
+    isConnected, walletAddress, handleConnect, hasEveVault,
+    assembly, assemblyOwner, assemblyId, isReady,
+  } = useWalletReady();
   const { sendMessage } = useCompanionStream();
-  const { enrichedAssembly, tenant } = useEntityContext();
+  const { enrichedAssembly } = useEntityContext();
 
-  const assemblyId = assembly?.id;
   const characterName = assemblyOwner?.name;
-  const itemId = new URLSearchParams(window.location.search).get('itemId') || '';
-  const isReady = isConnected && !!assemblyId;
+  const { runTx, txPending } = useSponsoredTx({ assembly, isReady });
+  const { buildPayload } = useChatPayload({ characterName });
 
   const state = enrichedAssembly?.status ?? assembly?.state ?? 'UNKNOWN';
   const isOnline = parseStatus(state) === State.ONLINE || parseStatus(state) === State.ANCHORED;
@@ -76,25 +65,6 @@ export function TurretUI() {
     setResponses((prev) => [...prev, { text, kind, timestamp: Date.now() }]);
   };
 
-  // Sponsored transaction helper
-  const runTx = async (action: SponsoredTransactionActions, label: string) => {
-    if (!assembly || txPending || !isReady) return;
-    addResponse(`Submitting: ${label}...`, 'info');
-    try {
-      const result = await sendTx({
-        txAction: action,
-        assembly: assembly as AssemblyType<Assemblies>,
-        tenant: tenant,
-      });
-      notify({ type: Severity.Success, txHash: getTxUrl('sui:testnet', result.digest) });
-      addResponse(`${label} confirmed. Tx: ${result.digest.slice(0, 10)}...`, 'info');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      notify({ type: Severity.Error, message: msg });
-      addResponse(`Error: ${msg}`, 'error');
-    }
-  };
-
   // AI query helper — fires a canned message to companion stream
   const runQuery = async (message: string) => {
     if (!isReady || isQuerying) return;
@@ -102,20 +72,11 @@ export function TurretUI() {
     addResponse(`> ${message}`, 'info');
     let textBuffer = '';
     await sendMessage(
-      {
-        assembly_id: assemblyId!,
-        message,
-        history: [],
-        owner_address: walletAddress || '',
-        character_name: characterName || '',
-        item_id: itemId,
-        assembly_name: enrichedAssembly?.name ?? assembly?.name ?? '',
+      buildPayload(message, {
         assembly_type: 'SmartTurret',
         assembly_state: state,
-        system_name: assembly?.solarSystem?.name || '',
-        system_id: assembly?.solarSystem?.id,
         entity_snapshot: { assembly: enrichedAssembly, network: null, inventory: null },
-      },
+      }),
       {
         onTextChunk: (text) => { textBuffer += text; },
         onToolResult: () => {},
@@ -163,7 +124,7 @@ export function TurretUI() {
       <div className="turret-buttons">
         <button
           className={`turret-btn primary ${txPending ? 'tx-pending' : ''}`}
-          onClick={() => runTx(SponsoredTransactionActions.BRING_ONLINE, 'BRING ONLINE')}
+          onClick={() => { addResponse('Submitting: BRING ONLINE...', 'info'); runTx(SponsoredTransactionActions.BRING_ONLINE, 'BRING ONLINE', addResponse); }}
           disabled={!isReady || txPending}
         >
           {txPending ? 'PROCESSING...' : '[ BRING ONLINE ]'}
@@ -171,7 +132,7 @@ export function TurretUI() {
 
         <button
           className={`turret-btn danger ${txPending ? 'tx-pending' : ''}`}
-          onClick={() => runTx(SponsoredTransactionActions.BRING_OFFLINE, 'BRING OFFLINE')}
+          onClick={() => { addResponse('Submitting: BRING OFFLINE...', 'info'); runTx(SponsoredTransactionActions.BRING_OFFLINE, 'BRING OFFLINE', addResponse); }}
           disabled={!isReady || txPending}
         >
           {txPending ? 'PROCESSING...' : '[ BRING OFFLINE ]'}
