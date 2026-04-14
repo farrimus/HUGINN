@@ -37,6 +37,7 @@ log = logging.getLogger(__name__)
 logs_router = APIRouter()
 
 _KNOWN_ENVS = {"utopia", "stillness"}
+_MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB per file
 
 
 def _resolve_env(tenant: str) -> str:
@@ -143,7 +144,10 @@ async def upload_logs(
             skipped_date += 1
             continue
 
-        raw = await upload.read()
+        raw = await upload.read(_MAX_FILE_BYTES + 1)
+        if len(raw) > _MAX_FILE_BYTES:
+            log.warning("Skipping oversized file: %s (%d+ bytes)", filename, _MAX_FILE_BYTES)
+            continue
         detected_type, events = parse_file(raw, basename)
 
         # If detection disagrees with classification, trust classification

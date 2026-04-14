@@ -12,10 +12,11 @@ import json
 import logging
 import re
 from typing import Optional, List, AsyncGenerator
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from anthropic import Anthropic, AsyncAnthropic
+from src.rate_limit import limiter
 
 from src.structure_persistence import StructureProfile, load_profile, save_profile
 from src.prompt_loader import load_prompt
@@ -897,7 +898,9 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
 
 
 @companion_router.post("/companion/stream")
+@limiter.limit("30/minute")
 async def companion_stream_endpoint(
+    request: Request,
     req: CompanionChatRequest,
     x_api_key: Optional[str] = Header(default=None),
 ):

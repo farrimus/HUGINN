@@ -148,11 +148,25 @@ async def lifespan(app):
 
 app = FastAPI(title="Ship AI Companion", lifespan=lifespan)
 
-# Middleware: CORS (for discovery and auth endpoints)
+# Rate limiting
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from src.rate_limit import limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Middleware: CORS
+# Set CORS_ORIGINS in .env as a comma-separated list (or "*" for wildcard).
+# Default: "*" to support the EVE Frontier in-game browser from any origin.
 from fastapi.middleware.cors import CORSMiddleware
+_raw_origins = os.getenv("CORS_ORIGINS", "*")
+_cors_origins: list[str] = (
+    ["*"] if _raw_origins.strip() == "*"
+    else [o.strip() for o in _raw_origins.split(",") if o.strip()]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
