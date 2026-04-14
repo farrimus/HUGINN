@@ -110,6 +110,9 @@ export function TerminalUI() {
     { text: `HUGINN initializing...  [build ${buildLabel}]`, type: 'info', timestamp: Date.now() },
   ]);
   const [inputValue, setInputValue] = useState('');
+  const [cmdHistory, setCmdHistory] = useState<string[]>([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
+  const savedDraftRef = useRef('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [feralTickMs, setFeralTickMs] = useState(300);
@@ -902,6 +905,12 @@ export function TerminalUI() {
     if (!inputValue.trim() || isLoading) return;
     const input = inputValue.trim();
     setInputValue('');
+    setHistoryIdx(-1);
+    savedDraftRef.current = '';
+    setCmdHistory((prev) => {
+      const deduped = prev[0] === input ? prev : [input, ...prev];
+      return deduped.slice(0, 50);
+    });
     if (input.startsWith('/')) {
       await handleCommand(input);
     } else {
@@ -919,6 +928,20 @@ export function TerminalUI() {
     if (e.key === 'Enter') {
       e.preventDefault();
       await doSubmit();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cmdHistory.length === 0) return;
+      const next = historyIdx + 1;
+      if (next >= cmdHistory.length) return;
+      if (historyIdx === -1) savedDraftRef.current = inputValue;
+      setHistoryIdx(next);
+      setInputValue(cmdHistory[next]);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIdx === -1) return;
+      const next = historyIdx - 1;
+      setHistoryIdx(next);
+      setInputValue(next === -1 ? savedDraftRef.current : cmdHistory[next]);
     }
   };
 
