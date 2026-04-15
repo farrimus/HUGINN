@@ -29,7 +29,7 @@ async def get_config():
 
 @ui_router.get("/")
 async def index():
-    """Serve the React CLI companion app."""
+    """Serve the React app — App.tsx detects in-game vs desktop and renders accordingly."""
     return FileResponse("frontend/dist/index.html", headers=_NO_CACHE_HEADERS)
 
 

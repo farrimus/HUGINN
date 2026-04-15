@@ -107,6 +107,13 @@ async def add_watch_rule(
         "last_alert": None,
         "active": True,
     }
+    existing = next(
+        (r for r in session.watch_list
+         if r.get("ssu_id") == req.ssu_id and r.get("scope") == req.scope),
+        None,
+    )
+    if existing:
+        return {"rule": existing}
     session.watch_list.append(rule)
     save_session(session)
     log.info("watcher: rule added for %s — SSU %s", wallet[:12], req.ssu_id[:12])

@@ -747,10 +747,11 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
       data: {"error": "..."}                                        — error
     """
     client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    context_str = await _preload_context(req, profile)
 
     # Resolve pilot tier from session (set at registration time by /session/register).
     # Use the tenant the client reported so we read from the same directory it was saved to.
+    # upsert_pilot runs BEFORE _preload_context so the pilot record on disk is current
+    # when _pilot_record_block reads it.
     tier = "NONE"
     tribe_id = None
     character_id = None
@@ -767,10 +768,11 @@ async def _stream_companion(req: CompanionChatRequest, profile: StructureProfile
         try:
             from src.memory_store import get_memory_store
             store = get_memory_store(profile.assembly_id)
-            store.upsert_pilot(req.owner_address, req.character_name or "", 0, tier)
+            store.upsert_pilot(req.owner_address, req.character_name or "", character_id or 0, tier)
         except Exception as e:
             log.debug("companion: upsert_pilot failed: %s", e)
 
+    context_str = await _preload_context(req, profile)
     if req.owner_address:
         from src.tier_capabilities import ai_instruction, blocked_tools as _blocked_tools
         context_str += f"\nTIER: {tier} — {ai_instruction(tier)}"

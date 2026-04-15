@@ -1,4 +1,5 @@
 # src/memory_store.py
+import fcntl
 import os
 import time
 import json
@@ -183,29 +184,41 @@ class MemoryStore:
         os.makedirs(self._pilots_dir(), exist_ok=True)
         path = self._pilot_path(address)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
         try:
-            if os.path.exists(path):
-                with open(path) as f:
-                    profile = json.load(f)
-                profile["last_seen"] = now
-                profile["visit_count"] = profile.get("visit_count", 0) + 1
-                profile["tier"] = tier
-                profile["character_name"] = character_name
-                profile["character_id"] = character_id
-            else:
-                profile = {
-                    "address": address,
-                    "character_name": character_name,
-                    "character_id": character_id,
-                    "tier": tier,
-                    "first_seen": now,
-                    "last_seen": now,
-                    "visit_count": 1,
-                }
-            with open(path, "w") as f:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            with os.fdopen(fd, "r+") as f:
+                fd = None  # fdopen owns it now
+                raw = f.read()
+                if raw.strip():
+                    profile = json.loads(raw)
+                    profile["last_seen"] = now
+                    profile["visit_count"] = profile.get("visit_count", 0) + 1
+                    profile["tier"] = tier
+                    profile["character_name"] = character_name
+                    profile["character_id"] = character_id
+                else:
+                    profile = {
+                        "address": address,
+                        "character_name": character_name,
+                        "character_id": character_id,
+                        "tier": tier,
+                        "first_seen": now,
+                        "last_seen": now,
+                        "visit_count": 1,
+                    }
+                f.seek(0)
+                f.truncate()
                 json.dump(profile, f, indent=2)
         except Exception as e:
             log.warning("memory_store.upsert_pilot(%s) failed: %s", address, e)
+        finally:
+            if fd is not None:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                    os.close(fd)
+                except OSError:
+                    pass
 
     def get_pilot(self, address: str) -> Optional[dict]:
         path = self._pilot_path(address)

@@ -30,6 +30,7 @@ from src.endpoints.tribe_posts import tribe_posts_router
 from src.endpoints.news import news_router
 from src.endpoints.logs import logs_router
 from src.endpoints.system_knowledge import system_knowledge_router
+from src.endpoints.relay import relay_router
 from src.entity_resolver import EntityResolver
 import src.entity_resolver as _entity_resolver_module
 import src.ssu_watcher_task as _watcher_task
@@ -184,6 +185,7 @@ app.include_router(tribe_posts_router)
 app.include_router(news_router)
 app.include_router(logs_router)
 app.include_router(system_knowledge_router)
+app.include_router(relay_router)
 
 
 

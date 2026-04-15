@@ -60,7 +60,7 @@ _running = False
 _player_structure_cache: dict = {}  # {assembly_id: {type_name, status, fuel_pct, services_online, system_name}}
 
 
-async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
+async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> list[str]:
     """Poll SSU on-chain state. Two hops: StorageUnit → NetworkNode for fuel.
 
     Hop 1 fetches the StorageUnit object for status and energy_source_id.
@@ -78,7 +78,7 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
         ])
     except Exception as e:
         log.warning("poll_ssu_state: RPC hop 1 failed for %s: %s", ssu_object_id, e)
-        return
+        return []
 
     fields = (
         ssu_data.get("result", {})
@@ -88,12 +88,12 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
     )
     if not fields:
         log.warning("poll_ssu_state: no fields in StorageUnit object %s", ssu_object_id)
-        return
+        return []
 
     profile = load_profile(structure_id)
     if not profile:
         log.warning("poll_ssu_state: no profile found for structure_id %s", structure_id)
-        return
+        return []
 
     # Status: ONLINE / OFFLINE / NULL from AssemblyStatus enum
     status_val = fields.get("status", {})
@@ -117,6 +117,7 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
             or energy_source_id.get("Some")
         )
 
+    connected_ids: list[str] = []
     fuel_pct = None
     services_online = None
     if energy_source_id:
@@ -174,6 +175,8 @@ async def poll_ssu_state(structure_id: str, ssu_object_id: str) -> None:
     if changed:
         save_profile(profile)
         log.info("poll_ssu_state: updated profile for %s", structure_id)
+
+    return connected_ids
 
 
 _CANONICAL_TO_LABEL = {
@@ -369,13 +372,10 @@ async def poll_turret(turret_object_id: str, structure_id: str, system_id: int):
 async def _ssu_loop(ssu_object_id: str, structure_id: str, system_id: int):
     """Run SSU + Sui events polling every 60s."""
     while True:
-        await poll_ssu_state(structure_id, ssu_object_id)
+        connected_ids = await poll_ssu_state(structure_id, ssu_object_id)
         await poll_sui_events(ssu_object_id, structure_id, system_id)
-        profile = load_profile(structure_id)
-        if profile and profile.connected_assembly_ids:
-            # Exclude the SSU itself — it appears in its own NetworkNode connected list
-            other_ids = [i for i in profile.connected_assembly_ids if i != ssu_object_id]
-            await poll_connected_assemblies(structure_id, other_ids)
+        if connected_ids:
+            await poll_connected_assemblies(structure_id, connected_ids)
         await asyncio.sleep(SSU_POLL_INTERVAL)
 
 
