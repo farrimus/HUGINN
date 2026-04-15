@@ -7,9 +7,9 @@ import { fetchAndFormatNode } from '../utils/printNode';
 import { createDispatcher } from '../commands/index';
 import { printRouteToChat, printToTerminal } from '../commands/printFormatters';
 import { buildBaselineData } from '../utils/baselineBuilder';
-import type { TerminalLog, HelpGroup } from '../types/terminal';
+import type { TerminalLog } from '../types/terminal';
 import { useToolOutput } from '../hooks/useToolOutput';
-import { BaselinePanelData, HuginnNewsData, BuildOptionsData } from '../types/terminal';
+import { BaselinePanelData } from '../types/terminal';
 import { TripCalculatorForm } from './TripCalculatorForm';
 import { BUILD_TIME } from '../main';
 import { useCompanionStream } from '../hooks/useCompanionStream';
@@ -24,11 +24,11 @@ import { LogUploadPanel } from './LogUploadPanel';
 import { AdminPanel } from './AdminPanel';
 import { ReconForm } from './ReconForm';
 import {
-  getDisabledTools, FEATURES, FeatureFlags, ToolFlags,
+  getDisabledTools, FEATURES,
   saveCachedAdminConfig,
 } from '../features/featureFlags';
-import { canAccess, getActiveNavItemsForTier } from '../features/tierCapabilities';
-import type { WatchRule, WatcherAlert, RouteData, CourierContract, TribePresenceMember, TribePost, ChatMessage } from '../types/terminal';
+import { getActiveNavItemsForTier } from '../features/tierCapabilities';
+import type { WatcherAlert, RouteData, ChatMessage } from '../types/terminal';
 
 const API_BASE_URL = window.location.origin;
 

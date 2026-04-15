@@ -48,7 +48,7 @@ export interface CommandContext {
   toolFlags: ToolFlags;
   setToolFlags: (f: ToolFlags) => void;
   tier: string;
-  visitorName: string | null | undefined;
+  visitorName: string;
   tribeId: number | null | undefined;
   toolRegistry: ToolRegistryEntry[];
 

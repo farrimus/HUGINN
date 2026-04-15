@@ -4,7 +4,7 @@
 // printToTerminal    — formats the current tool panel data as plain text
 
 import type { CommandContext } from './types';
-import type { RouteData, HuginnNewsData, BuildOptionsData } from '../types/terminal';
+import type { RouteData, HuginnNewsData, BuildOptionsData, NetworkMapData } from '../types/terminal';
 import { SUBDIV } from '../constants/dividers';
 import { fmtNum, fmtVol, pad, padR } from '../utils/formatters';
 import { TYPE_LABEL, TYPE_PRIORITY, statusRank } from '../utils/assemblyUtils';
@@ -141,16 +141,13 @@ export function printToTerminal(ctx: CommandContext): void {
     ].join('\n'), 'info');
 
   } else if (currentToolType === 'network_map' && currentData) {
-    // currentData.connectedAssemblies is already filtered by the flag used when /network ran
-    type NetAsm = { id: string; name: string; assemblyType: string; status: string; groupName: string };
-    const netData = currentData as { connectedAssemblies: NetAsm[]; nodeName: string; nodeStatus: string; fuel: { is_burning: boolean; fuel_percent: number; hours_remaining: number }; energy: { max_energy_production: string; current_energy_production: string } } | null;
-    if (!netData) return;
+    const netData = currentData as NetworkMapData;
     const { nodeName: name, nodeStatus: status, fuel, energy } = netData;
-    const fuelStr = fuel.is_burning
-      ? `FUEL: ${fuel.fuel_percent.toFixed(0)}%  ~${(fuel.hours_remaining / 24).toFixed(1)}d`
+    const fuelStr = fuel.isBurning
+      ? `FUEL: ${fuel.fuelPercent.toFixed(0)}%  ~${(fuel.hoursRemaining / 24).toFixed(1)}d`
       : 'FUEL: NOT BURNING';
-    const maxEn = parseInt(energy.max_energy_production, 10) || 0;
-    const curEn = parseInt(energy.current_energy_production, 10) || 0;
+    const maxEn = parseInt(energy.maxEnergyProduction, 10) || 0;
+    const curEn = parseInt(energy.currentEnergyProduction, 10) || 0;
     const enStr = maxEn > 0
       ? `ENERGY: ${fmtNum(curEn)} / ${fmtNum(maxEn)} kW`
       : 'ENERGY: [ NO DATA ]';
